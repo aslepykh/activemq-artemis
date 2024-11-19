@@ -17,6 +17,13 @@
 
 package org.apache.activemq.artemis.tests.integration.paging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,14 +55,13 @@ import org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class GlobalJournalPagingTest extends JournalPagingTest {
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
    }
@@ -92,7 +98,7 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
       Configuration config = createDefaultInVMConfig().setJournalSyncNonTransactional(false);
 
       server = createServer(true, config, JournalPagingTest.PAGE_SIZE, JournalPagingTest.PAGE_MAX, -1, -1, new HashMap<>());
-      Assert.assertTrue(customServerCreated);
+      assertTrue(customServerCreated);
       server.getConfiguration().setGlobalMaxSize(-1);
       server.getConfiguration().setAddressQueueScanPeriod(100);
 
@@ -110,7 +116,7 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
 
       final ClientSession session = sf.createSession(false, false, false);
 
-      session.createQueue(new QueueConfiguration(JournalPagingTest.ADDRESS));
+      session.createQueue(QueueConfiguration.of(JournalPagingTest.ADDRESS));
 
       final ClientProducer producer = session.createProducer(JournalPagingTest.ADDRESS);
 
@@ -134,30 +140,27 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
       serverImpl.getMonitor().tick();
 
       AtomicInteger errors = new AtomicInteger(0);
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               sendFewMessages(numberOfMessages, session, producer, body);
-            } catch (Exception e) {
-               errors.incrementAndGet();
-               e.printStackTrace(System.out);
-            }
+      Thread t = new Thread(() -> {
+         try {
+            sendFewMessages(numberOfMessages, session, producer, body);
+         } catch (Exception e) {
+            errors.incrementAndGet();
+            e.printStackTrace(System.out);
          }
-      };
+      });
 
       t.start();
 
       t.join(1000);
-      Assert.assertTrue(t.isAlive());
+      assertTrue(t.isAlive());
 
-      Assert.assertEquals(0, errors.get());
+      assertEquals(0, errors.get());
 
       // releasing the disk
       serverImpl.getMonitor().setMaxUsage(1).tick();
       t.join(5000);
-      Assert.assertEquals(0, errors.get());
-      Assert.assertFalse(t.isAlive());
+      assertEquals(0, errors.get());
+      assertFalse(t.isAlive());
 
       session.start();
 
@@ -227,20 +230,20 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
 
             if (server.locateQueue(managementAddress) == null) {
 
-               session.createQueue(new QueueConfiguration(managementAddress));
+               session.createQueue(QueueConfiguration.of(managementAddress));
             }
 
             final Queue managementQueue = server.locateQueue(managementAddress);
 
-            Assert.assertNull(managementQueue.getPageSubscription());
+            assertNull(managementQueue.getPageSubscription());
 
-            Assert.assertNull(server.getPagingManager().getPageStore(managementAddress));
+            assertNull(server.getPagingManager().getPageStore(managementAddress));
 
-            final SimpleString address = SimpleString.toSimpleString("queue");
+            final SimpleString address = SimpleString.of("queue");
 
             if (server.locateQueue(address) == null) {
 
-               session.createQueue(new QueueConfiguration(address));
+               session.createQueue(QueueConfiguration.of(address));
             }
 
             final CountDownLatch startSendMessages = new CountDownLatch(1);
@@ -252,7 +255,7 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
             final Thread globalSizeChecker = new Thread(() -> {
                startSendMessages.countDown();
                while (!Thread.currentThread().isInterrupted()) {
-                  Assert.assertEquals(globalSize, pagingManager.getGlobalSize());
+                  assertEquals(globalSize, pagingManager.getGlobalSize());
                }
             });
 
@@ -264,16 +267,16 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
 
                ManagementHelper.putAttribute(message, "queue." + address.toString(), "messageCount");
 
-               Assert.assertTrue("bodySize = " + message.getBodySize() + " must be > of globalMaxSize = " + server.getConfiguration().getGlobalMaxSize(), message.getBodySize() > server.getConfiguration().getGlobalMaxSize());
+               assertTrue(message.getBodySize() > server.getConfiguration().getGlobalMaxSize(), "bodySize = " + message.getBodySize() + " must be > of globalMaxSize = " + server.getConfiguration().getGlobalMaxSize());
 
                startSendMessages.await();
 
                for (int i = 0; i < 100; i++) {
                   try {
                      ClientMessage reply = requestor.request(message);
-                     Assert.assertEquals(0L, ManagementHelper.getResult(reply));
+                     assertEquals(0L, ManagementHelper.getResult(reply));
                   } catch (ActiveMQAddressFullException e) {
-                     Assert.fail(e.getMessage());
+                     fail(e.getMessage());
                      return;
                   }
                }
@@ -313,19 +316,19 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
 
             if (server.locateQueue(managementAddress) == null) {
 
-               session.createQueue(new QueueConfiguration(managementAddress));
+               session.createQueue(QueueConfiguration.of(managementAddress));
             }
 
-            final SimpleString address = SimpleString.toSimpleString("queue");
+            final SimpleString address = SimpleString.of("queue");
 
             if (server.locateQueue(address) == null) {
 
-               session.createQueue(new QueueConfiguration(address));
+               session.createQueue(QueueConfiguration.of(address));
             }
 
             try (ClientProducer requestProducer = session.createProducer(managementAddress)) {
-               final SimpleString replyQueue = new SimpleString(managementAddress + "." + UUID.randomUUID().toString());
-               session.createQueue(new QueueConfiguration(replyQueue).setRoutingType(ActiveMQDefaultConfiguration.getDefaultRoutingType()).setDurable(false).setTemporary(true));
+               final SimpleString replyQueue = SimpleString.of(managementAddress + "." + UUID.randomUUID().toString());
+               session.createQueue(QueueConfiguration.of(replyQueue).setRoutingType(ActiveMQDefaultConfiguration.getDefaultRoutingType()).setDurable(false).setTemporary(true));
                int id = 1000;
                try (ClientConsumer consumer = session.createConsumer(replyQueue)) {
                   final Queue queue = server.locateQueue(replyQueue);
@@ -339,7 +342,7 @@ public class GlobalJournalPagingTest extends JournalPagingTest {
                   message.putStringProperty(ClientMessageImpl.REPLYTO_HEADER_NAME, replyQueue);
                   ManagementHelper.putAttribute(message, "queue." + address.toString(), "messageCount");
                   requestProducer.send(message);
-                  Assert.assertNotNull(consumer.receive());
+                  assertNotNull(consumer.receive());
                }
             }
          }

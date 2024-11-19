@@ -17,6 +17,12 @@
 
 package org.apache.activemq.artemis.tests.smoke.jmx;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
@@ -24,20 +30,17 @@ import javax.management.remote.rmi.RMIConnection;
 import javax.management.remote.rmi.RMIConnector;
 import java.io.File;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.rmi.server.RemoteObject;
 import java.rmi.server.RemoteRef;
 
 import io.netty.util.internal.PlatformDependent;
 import org.apache.activemq.artemis.tests.smoke.common.SmokeTestBase;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
 import org.jctools.util.UnsafeAccess;
-import org.junit.Assert;
-import org.junit.Assume;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import sun.rmi.server.UnicastRef;
-import sun.rmi.transport.LiveRef;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * This test checks JMX connection to Artemis with both necessary ports set up so that it's easier to tunnel through
@@ -54,14 +57,14 @@ public class JmxConnectionTest extends SmokeTestBase {
    public static final String SERVER_NAME_0 = "jmx";
    private Class<?> proxyRefClass;
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
 
       File server0Location = getFileServerLocation(SERVER_NAME_0);
       deleteDirectory(server0Location);
 
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setUser("admin").setPassword("admin").setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(server0Location).
             setConfiguration("./src/main/resources/servers/jmx").setArgs("--java-options", "-Djava.rmi.server.hostname=localhost");
          cliCreateServer.createServer();
@@ -69,7 +72,7 @@ public class JmxConnectionTest extends SmokeTestBase {
    }
 
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       cleanupData(SERVER_NAME_0);
       disableCheckThread();
@@ -90,7 +93,7 @@ public class JmxConnectionTest extends SmokeTestBase {
 
    @Test
    public void testJmxConnection() throws Throwable {
-      Assert.assertNotNull(proxyRefClass);
+      assertNotNull(proxyRefClass);
       try {
 
          // Without this, the RMI server would bind to the default interface IP (the user's local IP mostly)
@@ -108,7 +111,7 @@ public class JmxConnectionTest extends SmokeTestBase {
          } catch (Exception e) {
             jmxConnector = null;
             e.printStackTrace();
-            Assert.fail(e.getMessage());
+            fail(e.getMessage());
          }
 
          try {
@@ -117,7 +120,7 @@ public class JmxConnectionTest extends SmokeTestBase {
           * messy because I have to use reflection to reach the information.
           */
 
-            Assert.assertTrue(jmxConnector instanceof RMIConnector);
+            assertTrue(jmxConnector instanceof RMIConnector);
 
             // 1. RMIConnector::connection is expected to be RMIConnectionImpl_Stub
             Field connectionField = RMIConnector.class.getDeclaredField("connection");
@@ -125,12 +128,12 @@ public class JmxConnectionTest extends SmokeTestBase {
             RMIConnection rmiConnection = (RMIConnection) connectionField.get(jmxConnector);
 
             // 2. RMIConnectionImpl_Stub extends RemoteStub which extends RemoteObject
-            Assert.assertTrue(rmiConnection instanceof RemoteObject);
+            assertTrue(rmiConnection instanceof RemoteObject);
             RemoteObject remoteObject = (RemoteObject) rmiConnection;
 
             // 3. RemoteObject::getRef is hereby expected to return ProxyRef
             RemoteRef remoteRef = remoteObject.getRef();
-            Assert.assertTrue(proxyRefClass.isInstance(remoteRef));
+            assertTrue(proxyRefClass.isInstance(remoteRef));
             // 4. ProxyRef::ref is expected to contain UnicastRef (UnicastRef2 resp.)
             Field refField = proxyRefClass.getDeclaredField("ref");
             RemoteRef remoteRefField;
@@ -138,16 +141,17 @@ public class JmxConnectionTest extends SmokeTestBase {
                refField.setAccessible(true);
                remoteRefField = (RemoteRef) refField.get(remoteRef);
             } catch (Throwable error) {
-               Assume.assumeTrue("Unsafe must be available to continue the test", PlatformDependent.hasUnsafe());
+               assumeTrue(PlatformDependent.hasUnsafe(), "Unsafe must be available to continue the test");
                remoteRefField = (RemoteRef) UnsafeAccess.UNSAFE.getObject(remoteRef, UnsafeAccess.UNSAFE.objectFieldOffset(refField));
             }
-            Assert.assertNotNull(remoteRefField);
-            Assert.assertTrue(remoteRefField instanceof UnicastRef);
+            assertNotNull(remoteRefField);
+            assertEquals("sun.rmi.server.UnicastRef2", remoteRefField.getClass().getTypeName());
 
             // 5. UnicastRef::getLiveRef returns LiveRef
-            LiveRef liveRef = ((UnicastRef) remoteRefField).getLiveRef();
+            Method getLiveRef = remoteRefField.getClass().getMethod("getLiveRef");
+            Object liveRef = getLiveRef.invoke(remoteRefField);
 
-            Assert.assertEquals(RMI_REGISTRY_PORT, liveRef.getPort());
+            assertEquals(RMI_REGISTRY_PORT, liveRef.getClass().getMethod("getPort").invoke(liveRef));
 
          } finally {
             jmxConnector.close();

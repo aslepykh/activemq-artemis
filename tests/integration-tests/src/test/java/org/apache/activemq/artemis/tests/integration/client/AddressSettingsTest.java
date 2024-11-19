@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ClientConsumer;
@@ -30,38 +33,37 @@ import org.apache.activemq.artemis.core.settings.HierarchicalRepository;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class AddressSettingsTest extends ActiveMQTestBase {
 
-   private final SimpleString addressA = new SimpleString("addressA");
+   private final SimpleString addressA = SimpleString.of("addressA");
 
-   private final SimpleString addressA2 = new SimpleString("add.addressA");
+   private final SimpleString addressA2 = SimpleString.of("add.addressA");
 
-   private final SimpleString addressB = new SimpleString("addressB");
+   private final SimpleString addressB = SimpleString.of("addressB");
 
-   private final SimpleString addressB2 = new SimpleString("add.addressB");
+   private final SimpleString addressB2 = SimpleString.of("add.addressB");
 
-   private final SimpleString addressC = new SimpleString("addressC");
+   private final SimpleString addressC = SimpleString.of("addressC");
 
-   private final SimpleString queueA = new SimpleString("queueA");
+   private final SimpleString queueA = SimpleString.of("queueA");
 
-   private final SimpleString queueB = new SimpleString("queueB");
+   private final SimpleString queueB = SimpleString.of("queueB");
 
-   private final SimpleString queueC = new SimpleString("queueC");
+   private final SimpleString queueC = SimpleString.of("queueC");
 
-   private final SimpleString dlaA = new SimpleString("dlaA");
+   private final SimpleString dlaA = SimpleString.of("dlaA");
 
-   private final SimpleString dlqA = new SimpleString("dlqA");
+   private final SimpleString dlqA = SimpleString.of("dlqA");
 
-   private final SimpleString dlaB = new SimpleString("dlaB");
+   private final SimpleString dlaB = SimpleString.of("dlaB");
 
-   private final SimpleString dlqB = new SimpleString("dlqB");
+   private final SimpleString dlqB = SimpleString.of("dlqB");
 
-   private final SimpleString dlaC = new SimpleString("dlaC");
+   private final SimpleString dlaC = SimpleString.of("dlaC");
 
-   private final SimpleString dlqC = new SimpleString("dlqC");
+   private final SimpleString dlqC = SimpleString.of("dlqC");
 
    @Test
    public void testSimpleHierarchyWithDLA() throws Exception {
@@ -76,10 +78,10 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(queueA).setAddress(addressA).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueB).setAddress(addressB).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqA).setAddress(dlaA).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqB).setAddress(dlaB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueA).setAddress(addressA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueB).setAddress(addressB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqA).setAddress(dlaA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqB).setAddress(dlaB).setDurable(false));
       ClientSession sendSession = sf.createSession(false, true, true);
       ClientMessage cm = sendSession.createMessage(true);
       cm.getBodyBuffer().writeString("A");
@@ -96,20 +98,20 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ClientConsumer cc2 = session.createConsumer(queueB);
       session.start();
       ClientMessage message = cc1.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc2.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       session.rollback();
       cc1.close();
       cc2.close();
       message = dlqARec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("A", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("A", message.getBodyBuffer().readString());
       message = dlqBrec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("B", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("B", message.getBodyBuffer().readString());
       sendSession.close();
       session.close();
 
@@ -134,12 +136,12 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       repo.addMatch("(foo.#)", new AddressSettings().setDeadLetterAddress(fooLiteralDLA));
 
       // should be the DLA from foo.# - the literal match
-      Assert.assertEquals(fooLiteralDLA, repo.getMatch("foo.#").getDeadLetterAddress());
-      Assert.assertEquals(defaultEA, repo.getMatch("foo.#").getExpiryAddress());
+      assertEquals(fooLiteralDLA, repo.getMatch("foo.#").getDeadLetterAddress());
+      assertEquals(defaultEA, repo.getMatch("foo.#").getExpiryAddress());
 
-      Assert.assertEquals(fooChildrenDLA, repo.getMatch("foo.bar").getDeadLetterAddress());
-      Assert.assertEquals(fooDefaultDLA, repo.getMatch("foo.bar.too").getDeadLetterAddress());
-      Assert.assertEquals(defaultDLA, repo.getMatch("too.#").getDeadLetterAddress());
+      assertEquals(fooChildrenDLA, repo.getMatch("foo.bar").getDeadLetterAddress());
+      assertEquals(fooDefaultDLA, repo.getMatch("foo.bar.too").getDeadLetterAddress());
+      assertEquals(defaultDLA, repo.getMatch("too.#").getDeadLetterAddress());
    }
 
    @Test
@@ -155,10 +157,10 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(queueA).setAddress(addressA).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueB).setAddress(addressB).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqA).setAddress(dlaA).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqB).setAddress(dlaB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueA).setAddress(addressA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueB).setAddress(addressB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqA).setAddress(dlaA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqB).setAddress(dlaB).setDurable(false));
       ClientSession sendSession = sf.createSession(false, true, true);
       ClientMessage cm = sendSession.createMessage(true);
       cm.getBodyBuffer().writeString("A");
@@ -175,20 +177,20 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ClientConsumer cc2 = session.createConsumer(queueB);
       session.start();
       ClientMessage message = cc1.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc2.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       session.rollback();
       cc1.close();
       cc2.close();
       message = dlqARec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("A", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("A", message.getBodyBuffer().readString());
       message = dlqBrec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("B", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("B", message.getBodyBuffer().readString());
       sendSession.close();
       session.close();
 
@@ -206,10 +208,10 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(queueA).setAddress(addressA).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueB).setAddress(addressB).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqA).setAddress(dlaA).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqB).setAddress(dlaB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueA).setAddress(addressA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueB).setAddress(addressB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqA).setAddress(dlaA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqB).setAddress(dlaB).setDurable(false));
       ClientSession sendSession = sf.createSession(false, true, true);
       ClientMessage cm = sendSession.createMessage(true);
       cm.getBodyBuffer().writeString("A");
@@ -226,20 +228,20 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ClientConsumer cc2 = session.createConsumer(queueB);
       session.start();
       ClientMessage message = cc1.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc2.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       session.rollback();
       cc1.close();
       cc2.close();
       message = dlqARec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("A", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("A", message.getBodyBuffer().readString());
       message = dlqBrec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("B", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("B", message.getBodyBuffer().readString());
       sendSession.close();
       session.close();
    }
@@ -259,12 +261,12 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(queueA).setAddress(addressA2).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueB).setAddress(addressB2).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueC).setAddress(addressC).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqA).setAddress(dlaA).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqB).setAddress(dlaB).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqC).setAddress(dlaC).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueA).setAddress(addressA2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueB).setAddress(addressB2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueC).setAddress(addressC).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqA).setAddress(dlaA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqB).setAddress(dlaB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqC).setAddress(dlaC).setDurable(false));
       ClientSession sendSession = sf.createSession(false, true, true);
       ClientMessage cm = sendSession.createMessage(true);
       cm.getBodyBuffer().writeString("A");
@@ -287,27 +289,27 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ClientConsumer cc3 = session.createConsumer(queueC);
       session.start();
       ClientMessage message = cc1.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc2.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc3.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       session.rollback();
       cc1.close();
       cc2.close();
       cc3.close();
       message = dlqARec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("A", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("A", message.getBodyBuffer().readString());
       message = dlqBrec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("B", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("B", message.getBodyBuffer().readString());
       message = dlqCrec.receive(5000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("C", message.getBodyBuffer().readString());
+      assertNotNull(message);
+      assertEquals("C", message.getBodyBuffer().readString());
       sendSession.close();
       session.close();
 
@@ -346,12 +348,12 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(queueA).setAddress(addressA2).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueB).setAddress(addressB2).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueC).setAddress(addressC).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqA).setAddress(dlaA).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqB).setAddress(dlaB).setDurable(false));
-      session.createQueue(new QueueConfiguration(dlqC).setAddress(dlaC).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueA).setAddress(addressA2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueB).setAddress(addressB2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueC).setAddress(addressC).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqA).setAddress(dlaA).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqB).setAddress(dlaB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(dlqC).setAddress(dlaC).setDurable(false));
       ClientSession sendSession = sf.createSession(false, true, true);
       ClientMessage cm = sendSession.createMessage(true);
       ClientMessage cm2 = sendSession.createMessage(true);
@@ -369,24 +371,24 @@ public class AddressSettingsTest extends ActiveMQTestBase {
       ClientConsumer cc3 = session.createConsumer(queueC);
       session.start();
       ClientMessage message = cc1.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc2.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       message = cc3.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       session.rollback();
       cc1.close();
       cc2.close();
       cc3.close();
       message = dlqCrec.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message = dlqCrec.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message = dlqCrec.receive(5000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       sendSession.close();
       session.close();
 

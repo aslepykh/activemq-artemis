@@ -58,6 +58,11 @@ public class ReplicatedJournal implements Journal {
    private final byte journalID;
 
    @Override
+   public boolean isHistory() {
+      return localJournal.isHistory();
+   }
+
+   @Override
    public void setRemoveExtraFilesOnLoad(boolean removeExtraFilesOnLoad) {
       this.localJournal.setRemoveExtraFilesOnLoad(removeExtraFilesOnLoad);
    }
@@ -79,6 +84,10 @@ public class ReplicatedJournal implements Journal {
    @Override
    public void flush() throws Exception {
 
+   }
+
+   public Journal getLocalJournal() {
+      return localJournal;
    }
 
    /**
@@ -658,5 +667,10 @@ public class ReplicatedJournal implements Journal {
    @Override
    public long getMaxRecordSize() {
       return localJournal.getMaxRecordSize();
+   }
+
+   @Override
+   public long getWarningRecordSize() {
+      return localJournal.getWarningRecordSize();
    }
 }

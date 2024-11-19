@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.jms.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import java.util.List;
 import java.util.Map;
 
@@ -39,7 +43,7 @@ import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.impl.QueueImpl;
 import org.apache.activemq.artemis.jms.client.ActiveMQTopic;
 import org.apache.activemq.artemis.tests.util.JMSTestBase;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * This test will simulate a situation where the Topics used to have an extra queue on startup.
@@ -82,8 +86,8 @@ public class TopicCleanupTest extends JMSTestBase {
          for (int i = 0; i < 100; i++) {
             long txid = storage.generateID();
 
-            final Queue queue = new QueueImpl(storage.generateID(), SimpleString.toSimpleString("topic"),
-                                              SimpleString.toSimpleString("topic"),
+            final Queue queue = new QueueImpl(storage.generateID(), SimpleString.of("topic"),
+                                              SimpleString.of("topic"),
                                               FilterImpl.createFilter(Filter.GENERIC_IGNORED_FILTER), null,
                                               true, false, false, server.getScheduledPool(), server.getPostOffice(),
                                               storage, server.getAddressSettingsRepository(),
@@ -135,7 +139,7 @@ public class TopicCleanupTest extends JMSTestBase {
          conn.close();
 
          boolean foundStrayRoutingBinding = false;
-         Bindings bindings = server.getPostOffice().getBindingsForAddress(new SimpleString(topic.getAddress()));
+         Bindings bindings = server.getPostOffice().getBindingsForAddress(SimpleString.of(topic.getAddress()));
          Map<SimpleString, List<Binding>> routingNames = ((BindingsImpl) bindings).getRoutingNameBindingMap();
          for (SimpleString key : routingNames.keySet()) {
             if (!key.toString().equals(topic.getAddress())) {

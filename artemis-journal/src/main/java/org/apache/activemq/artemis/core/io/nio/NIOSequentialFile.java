@@ -63,11 +63,11 @@ public class NIOSequentialFile extends AbstractSequentialFile {
     */
    private static final int CHUNK_SIZE = 2 * 1024 * 1024;
 
-   private FileChannel channel;
+   protected volatile  FileChannel channel;
 
-   private RandomAccessFile rfile;
+   protected volatile RandomAccessFile rfile;
 
-   private final int maxIO;
+   protected final int maxIO;
 
    public NIOSequentialFile(final SequentialFileFactory factory,
                             final File directory,
@@ -306,7 +306,7 @@ public class NIOSequentialFile extends AbstractSequentialFile {
          throw e;
       } catch (IOException e) {
          if (callback != null) {
-            callback.onError(ActiveMQExceptionType.IO_ERROR.getCode(), e.getLocalizedMessage());
+            callback.onError(ActiveMQExceptionType.IO_ERROR.getCode(), e.getClass() + " during read: " + e.getLocalizedMessage());
          }
 
          factory.onIOError(new ActiveMQIOErrorException(e.getMessage(), e), e.getMessage(), this);
@@ -317,16 +317,25 @@ public class NIOSequentialFile extends AbstractSequentialFile {
 
    @Override
    public void sync() throws IOException {
-      if (factory.isDatasync() && channel != null) {
+      FileChannel channel1 = channel;
+      if (factory.isDatasync() && channel1 != null && channel1.isOpen()) {
          try {
-            channel.force(false);
-         } catch (ClosedChannelException e) {
-            throw e;
+            syncChannel(channel1);
          } catch (IOException e) {
-            factory.onIOError(new ActiveMQIOErrorException(e.getMessage(), e), e.getMessage(), this);
-            throw e;
+            if (e instanceof ClosedChannelException) {
+               // ClosedChannelException here means the file was closed after TimedBuffer issued a sync
+               // we are performing the sync away from locks to ensure scalability and this is an expected cost
+               logger.debug("ClosedChannelException for file {}", file, e);
+            } else {
+               factory.onIOError(new ActiveMQIOErrorException(e.getMessage(), e), e.getMessage(), this);
+               throw e;
+            }
          }
       }
+   }
+
+   protected void syncChannel(FileChannel syncChannel) throws IOException {
+      syncChannel.force(false);
    }
 
    @Override
@@ -373,7 +382,7 @@ public class NIOSequentialFile extends AbstractSequentialFile {
       try {
          internalWrite(bytes, sync, callback, true);
       } catch (Exception e) {
-         callback.onError(ActiveMQExceptionType.GENERIC_EXCEPTION.getCode(), e.getMessage());
+         callback.onError(ActiveMQExceptionType.GENERIC_EXCEPTION.getCode(), e.getClass() + " during write direct: " + e.getMessage());
       }
    }
 
@@ -393,7 +402,7 @@ public class NIOSequentialFile extends AbstractSequentialFile {
                               boolean releaseBuffer) throws IOException, ActiveMQIOErrorException, InterruptedException {
       if (!isOpen()) {
          if (callback != null) {
-            callback.onError(ActiveMQExceptionType.IO_ERROR.getCode(), "File not opened - " + getFileName());
+            callback.onError(ActiveMQExceptionType.IO_ERROR.getCode(), "File not opened. Cannot write to " + getFileName());
          } else {
             throw ActiveMQJournalBundle.BUNDLE.fileNotOpened();
          }
@@ -480,7 +489,7 @@ public class NIOSequentialFile extends AbstractSequentialFile {
                   internalWrite(buffer, requestedSync, callback, false);
                } catch (Exception e) {
                   if (callbacks != null) {
-                     callbacks.forEach(c -> c.onError(ActiveMQExceptionType.GENERIC_EXCEPTION.getCode(), e.getMessage()));
+                     callbacks.forEach(c -> c.onError(ActiveMQExceptionType.GENERIC_EXCEPTION.getCode(), e.getClass() + " while flushing buffer: " + e.getMessage()));
                   }
                }
             } else {

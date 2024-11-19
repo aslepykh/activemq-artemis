@@ -347,12 +347,7 @@ public final class JMSBridgeImpl implements JMSBridge {
          stopping = false;
       }
 
-      moduleTccl = AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
-         @Override
-         public ClassLoader run() {
-            return Thread.currentThread().getContextClassLoader();
-         }
-      });
+      moduleTccl = AccessController.doPrivileged((PrivilegedAction<ClassLoader>) () -> Thread.currentThread().getContextClassLoader());
 
       locateRecoveryRegistry();
 
@@ -406,6 +401,7 @@ public final class JMSBridgeImpl implements JMSBridge {
       if (ok) {
          connectedSource = true;
          connectedTarget = true;
+         failed = false;
          startSource();
       } else {
          ActiveMQJMSBridgeLogger.LOGGER.errorStartingBridge(bridgeName);
@@ -797,7 +793,7 @@ public final class JMSBridgeImpl implements JMSBridge {
    @Override
    public synchronized void setMaxRetries(final int retries) {
       checkBridgeNotStarted();
-      JMSBridgeImpl.checkValidValue(retries, "MaxRetries");
+      JMSBridgeImpl.checkValidValue(retries, "MaxRetries", true);
 
       maxRetries = retries;
    }
@@ -921,7 +917,7 @@ public final class JMSBridgeImpl implements JMSBridge {
       checkNotNull(sourceDestinationFactory, "sourceDestinationFactory");
       checkNotNull(targetDestinationFactory, "targetDestinationFactory");
       checkValidValue(failureRetryInterval, "failureRetryInterval");
-      checkValidValue(maxRetries, "maxRetries");
+      checkValidValue(maxRetries, "maxRetries", true);
       if (failureRetryInterval == -1 && maxRetries > 0) {
          throw new IllegalArgumentException("If failureRetryInterval == -1 maxRetries must be set to -1");
       }
@@ -953,11 +949,23 @@ public final class JMSBridgeImpl implements JMSBridge {
    }
 
    /**
-    * Check that value is either equals to -1 or greater than 0
+    * Check that value is either equals to -1 or > 0
     *
     * @throws IllegalArgumentException if the value is not valid
     */
    private static void checkValidValue(final long value, final String name) {
+      checkValidValue(value, name, false);
+   }
+
+   /**
+    * Check that value is either equals to -1 or >= 0
+    *
+    * @throws IllegalArgumentException if the value is not valid
+    */
+   private static void checkValidValue(final long value, final String name, boolean allowZero) {
+      if (value == 0 && allowZero) {
+         return;
+      }
       if (!(value == -1 || value > 0)) {
          throw new IllegalArgumentException(name + " must be > 0 or -1");
       }
@@ -1632,12 +1640,9 @@ public final class JMSBridgeImpl implements JMSBridge {
          public Thread newThread(Runnable r) {
             final Thread thr = new Thread(group, r);
             if (moduleTccl != null) {
-               AccessController.doPrivileged(new PrivilegedAction() {
-                  @Override
-                  public Object run() {
-                     thr.setContextClassLoader(moduleTccl);
-                     return null;
-                  }
+               AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+                  thr.setContextClassLoader(moduleTccl);
+                  return null;
                });
             }
             return thr;

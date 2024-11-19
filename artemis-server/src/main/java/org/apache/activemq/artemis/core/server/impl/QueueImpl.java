@@ -77,7 +77,6 @@ import org.apache.activemq.artemis.core.postoffice.impl.LocalQueueBinding;
 import org.apache.activemq.artemis.core.postoffice.impl.PostOfficeImpl;
 import org.apache.activemq.artemis.core.remoting.server.RemotingService;
 import org.apache.activemq.artemis.core.server.ActiveMQMessageBundle;
-import org.apache.activemq.artemis.core.server.ActiveMQQueueLogger;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ActiveMQServerLogger;
 import org.apache.activemq.artemis.core.server.Consumer;
@@ -114,7 +113,6 @@ import org.apache.activemq.artemis.utils.ReusableLatch;
 import org.apache.activemq.artemis.utils.SizeAwareMetric;
 import org.apache.activemq.artemis.utils.actors.ArtemisExecutor;
 import org.apache.activemq.artemis.utils.collections.ConcurrentHashSet;
-import org.apache.activemq.artemis.utils.collections.NodeStore;
 import org.apache.activemq.artemis.utils.collections.LinkedListIterator;
 import org.apache.activemq.artemis.utils.collections.NodeStoreFactory;
 import org.apache.activemq.artemis.utils.collections.PriorityLinkedList;
@@ -142,6 +140,9 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    protected static final int CRITICAL_DELIVER = 2;
    protected static final int CRITICAL_CONSUMER = 3;
    protected static final int CRITICAL_CHECK_DEPAGE = 4;
+
+   // The prefix for Mirror SNF Queues
+   public static final String MIRROR_ADDRESS = "$ACTIVEMQ_ARTEMIS_MIRROR";
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
    private static final AtomicIntegerFieldUpdater<QueueImpl> dispatchingUpdater = AtomicIntegerFieldUpdater.newUpdater(QueueImpl.class, "dispatching");
@@ -213,17 +214,17 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    // Messages will first enter intermediateMessageReferences
    // Before they are added to messageReferences
    // This is to avoid locking the queue on the producer
-   private final MpscUnboundedArrayQueue<MessageReference> intermediateMessageReferences = new MpscUnboundedArrayQueue<>(8192);
+   private final MpscUnboundedArrayQueue<MessageReference> intermediateMessageReferences;
 
    // This is where messages are stored
    protected final PriorityLinkedList<MessageReference> messageReferences = new PriorityLinkedListImpl<>(QueueImpl.NUM_PRIORITIES, MessageReferenceImpl.getSequenceComparator());
 
-   private NodeStore<MessageReference> nodeStore;
+   private NodeStoreFactory<MessageReference> nodeStoreFactory;
 
    private void checkIDSupplier(NodeStoreFactory<MessageReference> nodeStoreFactory) {
-      if (this.nodeStore == null) {
-         this.nodeStore = nodeStoreFactory.newNodeStore();
-         messageReferences.setNodeStore(nodeStore);
+      if (this.nodeStoreFactory == null) {
+         this.nodeStoreFactory = nodeStoreFactory;
+         messageReferences.setNodeStore( () -> nodeStoreFactory.newNodeStore().setName(String.valueOf(name)));
       }
    }
 
@@ -364,6 +365,8 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    private volatile long ringSize;
 
    private volatile long createdTimestamp = -1;
+
+   private final int initialQueueBufferSize;
 
    @Override
    public boolean isSwept() {
@@ -606,7 +609,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
                     final ArtemisExecutor executor,
                     final ActiveMQServer server,
                     final QueueFactory factory) {
-      this(new QueueConfiguration(name)
+      this(QueueConfiguration.of(name)
               .setId(id)
               .setAddress(address)
               .setFilterString(filter == null ? null : filter.getFilterString())
@@ -629,6 +632,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
               .setAutoDeleteMessageCount(autoDeleteMessageCount)
               .setConfigurationManaged(configurationManaged)
               .setRingSize(ringSize),
+           filter,
            pagingStore,
            pageSubscription,
            scheduledExecutor,
@@ -638,10 +642,10 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
            executor,
            server,
            factory);
-      this.filter = filter;
    }
 
    public QueueImpl(final QueueConfiguration queueConfiguration,
+                    final Filter filter,
                     final PagingStore pagingStore,
                     final PageSubscription pageSubscription,
                     final ScheduledExecutorService scheduledExecutor,
@@ -752,6 +756,11 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       }
 
       this.ringSize = queueConfiguration.getRingSize() == null ? ActiveMQDefaultConfiguration.getDefaultRingSize() : queueConfiguration.getRingSize();
+
+      this.initialQueueBufferSize = this.addressSettings.getInitialQueueBufferSize() == null
+              ? ActiveMQDefaultConfiguration.INITIAL_QUEUE_BUFFER_SIZE
+              : this.addressSettings.getInitialQueueBufferSize();
+      this.intermediateMessageReferences = new MpscUnboundedArrayQueue<>(initialQueueBufferSize);
    }
 
    // Bindable implementation -------------------------------------------------------------------------------------
@@ -1040,12 +1049,20 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    @Override
    public void refUp(MessageReference messageReference) {
       int count = messageReference.getMessage().refUp();
+      PagingStore owner = (PagingStore) messageReference.getMessage().getOwner();
       if (count == 1) {
-         if (messageReference.getMessage().getOwner() != null) {
-            ((PagingStore)messageReference.getMessage().getOwner()).addSize(messageReference.getMessageMemoryEstimate(), false);
+         if (owner != null) {
+            owner.addSize(messageReference.getMessageMemoryEstimate(), false);
          }
       }
       if (pagingStore != null) {
+         if (owner != null && pagingStore != owner) {
+            // If an AMQP message parses its properties, its size might be updated and the address will receive more bytes.
+            // However, in this case, we should always use the original estimate.
+            // Otherwise, we might get incorrect sizes after the update.
+            pagingStore.addSize(messageReference.getMessage().getOriginalEstimate(), false, false);
+         }
+
          pagingStore.refUp(messageReference.getMessage(), count);
       }
    }
@@ -1053,12 +1070,17 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    @Override
    public void refDown(MessageReference messageReference) {
       int count = messageReference.getMessage().refDown();
-      if (count == 0) {
-         if (messageReference.getMessage().getOwner() != null) {
-            ((PagingStore)messageReference.getMessage().getOwner()).addSize(-messageReference.getMessageMemoryEstimate(), false);
-         }
+      PagingStore owner = (PagingStore) messageReference.getMessage().getOwner();
+      if (count == 0 && owner != null) {
+         owner.addSize(-messageReference.getMessageMemoryEstimate(), false);
       }
       if (pagingStore != null) {
+         if (owner != null && pagingStore != owner) {
+            // If an AMQP message parses its properties, its size might be updated and the address will receive more bytes.
+            // However, in this case, we should always use the original estimate.
+            // Otherwise, we might get incorrect sizes after the update.
+            pagingStore.addSize(-messageReference.getMessage().getOriginalEstimate(), false, false);
+         }
          pagingStore.refDown(messageReference.getMessage(), count);
       }
    }
@@ -1076,6 +1098,11 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    @Override
    public RoutingType getRoutingType() {
       return routingType;
+   }
+
+   @Override
+   public int getInitialQueueBufferSize() {
+      return this.initialQueueBufferSize;
    }
 
    @Override
@@ -1105,15 +1132,12 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
          // this is because a groupID is stored per queue, and only this queue is expiring at this point
          final SimpleString groupIDToRemove = (SimpleString) groupID.subSequence(0, groupID.length() - getName().length() - 1);
          // using an executor so we don't want to hold anyone just because of this
-         getExecutor().execute(new Runnable() {
-            @Override
-            public void run() {
-               synchronized (QueueImpl.this) {
-                  if (groups.remove(groupIDToRemove) != null) {
-                     logger.debug("Removing group after unproposal {} from queue {}", groupID, QueueImpl.this);
-                  } else {
-                     logger.debug("Couldn't remove Removing group {} after unproposal on queue {}", groupIDToRemove, QueueImpl.this);
-                  }
+         getExecutor().execute(() -> {
+            synchronized (QueueImpl.this) {
+               if (groups.remove(groupIDToRemove) != null) {
+                  logger.debug("Removing group after unproposal {} from queue {}", groupID, QueueImpl.this);
+               } else {
+                  logger.debug("Couldn't remove Removing group {} after unproposal on queue {}", groupIDToRemove, QueueImpl.this);
                }
             }
          });
@@ -1380,12 +1404,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
    @Override
    public void close() throws Exception {
-      getExecutor().execute(new Runnable() {
-         @Override
-         public void run() {
-            cancelRedistributor();
-         }
-      });
+      getExecutor().execute(this::cancelRedistributor);
 
       addressSettingsRepositoryListener.close();
    }
@@ -1594,8 +1613,22 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       return supports;
    }
 
+   public synchronized Redistributor getRedistributor() {
+      return redistributor == null ? null : redistributor.consumer;
+   }
+
    @Override
    public synchronized void addRedistributor(final long delay) {
+      if (isInternalQueue()) {
+         logger.debug("Queue {} is internal, can't be redistributed!", this.name);
+         return;
+      }
+
+      if (address.startsWith(server.getConfiguration().getManagementAddress())) {
+         logger.debug("Queue {} is a management address, ignoring it for redistribution", address);
+         return;
+      }
+
       clearRedistributorFuture();
 
       if (redistributor != null) {
@@ -1746,6 +1779,17 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    }
 
    @Override
+   public MessageReference peekFirstScheduledMessage() {
+      synchronized (this) {
+         if (scheduledDeliveryHandler != null) {
+            return scheduledDeliveryHandler.peekFirstScheduledMessage();
+         }
+      }
+
+      return null;
+   }
+
+   @Override
    public synchronized MessageReference removeReferenceWithID(final long id1) throws Exception {
       try (LinkedListIterator<MessageReference> iterator = iterator()) {
 
@@ -1774,31 +1818,14 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    }
 
    @Override
-   public synchronized MessageReference getReference(final long id1) throws ActiveMQException {
-      try (LinkedListIterator<MessageReference> iterator = iterator()) {
-
-         while (iterator.hasNext()) {
-            MessageReference ref = iterator.next();
-
-            if (ref.getMessage().getMessageID() == id1) {
-               return ref;
-            }
-         }
-
-         return null;
-      }
-   }
-
-   @Override
    public long getMessageCount() {
       if (pageSubscription != null) {
          // messageReferences will have depaged messages which we need to discount from the counter as they are
          // counted on the pageSubscription as well
-         long returnValue = (long) pendingMetrics.getMessageCount() + getScheduledCount() + getDeliveringCount() + pageSubscription.getMessageCount();
-         if (logger.isTraceEnabled()) {
-            logger.trace("Queue={}/{} returning getMessageCount \n\treturning {}. \n\tpendingMetrics.getMessageCount() = {}, \n\tgetScheduledCount() = {}, \n\tpageSubscription.getMessageCount()={}, \n\tpageSubscription.getCounter().getValue()={}, \n\tpageSubscription.getDeliveredCount()={}",
-                        name, id, returnValue, pendingMetrics.getMessageCount(), getScheduledCount(), pageSubscription.getMessageCount(), pageSubscription.getCounter().getValue(),
-                        pageSubscription.getDeliveredCount());
+         long returnValue = (long) pendingMetrics.getNonPagedMessageCount() + scheduledDeliveryHandler.getNonPagedScheduledCount() + deliveringMetrics.getNonPagedMessageCount() + pageSubscription.getMessageCount();
+         if (logger.isDebugEnabled()) {
+            logger.debug("Queue={}/{} returning getMessageCount \n\treturning {}. \n\tpendingMetrics.getMessageCount() = {}, \n\tgetScheduledCount() = {}, \n\tpageSubscription.getMessageCount()={}, \n\tpageSubscription.getCounter().getValue()={}",
+                        name, id, returnValue, pendingMetrics.getMessageCount(),  scheduledDeliveryHandler.getNonPagedScheduledCount(), pageSubscription.getMessageCount(), pageSubscription.getCounter().getValue());
          }
          return returnValue;
       } else {
@@ -1811,7 +1838,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       if (pageSubscription != null) {
          // messageReferences will have depaged messages which we need to discount from the counter as they are
          // counted on the pageSubscription as well
-         return pendingMetrics.getPersistentSize() + getScheduledSize() + getDeliveringSize() + pageSubscription.getPersistentSize();
+         return pendingMetrics.getNonPagedPersistentSize() + scheduledDeliveryHandler.getNonPagedScheduledSize() + deliveringMetrics.getNonPagedPersistentSize() + pageSubscription.getPersistentSize();
       } else {
          return pendingMetrics.getPersistentSize() + getScheduledSize() + getDeliveringSize();
       }
@@ -1821,7 +1848,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    public long getDurableMessageCount() {
       if (isDurable()) {
          if (pageSubscription != null) {
-            return (long) pendingMetrics.getDurableMessageCount() + getDurableScheduledCount() + getDurableDeliveringCount() + pageSubscription.getMessageCount();
+            return (long) pendingMetrics.getNonPagedDurableMessageCount() + scheduledDeliveryHandler.getNonPagedDurableScheduledCount() + deliveringMetrics.getNonPagedDurableMessageCount() + pageSubscription.getMessageCount();
          } else {
             return (long) pendingMetrics.getDurableMessageCount() + getDurableScheduledCount() + getDurableDeliveringCount();
          }
@@ -1833,7 +1860,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    public long getDurablePersistentSize() {
       if (isDurable()) {
          if (pageSubscription != null) {
-            return pendingMetrics.getDurablePersistentSize() + getDurableScheduledSize() + getDurableDeliveringSize() + pageSubscription.getPersistentSize();
+            return pendingMetrics.getDurablePersistentSize() + scheduledDeliveryHandler.getNonPagedDurableScheduledSize() + deliveringMetrics.getNonPagedDurablePersistentSize() + pageSubscription.getPersistentSize();
          } else {
             return pendingMetrics.getDurablePersistentSize() + getDurableScheduledSize() + getDurableDeliveringSize();
          }
@@ -2250,7 +2277,6 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
                                       QueueIterateAction messageAction) throws Exception {
       int count = 0;
       int txCount = 0;
-      Integer expectedHits = messageAction.expectedHits();
       // This is to avoid scheduling depaging while iterQueue is happening
       // this should minimize the use of the paged executor.
       depagePending = true;
@@ -2266,15 +2292,8 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
             try (LinkedListIterator<MessageReference> iter = iterator()) {
 
-               while (iter.hasNext()) {
+               while (iter.hasNext() && !messageAction.expectedHitsReached(count)) {
                   MessageReference ref = iter.next();
-
-                  if (ref.isPaged() && queueDestroyed) {
-                     // this means the queue is being removed
-                     // hence paged references are just going away through
-                     // page cleanup
-                     continue;
-                  }
 
                   if (filter1 == null || filter1.match(ref.getMessage())) {
                      if (messageAction.actMessage(tx, ref)) {
@@ -2283,9 +2302,6 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
                      }
                      txCount++;
                      count++;
-                     if (expectedHits != null && count >= expectedHits.intValue()) {
-                        break;
-                     }
                   }
                }
 
@@ -2297,11 +2313,18 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
                   txCount = 0;
                }
 
+               if (messageAction.expectedHitsReached(count)) {
+                  return count;
+               }
+
                List<MessageReference> cancelled = scheduledDeliveryHandler.cancel(ref -> filter1 == null ? true : filter1.match(ref.getMessage()));
                for (MessageReference messageReference : cancelled) {
                   messageAction.actMessage(tx, messageReference);
                   count++;
                   txCount++;
+                  if (messageAction.expectedHitsReached(count)) {
+                     break;
+                  }
                }
 
                if (txCount > 0) {
@@ -2312,8 +2335,8 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
             }
          }
 
-         if (pageIterator != null && !queueDestroyed) {
-            while (pageIterator.hasNext()) {
+         if (pageIterator != null) {
+            while (pageIterator.hasNext() && !messageAction.expectedHitsReached(count)) {
                PagedReference reference = pageIterator.next();
                pageIterator.remove();
 
@@ -2337,7 +2360,6 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
          if (txCount > 0) {
             tx.commit();
-            tx = null;
          }
 
          if (filter != null && !queueDestroyed && pageSubscription != null) {
@@ -2452,7 +2474,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
    @Override
    public synchronized boolean expireReference(final long messageID) throws Exception {
-      if (isExpirationRedundant()) {
+      if (isExpiryDisabled()) {
          return false;
       }
 
@@ -2474,7 +2496,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
    @Override
    public synchronized int expireReferences(final Filter filter) throws Exception {
-      if (isExpirationRedundant()) {
+      if (isExpiryDisabled()) {
          return 0;
       }
 
@@ -2503,13 +2525,12 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
    @Override
    public void expireReferences(Runnable done) {
-      if (isExpirationRedundant()) {
+      if (isExpiryDisabled()) {
          if (done != null) {
             done.run();
          }
          return;
       }
-
 
       if (!queueDestroyed) {
          getExecutor().execute(new ExpiryScanner(done));
@@ -2521,12 +2542,17 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       }
    }
 
-   public boolean isExpirationRedundant() {
+   private boolean isExpiryDisabled() {
       final SimpleString expiryAddress = addressSettings.getExpiryAddress();
       if (expiryAddress != null && expiryAddress.equals(this.address)) {
          // check expire with itself would be silly (waste of time)
          logger.trace("Redundant expiration from {} to {}", address, expiryAddress);
 
+         return true;
+      }
+
+      if (isInternalQueue() && name.toString().startsWith(MIRROR_ADDRESS)) {
+         logger.trace("Mirror SNF queues are not supposed to expire messages. Address={}, Queue={}", address, name);
          return true;
       }
 
@@ -2728,12 +2754,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       final Integer expectedHits = messageCount > 0 ? messageCount : null;
       final DuplicateIDCache targetDuplicateCache = postOffice.getDuplicateIDCache(toAddress);
 
-      return iterQueue(flushLimit, filter, new QueueIterateAction() {
-         @Override
-         public Integer expectedHits() {
-            return expectedHits;
-         }
-
+      return iterQueue(flushLimit, filter, new QueueIterateAction(expectedHits) {
          @Override
          public boolean actMessage(Transaction tx, MessageReference ref) throws Exception {
             boolean ignored = false;
@@ -2792,11 +2813,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
       final HashMap<String, Long> queues = new HashMap<>();
 
-      return iterQueue(DEFAULT_FLUSH_LIMIT, filter, new QueueIterateAction() {
-         @Override
-         public Integer expectedHits() {
-            return expectedHits;
-         }
+      return iterQueue(DEFAULT_FLUSH_LIMIT, filter, new QueueIterateAction(expectedHits) {
 
          @Override
          public boolean actMessage(Transaction tx, MessageReference ref) throws Exception {
@@ -2806,7 +2823,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
             Binding binding = null;
 
             if (originalMessageQueue != null) {
-               binding = postOffice.getBinding(SimpleString.toSimpleString(originalMessageQueue));
+               binding = postOffice.getBinding(SimpleString.of(originalMessageQueue));
             }
 
             if (originalMessageAddress != null && binding != null) {
@@ -2824,7 +2841,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
                   }
                }
 
-               move(tx, SimpleString.toSimpleString(originalMessageAddress), null, ref, false, AckReason.NORMAL, null, targetQueue, true);
+               move(tx, SimpleString.of(originalMessageAddress), null, ref, false, AckReason.NORMAL, null, targetQueue, true);
 
                return true;
             }
@@ -2948,7 +2965,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    }
 
    /**
-    * @return the internalQueue
+    * @return if queue is internal
     */
    @Override
    public boolean isInternalQueue() {
@@ -3042,6 +3059,11 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
    }
 
    private int getPriority(MessageReference ref) {
+      if (isInternalQueue()) {
+         // if it's an internal queue we need to send the events on their original ordering
+         // for example an ACK arriving before the send on a Mirror..
+         return 4;
+      }
       try {
          return ref.getMessage().getPriority();
       } catch (Throwable e) {
@@ -3349,6 +3371,25 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
          return queueMemorySize.getSize() < pageSubscription.getPagingStore().getMaxSize() &&
             intermediateMessageReferences.size() + messageReferences.size() < MAX_DEPAGE_NUM;
       } else {
+
+         /*
+           queueMemorySize.getSize() = How many bytes the messages in memory (read from paging or journal, ready to delivery) are occupying
+           queueMemorySize.getElements() = How many elements are in memory ready to be delivered.
+           deliveringMetrics.getMessageCount() = How many messages are in the client's buffer for the consumers.
+           deliveringMetrics.getPersistentSize() = How many bytes are in the client's buffer for the consumers.
+
+           At all times the four rules have to be satisfied, and they can be switched off.
+
+           Notice in case all of these are -1, we will use the previous semantic on fetching data from paging on the other part of the 'if' in this method.
+
+           Also notice in case needsDepageResult = false, we will check for the maxReadBytes and then print a warning if there are more delivering than we can handle.
+
+           maxRead(Bytes or messages) will limit reading messages by the number of delivering + available messages (bytes or message-count)
+           prefetch (bytes or messages) will limit reading messages by the number of available messages, without using the delivering
+
+           prefetch(bytes and messages) should be <= max-read(bytes and messages) at all times.
+          */
+
          boolean needsDepageResult =
             (maxReadBytes <= 0 || (queueMemorySize.getSize() + deliveringMetrics.getPersistentSize()) < maxReadBytes) &&
             (prefetchBytes <= 0 || (queueMemorySize.getSize() < prefetchBytes)) &&
@@ -3359,7 +3400,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
             if (!pageFlowControlled && (maxReadBytes > 0 && deliveringMetrics.getPersistentSize() >= maxReadBytes || maxReadMessages > 0 && deliveringMetrics.getMessageCount() >= maxReadMessages)) {
                if (System.currentTimeMillis() - pageFlowControlledLastLog > PAGE_FLOW_CONTROL_PRINT_INTERVAL) {
                   pageFlowControlledLastLog = System.currentTimeMillis();
-                  ActiveMQQueueLogger.LOGGER.warnPageFlowControl(String.valueOf(address), String.valueOf(name), deliveringMetrics.getMessageCount(), deliveringMetrics.getPersistentSize(), maxReadMessages, maxReadBytes);
+                  ActiveMQServerLogger.LOGGER.warnPageFlowControl(String.valueOf(address), String.valueOf(name), deliveringMetrics.getMessageCount(), deliveringMetrics.getPersistentSize(), maxReadMessages, maxReadBytes);
                }
                if (logger.isDebugEnabled()) {
                   logger.debug("Message dispatch from paging is blocked. Address {}/Queue{} will not read any more messages from paging " +
@@ -3470,9 +3511,6 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
             }
             addTail(reference, false);
             pageIterator.remove();
-
-            //We have to increment this here instead of in the iterator so we have access to the reference from next()
-            pageSubscription.incrementDeliveredSize(getPersistentSize(reference));
          }
 
          if (logger.isDebugEnabled()) {
@@ -3514,7 +3552,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       if (redistributor == null && (consumers.isEmpty() || hasUnMatchedPending)) {
          logger.trace("QueueImpl::Adding redistributor on queue {}", this);
 
-         redistributor = new ConsumerHolder(new Redistributor(this, storageManager, postOffice), this);
+         redistributor = new ConsumerHolder(new Redistributor(this, storageManager.generateID(), postOffice), this);
          redistributor.consumer.start();
          consumers.add(redistributor);
          hasUnMatchedPending = false;
@@ -3631,6 +3669,10 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
       if (originalTX == null) {
          tx.commit();
+      }
+
+      if (server.hasBrokerMessagePlugins()) {
+         server.callBrokerMessagePlugins(plugin -> plugin.messageMoved(tx, ref, reason, address, queueID, consumer, copyMessage, routingStatus));
       }
 
       return routingStatus;
@@ -3917,9 +3959,9 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       if (isAutoCreate && !getAddress().equals(destinationAddress)) {
          if (destinationAddress != null && destinationAddress.length() != 0) {
             SimpleString destinationQueueName = prefix.concat(getAddress()).concat(suffix);
-            SimpleString filter = new SimpleString(String.format("%s = '%s'", Message.HDR_ORIGINAL_ADDRESS, getAddress()));
+            SimpleString filter = SimpleString.of(String.format("%s = '%s'", Message.HDR_ORIGINAL_ADDRESS, getAddress()));
             try {
-               server.createQueue(new QueueConfiguration(destinationQueueName).setAddress(destinationAddress).setFilterString(filter).setAutoCreated(true).setAutoCreateAddress(true), true);
+               server.createQueue(QueueConfiguration.of(destinationQueueName).setAddress(destinationAddress).setFilterString(filter).setAutoCreated(true).setAutoCreateAddress(true), true);
             } catch (ActiveMQQueueExistsException e) {
                // ignore
             }
@@ -4297,7 +4339,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
    @Override
    public QueueConfiguration getQueueConfiguration() {
-      return new QueueConfiguration(name)
+      return QueueConfiguration.of(name)
          .setAddress(address)
          .setId(id)
          .setRoutingType(routingType)
@@ -4434,8 +4476,14 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
     */
    abstract class QueueIterateAction {
 
-      public Integer expectedHits() {
-         return null;
+      protected Integer expectedHits;
+
+      QueueIterateAction(Integer expectedHits) {
+         this.expectedHits = expectedHits;
+      }
+
+      QueueIterateAction() {
+         this.expectedHits = null;
       }
 
       /**
@@ -4446,6 +4494,10 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
        * @throws Exception
        */
       public abstract boolean actMessage(Transaction tx, MessageReference ref) throws Exception;
+
+      public boolean expectedHitsReached(int currentHits) {
+         return expectedHits != null && currentHits >= expectedHits.intValue();
+      }
    }
 
    /* For external use we need to use a synchronized version since the list is not thread safe */
@@ -4486,6 +4538,13 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       }
 
       @Override
+      public MessageReference removeLastElement() {
+         synchronized (QueueImpl.this) {
+            return iter.removeLastElement();
+         }
+      }
+
+      @Override
       public void remove() {
          synchronized (QueueImpl.this) {
             iter.remove();
@@ -4507,7 +4566,7 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
          return pagingIterator;
       }
 
-      Iterator<? extends MessageReference> lastIterator = null;
+      LinkedListIterator<? extends MessageReference> lastIterator = null;
 
       MessageReference cachedNext = null;
       HashSet<PagePosition> previouslyBrowsed = new HashSet<>();
@@ -4606,6 +4665,15 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
       public void remove() {
          if (lastIterator != null) {
             lastIterator.remove();
+         }
+      }
+
+      @Override
+      public MessageReference removeLastElement() {
+         if (lastIterator != null) {
+            return lastIterator.removeLastElement();
+         } else {
+            return null;
          }
       }
 
@@ -4818,15 +4886,15 @@ public class QueueImpl extends CriticalComponentImpl implements Queue {
 
                         props.putSimpleStringProperty(ManagementHelper.HDR_ADDRESS, address);
 
-                        props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.toSimpleString(connection.getRemoteAddress()));
+                        props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.of(connection.getRemoteAddress()));
 
                         if (connection.getID() != null) {
-                           props.putSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME, SimpleString.toSimpleString(connection.getID().toString()));
+                           props.putSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME, SimpleString.of(connection.getID().toString()));
                         }
 
                         props.putLongProperty(ManagementHelper.HDR_CONSUMER_NAME, serverConsumer.getID());
 
-                        props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.toSimpleString(serverConsumer.getSessionID()));
+                        props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.of(serverConsumer.getSessionID()));
 
                         Notification notification = new Notification(null, CoreNotificationType.CONSUMER_SLOW, props);
 

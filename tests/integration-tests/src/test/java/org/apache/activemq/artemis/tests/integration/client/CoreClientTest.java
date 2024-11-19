@@ -51,8 +51,13 @@ import org.apache.activemq.artemis.spi.core.security.jaas.InVMLoginModule;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.ActiveMQThreadFactory;
 import org.apache.activemq.artemis.utils.UUIDGenerator;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CoreClientTest extends ActiveMQTestBase {
 
@@ -108,7 +113,7 @@ public class CoreClientTest extends ActiveMQTestBase {
    }
 
    private void testCoreClient(final boolean netty, ServerLocator serverLocator) throws Exception {
-      final SimpleString QUEUE = new SimpleString("CoreClientTestQueue");
+      final SimpleString QUEUE = SimpleString.of("CoreClientTestQueue");
 
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultConfig(netty), false));
 
@@ -120,7 +125,7 @@ public class CoreClientTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(QUEUE).setDurable(false));
+      session.createQueue(QueueConfiguration.of(QUEUE).setDurable(false));
 
       ClientProducer producer = session.createProducer(QUEUE);
 
@@ -151,7 +156,7 @@ public class CoreClientTest extends ActiveMQTestBase {
 
          ActiveMQBuffer buffer = message2.getBodyBuffer();
 
-         Assert.assertEquals("testINVMCoreClient", buffer.readString());
+         assertEquals("testINVMCoreClient", buffer.readString());
 
          message2.acknowledge();
       }
@@ -214,7 +219,7 @@ public class CoreClientTest extends ActiveMQTestBase {
 
       server.start();
 
-      Role myRole = new Role("myrole", true, true, true, true, true, true, true, true, true, true);
+      Role myRole = new Role("myrole", true, true, true, true, true, true, true, true, true, true, false, false);
       Set<Role> anySet = new HashSet<>();
       anySet.add(myRole);
       server.getSecurityRepository().addMatch(baseAddress, anySet);
@@ -231,7 +236,7 @@ public class CoreClientTest extends ActiveMQTestBase {
          String queueName = UUIDGenerator.getInstance().generateSimpleStringUUID().toString();
          String address = prefix + baseAddress;
 
-         session.createQueue(new QueueConfiguration(queueName).setAddress(prefix + baseAddress).setDurable(false));
+         session.createQueue(QueueConfiguration.of(queueName).setAddress(prefix + baseAddress).setDurable(false));
          consumerMap.put(address, session.createConsumer(queueName));
       }
 
@@ -239,7 +244,7 @@ public class CoreClientTest extends ActiveMQTestBase {
          String queueName = UUIDGenerator.getInstance().generateSimpleStringUUID().toString();
          String address = prefix + baseAddress;
 
-         session.createQueue(new QueueConfiguration(queueName).setAddress(prefix + baseAddress).setDurable(false));
+         session.createQueue(QueueConfiguration.of(queueName).setAddress(prefix + baseAddress).setDurable(false));
          consumerMap.put(address, session.createConsumer(queueName));
       }
 
@@ -276,5 +281,15 @@ public class CoreClientTest extends ActiveMQTestBase {
       }
 
       sf.close();
+   }
+
+   @Test
+   public void testRemoteAddress() throws Exception {
+      ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultConfig(true), false));
+      server.start();
+      ServerLocator locator = createNonHALocator(true);
+      ClientSessionFactory sf = createSessionFactory(locator);
+      addClientSession(sf.createSession(false, true, true));
+      assertFalse(server.getRemotingService().getConnections().iterator().next().getTransportConnection().getRemoteAddress().startsWith("/"));
    }
 }

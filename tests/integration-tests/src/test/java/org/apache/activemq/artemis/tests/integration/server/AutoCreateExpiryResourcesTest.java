@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.server;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import javax.jms.JMSContext;
 
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
@@ -35,19 +39,19 @@ import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.artemis.utils.CompositeAddress;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class AutoCreateExpiryResourcesTest extends ActiveMQTestBase {
-   public final SimpleString addressA = new SimpleString("addressA");
-   public final SimpleString queueA = new SimpleString("queueA");
-   public final SimpleString expiryAddress = new SimpleString("myExpiry");
+   public final SimpleString addressA = SimpleString.of("addressA");
+   public final SimpleString queueA = SimpleString.of("queueA");
+   public final SimpleString expiryAddress = SimpleString.of("myExpiry");
    public final long EXPIRY_DELAY = 100L;
 
    private ActiveMQServer server;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       server = createServer(false);
@@ -75,7 +79,7 @@ public class AutoCreateExpiryResourcesTest extends ActiveMQTestBase {
 
    @Test
    public void testAutoCreationOfExpiryResourcesWithEmptyExpiry() throws Exception {
-      testAutoCreationOfExpiryResourcesWithNoExpiry(SimpleString.toSimpleString(""));
+      testAutoCreationOfExpiryResourcesWithNoExpiry(SimpleString.of(""));
    }
 
    private void testAutoCreationOfExpiryResourcesWithNoExpiry(SimpleString expiryAddress) throws Exception {
@@ -131,7 +135,7 @@ public class AutoCreateExpiryResourcesTest extends ActiveMQTestBase {
       for (int i = 0; i < ITERATIONS; i++) {
          SimpleString address = RandomUtil.randomSimpleString();
          SimpleString queue = RandomUtil.randomSimpleString();
-         server.createQueue(new QueueConfiguration(queue).setAddress(address).setRoutingType(routingType));
+         server.createQueue(QueueConfiguration.of(queue).setAddress(address).setRoutingType(routingType));
          ServerLocator locator = createInVMNonHALocator();
          ClientSessionFactory cf = createSessionFactory(locator);
          ClientSession s = addClientSession(cf.createSession(true, false));
@@ -201,7 +205,7 @@ public class AutoCreateExpiryResourcesTest extends ActiveMQTestBase {
       final long COUNT = 5;
 
       for (int i = 0; i < COUNT; i++) {
-         server.createQueue(new QueueConfiguration(i + "").setAddress(addressA).setRoutingType(RoutingType.MULTICAST));
+         server.createQueue(QueueConfiguration.of(i + "").setAddress(addressA).setRoutingType(RoutingType.MULTICAST));
       }
 
       triggerExpiration(false);
@@ -220,7 +224,7 @@ public class AutoCreateExpiryResourcesTest extends ActiveMQTestBase {
 
    private void triggerExpiration(boolean createQueue) throws Exception {
       if (createQueue) {
-         server.createQueue(new QueueConfiguration(queueA).setAddress(addressA).setRoutingType(RoutingType.ANYCAST));
+         server.createQueue(QueueConfiguration.of(queueA).setAddress(addressA).setRoutingType(RoutingType.ANYCAST));
       }
       ServerLocator locator = createInVMNonHALocator();
       ClientSessionFactory sessionFactory = createSessionFactory(locator);

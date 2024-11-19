@@ -27,11 +27,11 @@ import org.apache.activemq.artemis.utils.DataConstants;
 
 public final class AckRetry {
    String nodeID;
-   byte[] temporaryNodeBytes;
+   byte[] nodeIDBytes;
    long messageID;
    AckReason reason;
-   short pageAttempts;
-   short queueAttempts;
+   int pageAttempts;
+   int queueAttempts;
 
    private static Persister persister = new Persister();
 
@@ -41,7 +41,7 @@ public final class AckRetry {
 
    @Override
    public String toString() {
-      return "ACKRetry{" + "nodeID='" + nodeID + '\'' + ", messageID=" + messageID + ", reason=" + reason + '}';
+      return "AckRetry{" + "nodeID='" + nodeID + '\'' + ", messageID=" + messageID + ", reason=" + reason + ", pageAttempts=" + pageAttempts + ", queueAttempts=" + queueAttempts + '}';
    }
 
    public AckRetry() {
@@ -54,15 +54,11 @@ public final class AckRetry {
    }
 
 
-   public byte[] getTemporaryNodeBytes() {
-      if (temporaryNodeBytes == null) {
-         temporaryNodeBytes = nodeID.getBytes(StandardCharsets.US_ASCII);
+   public synchronized byte[] getNodeIDBytes() {
+      if (nodeIDBytes == null) {
+         nodeIDBytes = nodeID.getBytes(StandardCharsets.US_ASCII);
       }
-      return temporaryNodeBytes;
-   }
-
-   public void clearTemporaryNodeBytes() {
-      this.temporaryNodeBytes = null;
+      return nodeIDBytes;
    }
 
    public String getNodeID() {
@@ -92,19 +88,19 @@ public final class AckRetry {
       return this;
    }
 
-   public short getPageAttempts() {
+   public int getPageAttempts() {
       return pageAttempts;
    }
 
-   public short getQueueAttempts() {
+   public int getQueueAttempts() {
       return queueAttempts;
    }
 
-   public short attemptedPage() {
+   public int attemptedPage() {
       return ++pageAttempts;
    }
 
-   public short attemptedQueue() {
+   public int attemptedQueue() {
       return ++queueAttempts;
    }
 
@@ -138,7 +134,7 @@ public final class AckRetry {
       @Override
       protected int getKeySize(AckRetry key) {
          return DataConstants.SIZE_INT +
-            (key.getNodeID() == null ? 0 : key.getTemporaryNodeBytes().length) +
+            (key.getNodeID() == null ? 0 : key.getNodeIDBytes().length) +
             DataConstants.SIZE_LONG +
             DataConstants.SIZE_BYTE;
       }
@@ -148,13 +144,12 @@ public final class AckRetry {
          if (key.getNodeID() == null) {
             buffer.writeInt(0);
          } else {
-            byte[] temporaryNodeBytes = key.getTemporaryNodeBytes();
+            byte[] temporaryNodeBytes = key.getNodeIDBytes();
             buffer.writeInt(temporaryNodeBytes.length);
             buffer.writeBytes(temporaryNodeBytes);
          }
          buffer.writeLong(key.messageID);
          buffer.writeByte(key.reason.getVal());
-         key.clearTemporaryNodeBytes();
       }
 
       @Override

@@ -253,12 +253,9 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
       if (config.connectionLoadBalancingPolicyClassName == null) {
          throw new IllegalStateException("Please specify a load balancing policy class name on the session factory");
       }
-      AccessController.doPrivileged(new PrivilegedAction<Object>() {
-         @Override
-         public Object run() {
-               loadBalancingPolicy = (ConnectionLoadBalancingPolicy) ClassloadingUtil.newInstanceFromClassLoader(ServerLocatorImpl.class, config.connectionLoadBalancingPolicyClassName);
-               return null;
-         }
+      AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+         loadBalancingPolicy = (ConnectionLoadBalancingPolicy) ClassloadingUtil.newInstanceFromClassLoader(ServerLocatorImpl.class, config.connectionLoadBalancingPolicyClassName, ConnectionLoadBalancingPolicy.class);
+         return null;
       });
    }
 
@@ -514,15 +511,12 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
       this.startExecutor = executor;
 
       if (executor != null) {
-         executor.execute(new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  connect();
-               } catch (Exception e) {
-                  if (!isClosed()) {
-                     ActiveMQClientLogger.LOGGER.errorConnectingToNodes(e);
-                  }
+         executor.execute(() -> {
+            try {
+               connect();
+            } catch (Exception e) {
+               if (!isClosed()) {
+                  ActiveMQClientLogger.LOGGER.errorConnectingToNodes(e);
                }
             }
          });
@@ -693,6 +687,7 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
          boolean topologyArrayTried = !config.useTopologyForLoadBalancing || topologyArray == null || topologyArray.length == 0;
          boolean staticTried = false;
          boolean shouldTryStatic = useInitConnector();
+         long interval = config.retryInterval;
 
          while (retry && !isClosed()) {
             retry = false;
@@ -752,9 +747,10 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
                            }
                         }
                      }
-                     if (factory.waitForRetry(config.retryInterval)) {
+                     if (factory.waitForRetry(interval)) {
                         throw ActiveMQClientMessageBundle.BUNDLE.cannotConnectToServers();
                      }
+                     interval = getNextRetryInterval(interval, config.retryIntervalMultiplier, config.maxRetryInterval);
                      retry = true;
                   } else {
                      throw e;
@@ -783,6 +779,18 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
       }
 
       return factory;
+   }
+
+   @Override
+   public long getNextRetryInterval(long retryInterval, double retryIntervalMultiplier, long maxRetryInterval) {
+      // Exponential back-off
+      long nextRetryInterval = (long) (retryInterval * retryIntervalMultiplier);
+
+      if (nextRetryInterval > maxRetryInterval) {
+         nextRetryInterval = maxRetryInterval;
+      }
+
+      return nextRetryInterval;
    }
 
    private void executeDiscovery() throws ActiveMQException {
@@ -1641,14 +1649,11 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
          // The node is alone in the cluster. We create a connection to the new node
          // to trigger the node notification to form the cluster.
 
-         Runnable connectRunnable = new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  connect();
-               } catch (ActiveMQException e) {
-                  ActiveMQClientLogger.LOGGER.errorConnectingToNodes(e);
-               }
+         Runnable connectRunnable = () -> {
+            try {
+               connect();
+            } catch (ActiveMQException e) {
+               ActiveMQClientLogger.LOGGER.errorConnectingToNodes(e);
             }
          };
          if (startExecutor != null) {
@@ -1923,6 +1928,10 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
       return receivedTopology;
    }
 
+   public int getClientSessionFactoryCount() {
+      return factories.size();
+   }
+
    private String fromInterceptors(final List<Interceptor> interceptors) {
       StringBuffer buffer = new StringBuffer();
       boolean first = true;
@@ -1943,17 +1952,14 @@ public final class ServerLocatorImpl implements ServerLocatorInternal, Discovery
       if (interceptorList == null || interceptorList.trim().equals("")) {
          return;
       }
-      AccessController.doPrivileged(new PrivilegedAction<Object>() {
-         @Override
-         public Object run() {
+      AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
 
-            String[] arrayInterceptor = interceptorList.split(",");
-            for (String strValue : arrayInterceptor) {
-               Interceptor interceptor = (Interceptor) ClassloadingUtil.newInstanceFromClassLoader(ServerLocatorImpl.class, strValue.trim());
-               interceptors.add(interceptor);
-            }
-            return null;
+         String[] arrayInterceptor = interceptorList.split(",");
+         for (String strValue : arrayInterceptor) {
+            Interceptor interceptor = (Interceptor) ClassloadingUtil.newInstanceFromClassLoader(ServerLocatorImpl.class, strValue.trim(), Interceptor.class);
+            interceptors.add(interceptor);
          }
+         return null;
       });
 
    }

@@ -66,10 +66,8 @@ import org.fusesource.hawtdispatch.internal.DispatcherConfig;
 import org.fusesource.mqtt.client.MQTT;
 import org.fusesource.mqtt.client.Tracer;
 import org.fusesource.mqtt.codec.MQTTFrame;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.rules.TestName;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
@@ -111,9 +109,6 @@ public class MQTTTestSupport extends ActiveMQTestBase {
    protected String fullUser = "user";
    protected String fullPass = "pass";
 
-   @Rule
-   public TestName name = new TestName();
-
    public MQTTTestSupport() {
       this.protocolScheme = "mqtt";
       this.useSSL = false;
@@ -124,17 +119,12 @@ public class MQTTTestSupport extends ActiveMQTestBase {
       return new File(new File(protectionDomain.getCodeSource().getLocation().getPath()), "../..").getCanonicalFile();
    }
 
-   @Override
-   public String getName() {
-      return name.getMethodName();
-   }
-
    public ActiveMQServer getServer() {
       return server;
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       String basedir = basedir().getPath();
@@ -151,7 +141,7 @@ public class MQTTTestSupport extends ActiveMQTestBase {
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       System.clearProperty("javax.net.ssl.trustStore");
       System.clearProperty("javax.net.ssl.trustStorePassword");
@@ -198,10 +188,10 @@ public class MQTTTestSupport extends ActiveMQTestBase {
          // Configure roles
          HierarchicalRepository<Set<Role>> securityRepository = server.getSecurityRepository();
          HashSet<Role> value = new HashSet<>();
-         value.add(new Role("nothing", false, false, false, false, false, false, false, false, false, false));
-         value.add(new Role("browser", false, false, false, false, false, false, false, true, false, false));
-         value.add(new Role("guest", false, true, false, false, false, false, false, true, false, false));
-         value.add(new Role("full", true, true, true, true, true, true, true, true, true, true));
+         value.add(new Role("nothing", false, false, false, false, false, false, false, false, false, false, false, false));
+         value.add(new Role("browser", false, false, false, false, false, false, false, true, false, false, false, false));
+         value.add(new Role("guest", false, true, false, false, false, false, false, true, false, false, false, false));
+         value.add(new Role("full", true, true, true, true, true, true, true, true, true, true, false, false));
          securityRepository.addMatch(MQTTUtil.getCoreAddressFromMqttTopic(getQueueName(), server.getConfiguration().getWildcardConfiguration()), value);
 
          server.getConfiguration().setSecurityEnabled(true);
@@ -223,8 +213,8 @@ public class MQTTTestSupport extends ActiveMQTestBase {
    private ActiveMQServer createServerForMQTT() throws Exception {
       Configuration defaultConfig = createDefaultConfig(true).setIncomingInterceptorClassNames(singletonList(MQTTIncomingInterceptor.class.getName())).setOutgoingInterceptorClassNames(singletonList(MQTTOutoingInterceptor.class.getName()));
       AddressSettings addressSettings = new AddressSettings();
-      addressSettings.setDeadLetterAddress(SimpleString.toSimpleString("DLA"));
-      addressSettings.setExpiryAddress(SimpleString.toSimpleString("EXPIRY"));
+      addressSettings.setDeadLetterAddress(SimpleString.of("DLA"));
+      addressSettings.setExpiryAddress(SimpleString.of("EXPIRY"));
       defaultConfig.getAddressSettings().put("#", addressSettings);
       return createServer(true, defaultConfig);
    }
@@ -261,11 +251,11 @@ public class MQTTTestSupport extends ActiveMQTestBase {
    }
 
    protected String getQueueName() {
-      return getClass().getName() + "." + name.getMethodName();
+      return getClass().getName() + "." + name;
    }
 
    protected String getTopicName() {
-      return getClass().getName() + "." + name.getMethodName();
+      return getClass().getName() + "." + name;
    }
 
    /**

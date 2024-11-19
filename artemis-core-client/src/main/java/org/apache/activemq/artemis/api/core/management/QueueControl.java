@@ -128,6 +128,12 @@ public interface QueueControl {
    long getDurablePersistentSize();
 
    /**
+    * Returns whether this queue was created for the broker's internal use.
+    */
+   @Attribute(desc = "whether this queue was created for the broker's internal use")
+   boolean isInternalQueue();
+
+   /**
     * Returns the number of scheduled messages in this queue.
     */
    @Attribute(desc = SCHEDULED_MESSAGE_COUNT_DESCRIPTION)
@@ -788,4 +794,17 @@ public interface QueueControl {
     */
    @Attribute(desc = "whether this queue is available for auto deletion")
    boolean isAutoDelete();
+
+   /**
+    * Returns the first message on the queue as JSON
+    */
+   @Operation(desc = "Returns first message on the queue as JSON", impact = MBeanOperationInfo.INFO)
+   String peekFirstMessageAsJSON() throws Exception;
+
+   /**
+    * Returns the first scheduled message on the queue as JSON
+    */
+   @Operation(desc = "Returns first scheduled message on the queue as JSON", impact = MBeanOperationInfo.INFO)
+   String peekFirstScheduledMessageAsJSON() throws Exception;
+
 }

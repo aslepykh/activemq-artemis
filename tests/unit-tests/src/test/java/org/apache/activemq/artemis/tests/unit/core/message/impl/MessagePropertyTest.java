@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.unit.core.message.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ClientConsumer;
@@ -27,8 +32,8 @@ import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class MessagePropertyTest extends ActiveMQTestBase {
 
@@ -38,10 +43,10 @@ public class MessagePropertyTest extends ActiveMQTestBase {
    private final int numMessages = 20;
 
    private static final String ADDRESS = "anAddress123";
-   private static final SimpleString SIMPLE_STRING_KEY = new SimpleString("StringToSimpleString");
+   private static final SimpleString SIMPLE_STRING_KEY = SimpleString.of("StringToSimpleString");
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       server = createServer(true);
@@ -54,8 +59,8 @@ public class MessagePropertyTest extends ActiveMQTestBase {
       ClientSession session = sf.createSession(true, true);
 
       String filter = null;
-      session.createAddress(SimpleString.toSimpleString(ADDRESS), RoutingType.MULTICAST, false);
-      session.createQueue(new QueueConfiguration(ADDRESS).setRoutingType(RoutingType.MULTICAST).setFilterString(filter));
+      session.createAddress(SimpleString.of(ADDRESS), RoutingType.MULTICAST, false);
+      session.createQueue(QueueConfiguration.of(ADDRESS).setRoutingType(RoutingType.MULTICAST).setFilterString(filter));
       ClientProducer producer = session.createProducer(ADDRESS);
 
       for (int i = 0; i < numMessages; i++) {
@@ -65,7 +70,7 @@ public class MessagePropertyTest extends ActiveMQTestBase {
          message.putShortProperty("short", (short) i);
          message.putByteProperty("byte", (byte) i);
          message.putFloatProperty("float", floatValue(i));
-         message.putStringProperty(SIMPLE_STRING_KEY, new SimpleString(Integer.toString(i)));
+         message.putStringProperty(SIMPLE_STRING_KEY, SimpleString.of(Integer.toString(i)));
          message.putBytesProperty("byte[]", byteArray(i));
          message.putObjectProperty("null-value", null);
          producer.send(message);
@@ -93,13 +98,13 @@ public class MessagePropertyTest extends ActiveMQTestBase {
       try (ClientConsumer consumer = session.createConsumer(ADDRESS)) {
          for (int i = 0; i < numMessages; i++) {
             ClientMessage message = consumer.receive(100);
-            assertNotNull("Expecting a message " + i, message);
+            assertNotNull(message, "Expecting a message " + i);
             assertMessageBody(i, message);
             assertEquals(i, message.getIntProperty("int").intValue());
             assertEquals((short) i, message.getShortProperty("short").shortValue());
             assertEquals((byte) i, message.getByteProperty("byte").byteValue());
             assertEquals(floatValue(i), message.getFloatProperty("float").floatValue(), 0.001);
-            assertEquals(new SimpleString(Integer.toString(i)), message.getSimpleStringProperty(SIMPLE_STRING_KEY.toString()));
+            assertEquals(SimpleString.of(Integer.toString(i)), message.getSimpleStringProperty(SIMPLE_STRING_KEY.toString()));
             assertEqualsByteArrays(byteArray(i), message.getBytesProperty("byte[]"));
             assertNull(message.getIngressTimestamp());
 
@@ -108,7 +113,7 @@ public class MessagePropertyTest extends ActiveMQTestBase {
 
             message.acknowledge();
          }
-         assertNull("no more messages", consumer.receive(50));
+         assertNull(consumer.receive(50), "no more messages");
       }
       session.commit();
    }

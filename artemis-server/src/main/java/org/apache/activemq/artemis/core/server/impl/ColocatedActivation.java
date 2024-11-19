@@ -29,7 +29,6 @@ import org.apache.activemq.artemis.core.client.impl.Topology;
 import org.apache.activemq.artemis.core.client.impl.TopologyMemberImpl;
 import org.apache.activemq.artemis.core.protocol.core.Channel;
 import org.apache.activemq.artemis.core.protocol.core.ChannelHandler;
-import org.apache.activemq.artemis.core.protocol.core.Packet;
 import org.apache.activemq.artemis.core.protocol.core.impl.PacketImpl;
 import org.apache.activemq.artemis.core.protocol.core.impl.wireformat.BackupRequestMessage;
 import org.apache.activemq.artemis.core.protocol.core.impl.wireformat.BackupResponseMessage;
@@ -39,14 +38,14 @@ import org.apache.activemq.artemis.core.server.ActiveMQServerLogger;
 import org.apache.activemq.artemis.core.server.cluster.ha.ColocatedHAManager;
 import org.apache.activemq.artemis.core.server.cluster.ha.ColocatedPolicy;
 import org.apache.activemq.artemis.core.server.cluster.ha.HAManager;
-import org.apache.activemq.artemis.core.server.cluster.qourum.QuorumVote;
-import org.apache.activemq.artemis.core.server.cluster.qourum.QuorumVoteHandler;
-import org.apache.activemq.artemis.core.server.cluster.qourum.Vote;
+import org.apache.activemq.artemis.core.server.cluster.quorum.QuorumVote;
+import org.apache.activemq.artemis.core.server.cluster.quorum.QuorumVoteHandler;
+import org.apache.activemq.artemis.core.server.cluster.quorum.Vote;
 import org.apache.activemq.artemis.spi.core.remoting.Acceptor;
 
 public class ColocatedActivation extends PrimaryActivation {
 
-   private static final SimpleString REQUEST_BACKUP_QUORUM_VOTE = new SimpleString("RequestBackupQuorumVote");
+   private static final SimpleString REQUEST_BACKUP_QUORUM_VOTE = SimpleString.of("RequestBackupQuorumVote");
 
    private final ColocatedHAManager colocatedHAManager;
 
@@ -117,21 +116,18 @@ public class ColocatedActivation extends PrimaryActivation {
    @Override
    public ChannelHandler getActivationChannelHandler(final Channel channel, final Acceptor acceptorUsed) {
       final ChannelHandler activationChannelHandler = primaryActivation.getActivationChannelHandler(channel, acceptorUsed);
-      return new ChannelHandler() {
-         @Override
-         public void handlePacket(Packet packet) {
-            if (packet.getType() == PacketImpl.BACKUP_REQUEST) {
-               BackupRequestMessage backupRequestMessage = (BackupRequestMessage) packet;
-               boolean started = false;
-               try {
-                  started = colocatedHAManager.activateBackup(backupRequestMessage.getBackupSize(), backupRequestMessage.getJournalDirectory(), backupRequestMessage.getBindingsDirectory(), backupRequestMessage.getLargeMessagesDirectory(), backupRequestMessage.getPagingDirectory(), backupRequestMessage.getNodeID());
-               } catch (Exception e) {
-                  ActiveMQServerLogger.LOGGER.failedToActivateBackup(e);
-               }
-               channel.send(new BackupResponseMessage(started));
-            } else if (activationChannelHandler != null) {
-               activationChannelHandler.handlePacket(packet);
+      return packet -> {
+         if (packet.getType() == PacketImpl.BACKUP_REQUEST) {
+            BackupRequestMessage backupRequestMessage = (BackupRequestMessage) packet;
+            boolean started = false;
+            try {
+               started = colocatedHAManager.activateBackup(backupRequestMessage.getBackupSize(), backupRequestMessage.getJournalDirectory(), backupRequestMessage.getBindingsDirectory(), backupRequestMessage.getLargeMessagesDirectory(), backupRequestMessage.getPagingDirectory(), backupRequestMessage.getNodeID());
+            } catch (Exception e) {
+               ActiveMQServerLogger.LOGGER.failedToActivateBackup(e);
             }
+            channel.send(new BackupResponseMessage(started));
+         } else if (activationChannelHandler != null) {
+            activationChannelHandler.handlePacket(packet);
          }
       };
    }
@@ -169,7 +165,8 @@ public class ColocatedActivation extends PrimaryActivation {
       private final List<Pair<String, Integer>> nodes = new ArrayList<>();
 
       private RequestBackupQuorumVote() {
-         super(REQUEST_BACKUP_QUORUM_VOTE);
+         // there's no old name, we never renamed the ColocatedQuorumVote String
+         super(REQUEST_BACKUP_QUORUM_VOTE, null);
       }
 
       @Override
@@ -193,12 +190,7 @@ public class ColocatedActivation extends PrimaryActivation {
       @Override
       public Pair<String, Integer> getDecision() {
          //sort the nodes by how many backups they have and choose the first
-         Collections.sort(nodes, new Comparator<Pair<String, Integer>>() {
-            @Override
-            public int compare(Pair<String, Integer> o1, Pair<String, Integer> o2) {
-               return o1.getB().compareTo(o2.getB());
-            }
-         });
+         Collections.sort(nodes, Comparator.comparing(Pair::getB));
          return nodes.get(0);
       }
 
@@ -212,24 +204,14 @@ public class ColocatedActivation extends PrimaryActivation {
                boolean backupStarted = colocatedHAManager.requestBackup(member.getConnector(), decision.getB().intValue(), !colocatedPolicy.isSharedStore());
                if (!backupStarted) {
                   nodes.clear();
-                  server.getScheduledPool().schedule(new Runnable() {
-                     @Override
-                     public void run() {
-                        server.getClusterManager().getQuorumManager().vote(new RequestBackupQuorumVote());
-                     }
-                  }, colocatedPolicy.getBackupRequestRetryInterval(), TimeUnit.MILLISECONDS);
+                  server.getScheduledPool().schedule(() -> server.getClusterManager().getQuorumManager().vote(new RequestBackupQuorumVote()), colocatedPolicy.getBackupRequestRetryInterval(), TimeUnit.MILLISECONDS);
                }
             } catch (Exception e) {
                ActiveMQServerLogger.LOGGER.failedToSendRequestToNode(e);
             }
          } else {
             nodes.clear();
-            server.getScheduledPool().schedule(new Runnable() {
-               @Override
-               public void run() {
-                  server.getClusterManager().getQuorumManager().vote(RequestBackupQuorumVote.this);
-               }
-            }, colocatedPolicy.getBackupRequestRetryInterval(), TimeUnit.MILLISECONDS);
+            server.getScheduledPool().schedule(() -> server.getClusterManager().getQuorumManager().vote(RequestBackupQuorumVote.this), colocatedPolicy.getBackupRequestRetryInterval(), TimeUnit.MILLISECONDS);
          }
       }
 

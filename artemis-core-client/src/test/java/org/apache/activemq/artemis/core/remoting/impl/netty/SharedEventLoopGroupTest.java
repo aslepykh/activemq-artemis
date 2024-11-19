@@ -16,16 +16,16 @@
  */
 package org.apache.activemq.artemis.core.remoting.impl.netty;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.netty.channel.EventLoop;
 import io.netty.channel.nio.NioEventLoopGroup;
-import org.junit.Test;
-
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Test;
 
 public class SharedEventLoopGroupTest {
    @Test
@@ -34,29 +34,23 @@ public class SharedEventLoopGroupTest {
       final CyclicBarrier barrier = new CyclicBarrier(2);
 
       AtomicReference<SharedEventLoopGroup> sharedEventLoopGroup1 = new AtomicReference<>();
-      Thread t1 = new Thread(new Runnable() {
-         @Override
-         public void run() {
-            sharedEventLoopGroup1.set(SharedEventLoopGroup.getInstance(threadFactory -> customNioEventLoopGroup));
-            customNioEventLoopGroup.setCyclicBarrier(barrier);
-            sharedEventLoopGroup1.get().shutdownGracefully();
-            customNioEventLoopGroup.setCyclicBarrier(null);
-         }
+      Thread t1 = new Thread(() -> {
+         sharedEventLoopGroup1.set(SharedEventLoopGroup.getInstance(threadFactory -> customNioEventLoopGroup));
+         customNioEventLoopGroup.setCyclicBarrier(barrier);
+         sharedEventLoopGroup1.get().shutdownGracefully();
+         customNioEventLoopGroup.setCyclicBarrier(null);
       });
       t1.start();
 
       AtomicReference<SharedEventLoopGroup> sharedEventLoopGroup2 = new AtomicReference<>();
-      Thread t2 = new Thread(new Runnable() {
-         @Override
-         public void run() {
-            try {
-               barrier.await();
-               sharedEventLoopGroup2.set(SharedEventLoopGroup.getInstance(threadFactory -> new NioEventLoopGroup(2, threadFactory)));
-            } catch (InterruptedException e) {
-               e.printStackTrace();
-            } catch (BrokenBarrierException e) {
-               e.printStackTrace();
-            }
+      Thread t2 = new Thread(() -> {
+         try {
+            barrier.await();
+            sharedEventLoopGroup2.set(SharedEventLoopGroup.getInstance(threadFactory -> new NioEventLoopGroup(2, threadFactory)));
+         } catch (InterruptedException e) {
+            e.printStackTrace();
+         } catch (BrokenBarrierException e) {
+            e.printStackTrace();
          }
       });
       t2.start();

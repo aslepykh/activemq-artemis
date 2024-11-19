@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.mqtt5.ssl;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,16 +28,18 @@ import java.util.concurrent.TimeUnit;
 import org.apache.activemq.artemis.core.security.Role;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.spi.core.security.ActiveMQJAASSecurityManager;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.integration.mqtt5.MQTT5TestSupport;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.utils.Wait;
 import org.eclipse.paho.mqttv5.client.MqttClient;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class CertificateAuthenticationSslTests extends MQTT5TestSupport {
 
    static {
@@ -55,7 +59,7 @@ public class CertificateAuthenticationSslTests extends MQTT5TestSupport {
       this.protocol = protocol;
    }
 
-   @Parameterized.Parameters(name = "protocol={0}")
+   @Parameters(name = "protocol={0}")
    public static Collection<Object[]> getParams() {
       return Arrays.asList(new Object[][] {
          {SSL},
@@ -83,14 +87,15 @@ public class CertificateAuthenticationSslTests extends MQTT5TestSupport {
       server.setSecurityManager(new ActiveMQJAASSecurityManager("CertLogin"));
       server.getConfiguration().setSecurityEnabled(true);
       HashSet<Role> roles = new HashSet<>();
-      roles.add(new Role("programmers", true, true, true, false, false, false, false, false, true, true));
+      roles.add(new Role("programmers", true, true, true, false, false, false, false, false, true, true, false, false));
       server.getConfiguration().putSecurityRoles("#", roles);
    }
 
    /*
     * Basic mutual SSL test with certificate-based authentication
     */
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @TestTemplate
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testSimpleSendReceive() throws Exception {
       final String topic = RandomUtil.randomString();
       final String clientId = "subscriber";

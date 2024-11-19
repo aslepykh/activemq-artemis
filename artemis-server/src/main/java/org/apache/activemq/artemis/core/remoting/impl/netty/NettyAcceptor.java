@@ -65,6 +65,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ResourceLeakDetector;
+import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
@@ -431,34 +432,19 @@ public class NettyAcceptor extends AbstractAcceptor {
 
          if (useEpoll && CheckDependencies.isEpollAvailable()) {
             channelClazz = EpollServerSocketChannel.class;
-            eventLoopGroup = new EpollEventLoopGroup(remotingThreads, AccessController.doPrivileged(new PrivilegedAction<ActiveMQThreadFactory>() {
-               @Override
-               public ActiveMQThreadFactory run() {
-                  return new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader());
-               }
-            }));
+            eventLoopGroup = new EpollEventLoopGroup(remotingThreads, AccessController.doPrivileged((PrivilegedAction<ActiveMQThreadFactory>) () -> new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader())));
             acceptorType = EPOLL_ACCEPTOR_TYPE;
 
             logger.debug("Acceptor using native epoll");
          } else if (useKQueue && CheckDependencies.isKQueueAvailable()) {
             channelClazz = KQueueServerSocketChannel.class;
-            eventLoopGroup = new KQueueEventLoopGroup(remotingThreads, AccessController.doPrivileged(new PrivilegedAction<ActiveMQThreadFactory>() {
-               @Override
-               public ActiveMQThreadFactory run() {
-                  return new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader());
-               }
-            }));
+            eventLoopGroup = new KQueueEventLoopGroup(remotingThreads, AccessController.doPrivileged((PrivilegedAction<ActiveMQThreadFactory>) () -> new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader())));
             acceptorType = KQUEUE_ACCEPTOR_TYPE;
 
             logger.debug("Acceptor using native kqueue");
          } else {
             channelClazz = NioServerSocketChannel.class;
-            eventLoopGroup = new NioEventLoopGroup(remotingThreads, AccessController.doPrivileged(new PrivilegedAction<ActiveMQThreadFactory>() {
-               @Override
-               public ActiveMQThreadFactory run() {
-                  return new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader());
-               }
-            }));
+            eventLoopGroup = new NioEventLoopGroup(remotingThreads, AccessController.doPrivileged((PrivilegedAction<ActiveMQThreadFactory>) () -> new ActiveMQThreadFactory("activemq-netty-threads", true, ClientSessionFactoryImpl.class.getClassLoader())));
             acceptorType = NIO_ACCEPTOR_TYPE;
             logger.debug("Acceptor using nio");
          }
@@ -468,7 +454,7 @@ public class NettyAcceptor extends AbstractAcceptor {
       bootstrap.group(eventLoopGroup);
       bootstrap.channel(channelClazz);
 
-      ChannelInitializer<Channel> factory = new ChannelInitializer<Channel>() {
+      ChannelInitializer<Channel> factory = new ChannelInitializer<>() {
          @Override
          public void initChannel(Channel channel) throws Exception {
             ChannelPipeline pipeline = channel.pipeline();
@@ -534,9 +520,9 @@ public class NettyAcceptor extends AbstractAcceptor {
 
          if (notificationService != null) {
             TypedProperties props = new TypedProperties();
-            props.putSimpleStringProperty(new SimpleString("factory"), new SimpleString(NettyAcceptorFactory.class.getName()));
-            props.putSimpleStringProperty(new SimpleString("host"), new SimpleString(host));
-            props.putIntProperty(new SimpleString("port"), actualPort);
+            props.putSimpleStringProperty(SimpleString.of("factory"), SimpleString.of(NettyAcceptorFactory.class.getName()));
+            props.putSimpleStringProperty(SimpleString.of("host"), SimpleString.of(host));
+            props.putIntProperty(SimpleString.of("port"), actualPort);
             Notification notification = new Notification(null, CoreNotificationType.ACCEPTOR_STARTED, props);
             notificationService.sendNotification(notification);
          }
@@ -801,9 +787,9 @@ public class NettyAcceptor extends AbstractAcceptor {
 
       if (notificationService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(new SimpleString("factory"), new SimpleString(NettyAcceptorFactory.class.getName()));
-         props.putSimpleStringProperty(new SimpleString("host"), new SimpleString(host));
-         props.putIntProperty(new SimpleString("port"), port);
+         props.putSimpleStringProperty(SimpleString.of("factory"), SimpleString.of(NettyAcceptorFactory.class.getName()));
+         props.putSimpleStringProperty(SimpleString.of("host"), SimpleString.of(host));
+         props.putIntProperty(SimpleString.of("port"), port);
          Notification notification = new Notification(null, CoreNotificationType.ACCEPTOR_STOPPED, props);
          try {
             notificationService.sendNotification(notification);
@@ -933,14 +919,11 @@ public class NettyAcceptor extends AbstractAcceptor {
 
             SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
             if (sslHandler != null) {
-               sslHandler.handshakeFuture().addListener(new GenericFutureListener<io.netty.util.concurrent.Future<Channel>>() {
-                  @Override
-                  public void operationComplete(final io.netty.util.concurrent.Future<Channel> future) throws Exception {
-                     if (future.isSuccess()) {
-                        active = true;
-                     } else {
-                        future.getNow().close();
-                     }
+               sslHandler.handshakeFuture().addListener((GenericFutureListener<Future<Channel>>) future -> {
+                  if (future.isSuccess()) {
+                     active = true;
+                  } else {
+                     future.getNow().close();
                   }
                });
             } else {
@@ -978,13 +961,7 @@ public class NettyAcceptor extends AbstractAcceptor {
       @Override
       public void connectionException(final Object connectionID, final ActiveMQException me) {
          // Execute on different thread to avoid deadlocks
-         new Thread() {
-            @Override
-            public void run() {
-               listener.connectionException(connectionID, me);
-            }
-         }.start();
-
+         new Thread(() -> listener.connectionException(connectionID, me)).start();
       }
 
       @Override

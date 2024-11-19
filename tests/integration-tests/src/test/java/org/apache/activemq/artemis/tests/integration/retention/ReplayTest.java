@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.retention;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.MessageConsumer;
@@ -31,13 +35,14 @@ import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ReplayTest extends ActiveMQTestBase {
 
    ActiveMQServer server;
 
+   @BeforeEach
    @Override
    public void setUp() throws Exception {
       super.setUp();
@@ -49,28 +54,33 @@ public class ReplayTest extends ActiveMQTestBase {
       server.start();
 
       server.addAddressInfo(new AddressInfo("t1").addRoutingType(RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration("t1").setAddress("t1").setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of("t1").setAddress("t1").setRoutingType(RoutingType.ANYCAST));
 
       server.addAddressInfo(new AddressInfo("t2").addRoutingType(RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration("t2").setAddress("t2").setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of("t2").setAddress("t2").setRoutingType(RoutingType.ANYCAST));
    }
 
    @Test
    public void testReplayAMQP() throws Exception {
-      testReplay("AMQP", 10);
+      testReplay("AMQP", 10, false);
    }
 
    @Test
    public void testReplayCore() throws Exception {
-      testReplay("CORE", 10);
+      testReplay("CORE", 10, false);
    }
 
-   public void testReplay(String protocol, int size) throws Exception {
+   protected void testReplay(String protocol, int size, boolean paging) throws Exception {
 
       StringBuffer buffer = new StringBuffer();
       buffer.append(RandomUtil.randomString());
       for (int i = 0; i < size; i++) {
          buffer.append("*");
+      }
+
+      if (paging) {
+         org.apache.activemq.artemis.core.server.Queue serverQueue = server.locateQueue("t1");
+         serverQueue.getPagingStore().startPaging();
       }
 
       ConnectionFactory cf = CFUtil.createConnectionFactory(protocol, "tcp://localhost:61616");
@@ -88,9 +98,9 @@ public class ReplayTest extends ActiveMQTestBase {
 
          MessageConsumer consumer = session.createConsumer(queue);
 
-         Assert.assertNotNull(consumer.receive(5000));
+         assertNotNull(consumer.receive(5000));
 
-         Assert.assertNull(consumer.receiveNoWait());
+         assertNull(consumer.receiveNoWait());
 
          server.replay(null, null, "t1", "t2", null);
 
@@ -100,36 +110,45 @@ public class ReplayTest extends ActiveMQTestBase {
 
          TextMessage receivedMessage = (TextMessage) consumert2.receive(5000);
 
-         Assert.assertNotNull(receivedMessage);
+         assertNotNull(receivedMessage);
 
-         Assert.assertEquals(buffer.toString(), receivedMessage.getText());
+         assertEquals(buffer.toString(), receivedMessage.getText());
 
-         Assert.assertNull(consumert2.receiveNoWait());
+         assertNull(consumert2.receiveNoWait());
 
          server.replay(null, null, "t2", "t1", null);
 
          receivedMessage = (TextMessage) consumer.receive(5000);
 
-         Assert.assertNotNull(receivedMessage);
+         assertNotNull(receivedMessage);
 
-         Assert.assertNull(consumer.receiveNoWait());
+         assertNull(consumer.receiveNoWait());
 
          // invalid filter.. nothing should be re played
          server.replay(null, null, "t1", "t1", "foo='foo'");
 
-         Assert.assertNull(consumer.receiveNoWait());
+         assertNull(consumer.receiveNoWait());
       }
 
    }
 
    @Test
    public void testReplayLargeAMQP() throws Exception {
-      testReplay("AMQP", 500 * 1024);
+      testReplay("AMQP", 500 * 1024, false);
    }
 
    @Test
    public void testReplayLargeCore() throws Exception {
-      testReplay("CORE", 500 * 1024);
+      testReplay("CORE", 500 * 1024, false);
+   }
+   @Test
+   public void testReplayCorePaging() throws Exception {
+      testReplay("CORE", 10, true);
+   }
+
+   @Test
+   public void testReplayLargeCorePaging() throws Exception {
+      testReplay("CORE", 500 * 1024, true);
    }
 
 }

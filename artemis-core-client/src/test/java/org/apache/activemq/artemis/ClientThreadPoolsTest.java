@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Properties;
@@ -32,30 +35,27 @@ import org.apache.activemq.artemis.api.core.client.ActiveMQClient;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.core.client.impl.ServerLocatorImpl;
 import org.apache.activemq.artemis.utils.ActiveMQThreadFactory;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class ClientThreadPoolsTest {
 
    private static Properties systemProperties;
 
-   @BeforeClass
+   @BeforeAll
    public static void setup() {
       systemProperties = System.getProperties();
    }
 
-   @AfterClass
+   @AfterAll
    public static void tearDown() {
       System.clearProperty(ActiveMQClient.THREAD_POOL_MAX_SIZE_PROPERTY_KEY);
       System.clearProperty(ActiveMQClient.SCHEDULED_THREAD_POOL_SIZE_PROPERTY_KEY);
       ActiveMQClient.initializeGlobalThreadPoolProperties();
       ActiveMQClient.clearThreadPools();
-      Assert.assertEquals(ActiveMQClient.DEFAULT_GLOBAL_THREAD_POOL_MAX_SIZE, ActiveMQClient.getGlobalThreadPoolSize());
+      assertEquals(ActiveMQClient.DEFAULT_GLOBAL_THREAD_POOL_MAX_SIZE, ActiveMQClient.getGlobalThreadPoolSize());
    }
 
    @Test
@@ -81,31 +81,28 @@ public class ClientThreadPoolsTest {
       final CountDownLatch inUse = new CountDownLatch(1);
       final CountDownLatch neverLeave = new CountDownLatch(1);
 
-      ActiveMQClient.getGlobalThreadPool().execute(new Runnable() {
-         @Override
-         public void run() {
-            try {
-               inUse.countDown();
-               neverLeave.await();
-            } catch (Exception e) {
-               e.printStackTrace();
-               neverLeave.countDown();
-            }
+      ActiveMQClient.getGlobalThreadPool().execute(() -> {
+         try {
+            inUse.countDown();
+            neverLeave.await();
+         } catch (Exception e) {
+            e.printStackTrace();
+            neverLeave.countDown();
          }
       });
 
-      Assert.assertTrue(inUse.await(10, TimeUnit.SECONDS));
+      assertTrue(inUse.await(10, TimeUnit.SECONDS));
       ActiveMQClient.clearThreadPools(100, TimeUnit.MILLISECONDS);
-      Assert.assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
+      assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
    }
 
    @Test
    public void testInjectPools() throws Exception {
       ActiveMQClient.clearThreadPools();
 
-      ThreadPoolExecutor poolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+      ThreadPoolExecutor poolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
 
-      ThreadPoolExecutor flowControlPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+      ThreadPoolExecutor flowControlPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
 
       ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(1, ActiveMQThreadFactory.defaultThreadFactory(getClass().getName()));
 
@@ -114,27 +111,24 @@ public class ClientThreadPoolsTest {
       final CountDownLatch inUse = new CountDownLatch(1);
       final CountDownLatch neverLeave = new CountDownLatch(1);
 
-      ActiveMQClient.getGlobalThreadPool().execute(new Runnable() {
-         @Override
-         public void run() {
-            try {
-               inUse.countDown();
-               neverLeave.await();
-            } catch (Exception e) {
-               e.printStackTrace();
-               neverLeave.countDown();
-            }
+      ActiveMQClient.getGlobalThreadPool().execute(() -> {
+         try {
+            inUse.countDown();
+            neverLeave.await();
+         } catch (Exception e) {
+            e.printStackTrace();
+            neverLeave.countDown();
          }
       });
 
-      Assert.assertTrue(inUse.await(10, TimeUnit.SECONDS));
+      assertTrue(inUse.await(10, TimeUnit.SECONDS));
       poolExecutor.shutdownNow();
       scheduledThreadPoolExecutor.shutdownNow();
       flowControlPoolExecutor.shutdownNow();
-      Assert.assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
+      assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
 
-      Assert.assertTrue(inUse.await(10, TimeUnit.SECONDS));
-      Assert.assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
+      assertTrue(inUse.await(10, TimeUnit.SECONDS));
+      assertTrue(neverLeave.await(10, TimeUnit.SECONDS));
 
       ActiveMQClient.clearThreadPools(100, TimeUnit.MILLISECONDS);
    }
@@ -192,31 +186,28 @@ public class ClientThreadPoolsTest {
 
       for (int i = 0; i < expectedMax * 3; i++) {
          final int localI = i;
-         threadPool.execute(new Runnable() {
-            @Override
-            public void run() {
-               try {
+         threadPool.execute(() -> {
+            try {
 
-                  if (debugExecutions) {
-                     System.out.println("runnable " + localI);
-                  }
-                  doneMax.countDown();
-                  latch.await();
-                  latchTotal.countDown();
-               } catch (Exception e) {
-                  errors.incrementAndGet();
-               } finally {
-                  if (debugExecutions) {
-                     System.out.println("done " + localI);
-                  }
+               if (debugExecutions) {
+                  System.out.println("runnable " + localI);
+               }
+               doneMax.countDown();
+               latch.await();
+               latchTotal.countDown();
+            } catch (Exception e) {
+               errors.incrementAndGet();
+            } finally {
+               if (debugExecutions) {
+                  System.out.println("done " + localI);
                }
             }
          });
       }
 
-      Assert.assertTrue(doneMax.await(5, TimeUnit.SECONDS));
+      assertTrue(doneMax.await(5, TimeUnit.SECONDS));
       latch.countDown();
-      Assert.assertTrue(latchTotal.await(5, TimeUnit.SECONDS));
+      assertTrue(latchTotal.await(5, TimeUnit.SECONDS));
 
       ScheduledThreadPoolExecutor scheduledThreadPool = (ScheduledThreadPoolExecutor) scheduledThreadPoolField.get(serverLocator);
       ThreadPoolExecutor flowControlThreadPool = (ThreadPoolExecutor) flowControlThreadPoolField.get(serverLocator);
@@ -231,9 +222,9 @@ public class ClientThreadPoolsTest {
 
       ServerLocator serverLocator = new ServerLocatorImpl(false);
 
-      ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+      ThreadPoolExecutor threadPool = new ThreadPoolExecutor(1, 1, 60L, TimeUnit.SECONDS, new SynchronousQueue<>());
       ScheduledThreadPoolExecutor scheduledThreadPool = new ScheduledThreadPoolExecutor(1);
-      ThreadPoolExecutor flowControlThreadPool = new ThreadPoolExecutor(1, 1, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+      ThreadPoolExecutor flowControlThreadPool = new ThreadPoolExecutor(1, 1, 60L, TimeUnit.SECONDS, new SynchronousQueue<>());
       serverLocator.setThreadPools(threadPool, scheduledThreadPool, flowControlThreadPool);
 
       Field threadPoolField = ServerLocatorImpl.class.getDeclaredField("threadPool");
@@ -255,7 +246,7 @@ public class ClientThreadPoolsTest {
       assertEquals(flowControlThreadPool, fctpe);
    }
 
-   @After
+   @AfterEach
    public void cleanup() {
       // Resets the global thread pool properties back to default.
       System.setProperties(systemProperties);

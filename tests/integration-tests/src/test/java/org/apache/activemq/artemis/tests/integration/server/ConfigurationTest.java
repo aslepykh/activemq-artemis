@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.server;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.File;
 import java.io.FileOutputStream;
 
@@ -34,8 +37,7 @@ import org.apache.activemq.artemis.spi.core.security.jaas.InVMLoginModule;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ConfigurationTest extends ActiveMQTestBase {
 
@@ -44,9 +46,9 @@ public class ConfigurationTest extends ActiveMQTestBase {
       ActiveMQServer server = getActiveMQServer("duplicate-queues.xml");
       try {
          server.start();
-         Bindings mytopic_1 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_1"));
+         Bindings mytopic_1 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_1"));
          assertEquals(mytopic_1.getBindings().size(), 0);
-         Bindings mytopic_2 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_2"));
+         Bindings mytopic_2 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_2"));
          assertEquals(mytopic_2.getBindings().size(), 3);
       } finally {
          try {
@@ -94,19 +96,19 @@ public class ConfigurationTest extends ActiveMQTestBase {
          config.store(outStream, null);
       }
 
-      Assert.assertTrue(propsFile.exists());
+      assertTrue(propsFile.exists());
 
       ActiveMQServer server = getActiveMQServer("duplicate-queues.xml");
       server.setProperties(propsFile.getAbsolutePath());
       try {
 
          server.start();
-         Bindings mytopic_1 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_1"));
+         Bindings mytopic_1 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_1"));
          assertEquals(mytopic_1.getBindings().size(), 0);
-         Bindings mytopic_2 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_2"));
+         Bindings mytopic_2 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_2"));
          assertEquals(mytopic_2.getBindings().size(), 3);
 
-         Bindings mytopic_3 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_3"));
+         Bindings mytopic_3 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_3"));
          assertEquals(mytopic_3.getBindings().size(), 2);
 
 
@@ -119,16 +121,16 @@ public class ConfigurationTest extends ActiveMQTestBase {
          }
 
          Wait.assertTrue(() -> {
-            Bindings mytopic_31 = server.getPostOffice().getBindingsForAddress(new SimpleString("mytopic_3"));
+            Bindings mytopic_31 = server.getPostOffice().getBindingsForAddress(SimpleString.of("mytopic_3"));
             return mytopic_31.getBindings().size() == 3;
          });
 
          // verify round trip apply
-         Assert.assertTrue(server.getActiveMQServerControl().getStatus().contains("2"));
+         assertTrue(server.getActiveMQServerControl().getStatus().contains("2"));
 
          // verify some server attributes
-         Assert.assertNotNull(server.getActiveMQServerControl().getStatus().contains("version"));
-         Assert.assertNotNull(server.getActiveMQServerControl().getStatus().contains("uptime"));
+         assertTrue(server.getActiveMQServerControl().getStatus().contains("version"));
+         assertTrue(server.getActiveMQServerControl().getStatus().contains("uptime"));
 
       } finally {
          try {

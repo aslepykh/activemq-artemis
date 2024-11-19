@@ -16,6 +16,7 @@
  */
 package org.apache.activemq.artemis.core.server.impl;
 
+import org.apache.activemq.artemis.core.postoffice.impl.LocalQueueBinding;
 import org.apache.activemq.artemis.json.JsonArray;
 import org.apache.activemq.artemis.json.JsonArrayBuilder;
 import org.apache.activemq.artemis.json.JsonNumber;
@@ -35,7 +36,6 @@ import org.apache.activemq.artemis.core.persistence.StorageManager;
 import org.apache.activemq.artemis.core.postoffice.Binding;
 import org.apache.activemq.artemis.core.postoffice.Bindings;
 import org.apache.activemq.artemis.core.postoffice.PostOffice;
-import org.apache.activemq.artemis.core.postoffice.QueueBinding;
 import org.apache.activemq.artemis.core.server.ActiveMQServerLogger;
 import org.apache.activemq.artemis.core.settings.HierarchicalRepositoryChangeListener;
 import org.apache.activemq.artemis.utils.CompositeAddress;
@@ -102,7 +102,7 @@ public class AddressInfo {
    }
 
    public AddressInfo(String name) {
-      this(SimpleString.toSimpleString(name), createEmptySet());
+      this(SimpleString.of(name), createEmptySet());
    }
 
    public AddressInfo(SimpleString name) {
@@ -216,8 +216,8 @@ public class AddressInfo {
          Bindings bindings = postOffice.lookupBindingsForAddress(this.getName());
          if (bindings != null) {
             for (Binding binding : bindings.getBindings()) {
-               if (binding instanceof QueueBinding) {
-                  ((QueueBinding) binding).getQueue().pause(false);
+               if (binding instanceof LocalQueueBinding) {
+                  ((LocalQueueBinding) binding).getQueue().pause(false);
                }
             }
          }
@@ -250,8 +250,8 @@ public class AddressInfo {
          Bindings bindings = postOffice.lookupBindingsForAddress(this.getName());
          if (bindings != null) {
             for (Binding binding : bindings.getBindings()) {
-               if (binding instanceof QueueBinding) {
-                  ((QueueBinding) binding).getQueue().pause(false);
+               if (binding instanceof LocalQueueBinding) {
+                  ((LocalQueueBinding) binding).getQueue().pause(false);
                }
             }
          }
@@ -278,8 +278,8 @@ public class AddressInfo {
          Bindings bindings = postOffice.lookupBindingsForAddress(this.getName());
          if (bindings != null) {
             for (Binding binding : bindings.getBindings()) {
-               if (binding instanceof QueueBinding) {
-                  ((QueueBinding) binding).getQueue().resume();
+               if (binding instanceof LocalQueueBinding) {
+                  ((LocalQueueBinding) binding).getQueue().resume();
                }
             }
          }
@@ -410,7 +410,7 @@ public class AddressInfo {
          this.id = jsonLong.longValue();
       } else if (key.equals("name")) {
          JsonString jasonString = (JsonString) value;
-         this.name = SimpleString.toSimpleString(jasonString.getString());
+         this.name = SimpleString.of(jasonString.getString());
       } else if (key.equals("auto-created")) {
          this.autoCreated = Boolean.valueOf(value.toString());
       } else if (key.equals("temporary")) {
@@ -427,6 +427,8 @@ public class AddressInfo {
       } else if (key.equals("created-timestamp")) {
          JsonNumber jsonLong = (JsonNumber) value;
          this.createdTimestamp = jsonLong.longValue();
+      } else if (key.equals("internal")) {
+         this.internal = Boolean.valueOf(value.toString());
       }
    }
 

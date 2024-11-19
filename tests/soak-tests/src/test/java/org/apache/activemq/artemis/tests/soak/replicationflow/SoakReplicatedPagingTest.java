@@ -17,6 +17,8 @@
 
 package org.apache.activemq.artemis.tests.soak.replicationflow;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import javax.jms.BytesMessage;
 import javax.jms.CompletionListener;
 import javax.jms.Connection;
@@ -53,25 +55,28 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.soak.SoakTestBase;
 import org.apache.activemq.artemis.utils.ExecuteUtil;
 import org.apache.activemq.artemis.utils.SpawnedVMSupport;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
+import org.apache.activemq.artemis.utils.Wait;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.fusesource.mqtt.client.BlockingConnection;
 import org.fusesource.mqtt.client.MQTT;
 import org.fusesource.mqtt.client.QoS;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class SoakReplicatedPagingTest extends SoakTestBase {
+
+   public static int OK = 1;
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -96,7 +101,7 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
       }
    }
 
-   @Parameterized.Parameters(name = "protocol={0}, type={1}, tx={2}")
+   @Parameters(name = "protocol={0}, type={1}, tx={2}")
    public static Collection<Object[]> getParams() {
       return Arrays.asList(new Object[][]{{"MQTT", "topic", false}, {"AMQP", "shared", false}, {"AMQP", "queue", false}, {"OPENWIRE", "topic", false}, {"OPENWIRE", "queue", false}, {"CORE", "shared", false}, {"CORE", "queue", false},
          {"AMQP", "shared", true}, {"AMQP", "queue", true}, {"OPENWIRE", "topic", true}, {"OPENWIRE", "queue", true}, {"CORE", "shared", true}, {"CORE", "queue", true}});
@@ -111,13 +116,13 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
 
    private static Process server1;
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
       {
          File serverLocation = getFileServerLocation(SERVER_NAME_0);
          deleteDirectory(serverLocation);
 
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(serverLocation);
          cliCreateServer.setConfiguration("./src/main/resources/servers/replicated-static0");
          cliCreateServer.createServer();
@@ -126,7 +131,7 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
          File serverLocation = getFileServerLocation(SERVER_NAME_1);
          deleteDirectory(serverLocation);
 
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(serverLocation);
          cliCreateServer.setConfiguration("./src/main/resources/servers/replicated-static1");
          cliCreateServer.createServer();
@@ -134,7 +139,7 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
    }
 
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       cleanupData(SERVER_NAME_0);
       cleanupData(SERVER_NAME_1);
@@ -142,8 +147,8 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
       server0 = startServer(SERVER_NAME_0, 0, 30000);
    }
 
-   static final int consumer_threads = 20;
-   static final int producer_threads = 20;
+   static final int CONSUMER_THREADS = 5;
+   static final int PRODUCER_THREADS = 5;
    static AtomicInteger producer_count = new AtomicInteger(0);
    static AtomicInteger consumer_count = new AtomicInteger(0);
 
@@ -166,7 +171,7 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
 
          if (arg.length != 4) {
             System.err.println("You need to pass in protocol, consumerType, Time, transaction");
-            System.exit(0);
+            exit(2, "invalid arguments");
          }
 
          String protocol = arg[0];
@@ -182,62 +187,65 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
 
          final ConnectionFactory factory = createConnectionFactory(protocol, "tcp://" + host + ":" + port);
 
-         CountDownLatch producersLatch = new CountDownLatch(producer_threads);
-         CountDownLatch consumersLatch = new CountDownLatch(consumer_threads);
+         CountDownLatch producersLatch = new CountDownLatch(PRODUCER_THREADS);
+         CountDownLatch consumersLatch = new CountDownLatch(CONSUMER_THREADS);
 
-         for (int i = 0; i < producer_threads; i++) {
-            Thread t = new Thread(new Runnable() {
-               @Override
-               public void run() {
-                  SoakReplicatedPagingTest app = new SoakReplicatedPagingTest(protocol, consumerType, tx);
-                  app.produce(factory, producer_count.incrementAndGet(), producersLatch);
-               }
+         for (int i = 0; i < PRODUCER_THREADS; i++) {
+            Thread t = new Thread(() -> {
+               SoakReplicatedPagingTest app = new SoakReplicatedPagingTest(protocol, consumerType, tx);
+               app.produce(factory, producer_count.incrementAndGet(), producersLatch);
             });
             t.start();
          }
 
          Thread.sleep(1000);
 
-         for (int i = 0; i < consumer_threads; i++) {
-            Thread t = new Thread(new Runnable() {
-               @Override
-               public void run() {
-                  SoakReplicatedPagingTest app = new SoakReplicatedPagingTest(protocol, consumerType, tx);
-                  app.consume(factory, consumer_count.getAndIncrement(), consumersLatch);
-               }
+         for (int i = 0; i < CONSUMER_THREADS; i++) {
+            Thread t = new Thread(() -> {
+               SoakReplicatedPagingTest app = new SoakReplicatedPagingTest(protocol, consumerType, tx);
+               app.consume(factory, consumer_count.getAndIncrement(), consumersLatch);
             });
             t.start();
          }
 
          logger.debug("Awaiting producers...");
          if (!producersLatch.await(60000, TimeUnit.MILLISECONDS)) {
-            System.err.println("Awaiting producers timeout");
-            System.exit(0);
+            System.out.println("Awaiting producers timeout");
+            exit(3, "awaiting producers timeout");
          }
 
          logger.debug("Awaiting consumers...");
          if (!consumersLatch.await(60000, TimeUnit.MILLISECONDS)) {
-            System.err.println("Awaiting consumers timeout");
-            System.exit(0);
+            System.out.println("Awaiting consumers timeout");
+            exit(4, "Consumer did not start");
          }
 
          logger.debug("Awaiting timeout...");
          Thread.sleep(time);
 
-         int exitStatus = consumed.get() > 0 ? 1 : 0;
+         if (consumed.get() == 0) {
+            System.out.println("Retrying to wait consumers...");
+            Wait.assertTrue(() -> consumed.get() > 0, 15_000, 100);
+         }
+
+         int exitStatus = consumed.get() > 0 ? OK : 5;
          logger.debug("Exiting with the status: {}", exitStatus);
-         System.exit(exitStatus);
+
+         exit(exitStatus, "Consumed " + consumed.get() + " messages");
       } catch (Throwable t) {
          System.err.println("Exiting with the status 0. Reason: " + t);
          t.printStackTrace();
-         System.exit(0);
+         exit(6, t.getMessage());
       }
-
    }
 
-   @Test
-   public void testPagingReplication() throws Throwable {
+   public static void exit(int code, String message) {
+      System.out.println("Exit code:: " + code + "::" + message);
+      System.exit(code);
+   }
 
+   @TestTemplate
+   public void testPagingReplication() throws Throwable {
       server1 = startServer(SERVER_NAME_1, 0, 30000);
 
       for (int i = 0; i < CLIENT_KILLS; i++) {
@@ -254,7 +262,7 @@ public class SoakReplicatedPagingTest extends SoakTestBase {
          if (result <= 0) {
             jstack();
          }
-         Assert.assertTrue(result > 0);
+         assertEquals(OK, result);
       }
    }
 

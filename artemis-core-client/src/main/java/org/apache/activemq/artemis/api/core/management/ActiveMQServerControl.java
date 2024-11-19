@@ -31,6 +31,12 @@ public interface ActiveMQServerControl {
    String ADDRESS_MEMORY_USAGE_DESCRIPTION = "Memory used by all the addresses on broker for in-memory messages";
    String ADDRESS_MEMORY_USAGE_PERCENTAGE_DESCRIPTION = "Memory used by all the addresses on broker as a percentage of the global-max-size";
    String DISK_STORE_USAGE_DESCRIPTION = "Fraction of total disk store used";
+   String REPLICA_SYNC_DESCRIPTION = "If the initial replication synchronization process is complete";
+   String IS_ACTIVE_DESCRIPTION = "If the server is active";
+   String AUTHENTICATION_SUCCESS_COUNT = "Number of successful authentication attempts";
+   String AUTHENTICATION_FAILURE_COUNT = "Number of failed authentication attempts";
+   String AUTHORIZATION_SUCCESS_COUNT = "Number of successful authorization attempts";
+   String AUTHORIZATION_FAILURE_COUNT = "Number of failed authorization attempts";
 
    /**
     * Returns this server's name.
@@ -48,7 +54,7 @@ public interface ActiveMQServerControl {
    String getVersion();
 
 
-   @Attribute(desc = "Server is active")
+   @Attribute(desc = IS_ACTIVE_DESCRIPTION)
    boolean isActive();
 
    /**
@@ -64,27 +70,27 @@ public interface ActiveMQServerControl {
    long getTotalConnectionCount();
 
    /**
-    * Returns the number of messages in all queues on the server.
+    * Returns the number of messages in all queues currently on the server.
     */
-   @Attribute(desc = "Number of messages in all queues on the server")
+   @Attribute(desc = "Number of messages in all queues currently on the server")
    long getTotalMessageCount();
 
    /**
-    * Returns the number of messages sent to this server since it was started.
+    * Returns the number of messages sent to all queues currently on the server since they were created.
     */
-   @Attribute(desc = "Number of messages sent to this server since it was started")
+   @Attribute(desc = "Number of messages sent to all queues currently on the server since they were created")
    long getTotalMessagesAdded();
 
    /**
-    * Returns the number of messages sent to this server since it was started.
+    * Returns the number of messages acknowledged from all the queues currently on this server since they were created.
     */
-   @Attribute(desc = "Number of messages acknowledged from all the queues on this server since it was started")
+   @Attribute(desc = "Number of messages acknowledged from all the queues currently on this server since they were created")
    long getTotalMessagesAcknowledged();
 
    /**
-    * Returns the number of messages sent to this server since it was started.
+    * Returns the number of consumers on all the queues currently on this server.
     */
-   @Attribute(desc = "Number of consumers consuming messages from all the queues on this server")
+   @Attribute(desc = "Number of consumers on all the queues currently on this server")
    long getTotalConsumerCount();
 
    /**
@@ -108,6 +114,10 @@ public interface ActiveMQServerControl {
     */
    @Attribute(desc = "List of interceptors used by this server for outgoing messages")
    String[] getOutgoingInterceptorClassNames();
+
+
+   @Attribute(desc = "List of broker plugin class names used by this server")
+   String[] getBrokerPluginClassNames();
 
    /**
     * Returns whether this server is clustered.
@@ -470,7 +480,7 @@ public interface ActiveMQServerControl {
     * Returns whether the initial replication synchronization process with the backup server is complete; applicable for
     * either the primary or backup server.
     */
-   @Attribute(desc = "Whether the initial replication synchronization process with the backup server is complete")
+   @Attribute(desc = REPLICA_SYNC_DESCRIPTION)
    boolean isReplicaSync();
 
    /**
@@ -1406,6 +1416,21 @@ public interface ActiveMQServerControl {
                             @Parameter(desc = "a comma-separated list of roles allowed to create addresses", name = "createAddressRoles") String createAddressRoles,
                             @Parameter(desc = "a comma-separated list of roles allowed to delete addresses", name = "deleteAddressRoles") String deleteAddressRoles) throws Exception;
 
+   @Operation(desc = "Add security settings for addresses matching the addressMatch", impact = MBeanOperationInfo.ACTION)
+   void addSecuritySettings(@Parameter(desc = "an address match", name = "addressMatch") String addressMatch,
+                            @Parameter(desc = "a comma-separated list of roles allowed to send messages", name = "send") String sendRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to consume messages", name = "consume") String consumeRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to create durable queues", name = "createDurableQueueRoles") String createDurableQueueRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to delete durable queues", name = "deleteDurableQueueRoles") String deleteDurableQueueRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to create non durable queues", name = "createNonDurableQueueRoles") String createNonDurableQueueRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to delete non durable queues", name = "deleteNonDurableQueueRoles") String deleteNonDurableQueueRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to send management messages messages", name = "manage") String manageRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to browse queues", name = "browse") String browseRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to create addresses", name = "createAddressRoles") String createAddressRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to delete addresses", name = "deleteAddressRoles") String deleteAddressRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to view management resources", name = "view") String viewRoles,
+                            @Parameter(desc = "a comma-separated list of roles allowed to edit management resources", name = "edit") String editRoles) throws Exception;
+
    @Operation(desc = "Remove security settings for an address", impact = MBeanOperationInfo.ACTION)
    void removeSecuritySettings(@Parameter(desc = "an address match", name = "addressMatch") String addressMatch) throws Exception;
 
@@ -1683,6 +1708,10 @@ public interface ActiveMQServerControl {
       return getDivertNames();
    }
 
+   /**
+    * @deprecated Deprecated in favor of {@link #createDivert(String)}
+    */
+   @Deprecated
    @Operation(desc = "Create a Divert", impact = MBeanOperationInfo.ACTION)
    void createDivert(@Parameter(name = "name", desc = "Name of the divert") String name,
                      @Parameter(name = "routingName", desc = "Routing name of the divert") String routingName,
@@ -1692,6 +1721,10 @@ public interface ActiveMQServerControl {
                      @Parameter(name = "filterString", desc = "Filter of the divert") String filterString,
                      @Parameter(name = "transformerClassName", desc = "Class name of the divert's transformer") String transformerClassName) throws Exception;
 
+   /**
+    * @deprecated Deprecated in favor of {@link #createDivert(String)}
+    */
+   @Deprecated
    @Operation(desc = "Create a Divert", impact = MBeanOperationInfo.ACTION)
    void createDivert(@Parameter(name = "name", desc = "Name of the divert") String name,
                      @Parameter(name = "routingName", desc = "Routing name of the divert") String routingName,
@@ -1702,6 +1735,10 @@ public interface ActiveMQServerControl {
                      @Parameter(name = "transformerClassName", desc = "Class name of the divert's transformer") String transformerClassName,
                      @Parameter(name = "routingType", desc = "How should the routing-type on the diverted messages be set?") String routingType) throws Exception;
 
+   /**
+    * @deprecated Deprecated in favor of {@link #createDivert(String)}
+    */
+   @Deprecated
    @Operation(desc = "Create a Divert", impact = MBeanOperationInfo.ACTION)
    void createDivert(@Parameter(name = "name", desc = "Name of the divert") String name,
                      @Parameter(name = "routingName", desc = "Routing name of the divert") String routingName,
@@ -1713,6 +1750,10 @@ public interface ActiveMQServerControl {
                      @Parameter(name = "transformerProperties", desc = "Configuration properties of the divert's transformer") Map<String, String> transformerProperties,
                      @Parameter(name = "routingType", desc = "How should the routing-type on the diverted messages be set?") String routingType) throws Exception;
 
+   /**
+    * @deprecated Deprecated in favor of {@link #createDivert(String)}
+    */
+   @Deprecated
    @Operation(desc = "Create a Divert", impact = MBeanOperationInfo.ACTION)
    void createDivert(@Parameter(name = "name", desc = "Name of the divert") String name,
                      @Parameter(name = "routingName", desc = "Routing name of the divert") String routingName,
@@ -1725,8 +1766,17 @@ public interface ActiveMQServerControl {
                      @Parameter(name = "routingType", desc = "How should the routing-type on the diverted messages be set?") String routingType) throws Exception;
 
    /**
+    * Create a Divert.
+    *
+    * @param divertConfiguration the configuration of the divert in JSON format
+    */
+   @Operation(desc = "Create a Divert", impact = MBeanOperationInfo.ACTION)
+   void createDivert(@Parameter(name = "divertConfiguration", desc = "the configuration of the divert in JSON format") String divertConfiguration) throws Exception;
+
+   /**
     * update a divert
     */
+   @Deprecated
    @Operation(desc = "Update a divert", impact = MBeanOperationInfo.ACTION)
    void updateDivert(@Parameter(name = "name", desc = "Name of the queue") String name,
                      @Parameter(name = "forwardingAddress", desc = "Address to divert to") String forwardingAddress,
@@ -1734,6 +1784,12 @@ public interface ActiveMQServerControl {
                      @Parameter(name = "transformerClassName", desc = "Class name of the divert's transformer") String transformerClassName,
                      @Parameter(name = "transformerProperties", desc = "Configuration properties of the divert's transformer") Map<String, String> transformerProperties,
                      @Parameter(name = "routingType", desc = "How should the routing-type on the diverted messages be set?") String routingType) throws Exception;
+
+   /**
+    * update a divert
+    */
+   @Operation(desc = "Update a divert", impact = MBeanOperationInfo.ACTION)
+   void updateDivert(@Parameter(name = "divertConfiguration", desc = "the configuration of the divert in JSON format") String divertConfiguration) throws Exception;
 
    @Operation(desc = "Destroy a Divert", impact = MBeanOperationInfo.ACTION)
    void destroyDivert(@Parameter(name = "name", desc = "Name of the divert") String name) throws Exception;
@@ -2051,5 +2107,17 @@ public interface ActiveMQServerControl {
 
    @Operation(desc = "Clear the authorization cache", impact = MBeanOperationInfo.ACTION)
    void clearAuthorizationCache() throws Exception;
+
+   @Attribute(desc = AUTHENTICATION_SUCCESS_COUNT)
+   long getAuthenticationSuccessCount();
+
+   @Attribute(desc = AUTHENTICATION_FAILURE_COUNT)
+   long getAuthenticationFailureCount();
+
+   @Attribute(desc = AUTHORIZATION_SUCCESS_COUNT)
+   long getAuthorizationSuccessCount();
+
+   @Attribute(desc = AUTHORIZATION_FAILURE_COUNT)
+   long getAuthorizationFailureCount();
 }
 

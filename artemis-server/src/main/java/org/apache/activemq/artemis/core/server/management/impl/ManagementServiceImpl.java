@@ -21,17 +21,21 @@ import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
 import javax.management.NotificationBroadcasterSupport;
 import javax.management.ObjectName;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.regex.Pattern;
 
+import io.micrometer.core.instrument.Tag;
 import org.apache.activemq.artemis.api.core.BroadcastEndpointFactory;
 import org.apache.activemq.artemis.api.core.BroadcastGroupConfiguration;
 import org.apache.activemq.artemis.api.core.ChannelBroadcastEndpointFactory;
@@ -48,8 +52,8 @@ import org.apache.activemq.artemis.api.core.management.ActiveMQServerControl;
 import org.apache.activemq.artemis.api.core.management.AddressControl;
 import org.apache.activemq.artemis.api.core.management.BaseBroadcastGroupControl;
 import org.apache.activemq.artemis.api.core.management.BridgeControl;
-import org.apache.activemq.artemis.api.core.management.ConnectionRouterControl;
 import org.apache.activemq.artemis.api.core.management.ClusterConnectionControl;
+import org.apache.activemq.artemis.api.core.management.ConnectionRouterControl;
 import org.apache.activemq.artemis.api.core.management.DivertControl;
 import org.apache.activemq.artemis.api.core.management.ManagementHelper;
 import org.apache.activemq.artemis.api.core.management.ObjectNameBuilder;
@@ -63,8 +67,8 @@ import org.apache.activemq.artemis.core.management.impl.AddressControlImpl;
 import org.apache.activemq.artemis.core.management.impl.BaseBroadcastGroupControlImpl;
 import org.apache.activemq.artemis.core.management.impl.BridgeControlImpl;
 import org.apache.activemq.artemis.core.management.impl.BroadcastGroupControlImpl;
-import org.apache.activemq.artemis.core.management.impl.ConnectionRouterControlImpl;
 import org.apache.activemq.artemis.core.management.impl.ClusterConnectionControlImpl;
+import org.apache.activemq.artemis.core.management.impl.ConnectionRouterControlImpl;
 import org.apache.activemq.artemis.core.management.impl.DivertControlImpl;
 import org.apache.activemq.artemis.core.management.impl.JGroupsChannelBroadcastGroupControlImpl;
 import org.apache.activemq.artemis.core.management.impl.JGroupsFileBroadcastGroupControlImpl;
@@ -77,7 +81,9 @@ import org.apache.activemq.artemis.core.paging.PagingManager;
 import org.apache.activemq.artemis.core.persistence.StorageManager;
 import org.apache.activemq.artemis.core.postoffice.PostOffice;
 import org.apache.activemq.artemis.core.remoting.server.RemotingService;
+import org.apache.activemq.artemis.core.security.CheckType;
 import org.apache.activemq.artemis.core.security.Role;
+import org.apache.activemq.artemis.core.security.SecurityAuth;
 import org.apache.activemq.artemis.core.security.SecurityStore;
 import org.apache.activemq.artemis.core.server.ActiveMQMessageBundle;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
@@ -85,13 +91,12 @@ import org.apache.activemq.artemis.core.server.ActiveMQServerLogger;
 import org.apache.activemq.artemis.core.server.Divert;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.QueueFactory;
-import org.apache.activemq.artemis.core.server.routing.ConnectionRouter;
 import org.apache.activemq.artemis.core.server.cluster.Bridge;
 import org.apache.activemq.artemis.core.server.cluster.BroadcastGroup;
 import org.apache.activemq.artemis.core.server.cluster.ClusterConnection;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.core.server.impl.CleaningActivateCallback;
-import org.apache.activemq.artemis.core.server.management.ArtemisMBeanServerGuard;
+import org.apache.activemq.artemis.core.server.management.GuardInvocationHandler;
 import org.apache.activemq.artemis.core.server.management.HawtioSecurityControl;
 import org.apache.activemq.artemis.core.server.management.ManagementService;
 import org.apache.activemq.artemis.core.server.management.Notification;
@@ -100,6 +105,7 @@ import org.apache.activemq.artemis.core.server.metrics.AddressMetricNames;
 import org.apache.activemq.artemis.core.server.metrics.BrokerMetricNames;
 import org.apache.activemq.artemis.core.server.metrics.MetricsManager;
 import org.apache.activemq.artemis.core.server.metrics.QueueMetricNames;
+import org.apache.activemq.artemis.core.server.routing.ConnectionRouter;
 import org.apache.activemq.artemis.core.settings.HierarchicalRepository;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.core.transaction.ResourceManager;
@@ -108,7 +114,6 @@ import org.apache.activemq.artemis.utils.collections.ConcurrentHashSet;
 import org.apache.activemq.artemis.utils.collections.TypedProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
 
 import static org.apache.activemq.artemis.api.core.FilterConstants.NATIVE_MESSAGE_ID;
 
@@ -146,7 +151,7 @@ public class ManagementServiceImpl implements ManagementService {
 
    private final SimpleString managementAddress;
 
-   private boolean started = false;
+   private volatile boolean started = false;
 
    private final boolean messageCounterEnabled;
 
@@ -156,6 +161,11 @@ public class ManagementServiceImpl implements ManagementService {
 
    private final ObjectNameBuilder objectNameBuilder;
 
+   private final SimpleString managementMessageRbacResourceNamePrefix;
+
+   private final Pattern viewPermissionMatcher;
+
+   private final Set<ObjectName> registeredNames = new ConcurrentHashSet<>();
 
    public ManagementServiceImpl(final MBeanServer mbeanServer, final Configuration configuration) {
       this.mbeanServer = mbeanServer;
@@ -168,6 +178,8 @@ public class ManagementServiceImpl implements ManagementService {
       broadcaster = new NotificationBroadcasterSupport();
       notificationsEnabled = true;
       objectNameBuilder = ObjectNameBuilder.create(configuration.getJMXDomain(), configuration.getName(), configuration.isJMXUseBrokerName());
+      managementMessageRbacResourceNamePrefix = configuration.isManagementMessageRbac() ? SimpleString.of(configuration.getManagementRbacPrefix()).concat('.') : null;
+      viewPermissionMatcher = Pattern.compile(configuration.getViewPermissionMethodMatchPattern());
    }
 
 
@@ -227,19 +239,24 @@ public class ManagementServiceImpl implements ManagementService {
       MetricsManager metricsManager = messagingServer.getMetricsManager();
       if (metricsManager != null) {
          metricsManager.registerBrokerGauge(builder -> {
-            builder.build(BrokerMetricNames.CONNECTION_COUNT, messagingServer, metrics -> Double.valueOf(messagingServer.getConnectionCount()), ActiveMQServerControl.CONNECTION_COUNT_DESCRIPTION);
-            builder.build(BrokerMetricNames.TOTAL_CONNECTION_COUNT, messagingServer, metrics -> Double.valueOf(messagingServer.getTotalConnectionCount()), ActiveMQServerControl.TOTAL_CONNECTION_COUNT_DESCRIPTION);
-            builder.build(BrokerMetricNames.ADDRESS_MEMORY_USAGE, messagingServer, metrics -> Double.valueOf(messagingServerControl.getAddressMemoryUsage()), ActiveMQServerControl.ADDRESS_MEMORY_USAGE_DESCRIPTION);
-            builder.build(BrokerMetricNames.ADDRESS_MEMORY_USAGE_PERCENTAGE, messagingServer, metrics -> Double.valueOf(messagingServerControl.getAddressMemoryUsagePercentage()), ActiveMQServerControl.ADDRESS_MEMORY_USAGE_PERCENTAGE_DESCRIPTION);
-            builder.build(BrokerMetricNames.DISK_STORE_USAGE, messagingServer, metrics -> Double.valueOf(messagingServer.getDiskStoreUsage()), ActiveMQServerControl.DISK_STORE_USAGE_DESCRIPTION);
+            builder.build(BrokerMetricNames.CONNECTION_COUNT, messagingServer, metrics -> (double) messagingServer.getConnectionCount(), ActiveMQServerControl.CONNECTION_COUNT_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.TOTAL_CONNECTION_COUNT, messagingServer, metrics -> (double) messagingServer.getTotalConnectionCount(), ActiveMQServerControl.TOTAL_CONNECTION_COUNT_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.ADDRESS_MEMORY_USAGE, messagingServer, metrics -> (double) messagingServerControl.getAddressMemoryUsage(), ActiveMQServerControl.ADDRESS_MEMORY_USAGE_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.ADDRESS_MEMORY_USAGE_PERCENTAGE, messagingServer, metrics -> (double) messagingServerControl.getAddressMemoryUsagePercentage(), ActiveMQServerControl.ADDRESS_MEMORY_USAGE_PERCENTAGE_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.DISK_STORE_USAGE, messagingServer, metrics -> messagingServer.getDiskStoreUsage(), ActiveMQServerControl.DISK_STORE_USAGE_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.REPLICA_SYNC, messagingServer, metrics -> messagingServer.isReplicaSync() ? 1D : 0D, ActiveMQServerControl.REPLICA_SYNC_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.ACTIVE, messagingServer, metrics -> messagingServer.isActive() ? 1D : 0D, ActiveMQServerControl.IS_ACTIVE_DESCRIPTION, Collections.emptyList());
+            builder.build(BrokerMetricNames.AUTHENTICATION_COUNT, securityStore, metrics -> (double) securityStore.getAuthenticationSuccessCount(), ActiveMQServerControl.AUTHENTICATION_SUCCESS_COUNT, Arrays.asList(Tag.of("result", "success")));
+            builder.build(BrokerMetricNames.AUTHENTICATION_COUNT, securityStore, metrics -> (double) securityStore.getAuthenticationFailureCount(), ActiveMQServerControl.AUTHENTICATION_FAILURE_COUNT, Arrays.asList(Tag.of("result", "failure")));
+            builder.build(BrokerMetricNames.AUTHORIZATION_COUNT, securityStore, metrics -> (double) securityStore.getAuthorizationSuccessCount(), ActiveMQServerControl.AUTHORIZATION_SUCCESS_COUNT, Arrays.asList(Tag.of("result", "success")));
+            builder.build(BrokerMetricNames.AUTHORIZATION_COUNT, securityStore, metrics -> (double) securityStore.getAuthorizationFailureCount(), ActiveMQServerControl.AUTHORIZATION_FAILURE_COUNT, Arrays.asList(Tag.of("result", "failure")));
          });
       }
    }
 
    @Override
-   public synchronized void unregisterServer() throws Exception {
-      ObjectName objectName = objectNameBuilder.getActiveMQServerObjectName();
-      unregisterFromJMX(objectName);
+   public void unregisterServer() throws Exception {
+      unregisterFromJMX(objectNameBuilder.getActiveMQServerObjectName());
       unregisterFromRegistry(ResourceNames.BROKER);
       if (messagingServer != null) {
          unregisterMeters(ResourceNames.BROKER + "." + messagingServer.getConfiguration().getName());
@@ -248,16 +265,10 @@ public class ManagementServiceImpl implements ManagementService {
 
    @Override
    public void registerAddress(AddressInfo addressInfo) throws Exception {
-      ObjectName objectName = objectNameBuilder.getAddressObjectName(addressInfo.getName());
       AddressControlImpl addressControl = new AddressControlImpl(addressInfo, messagingServer, pagingManager, storageManager, securityRepository, securityStore, this);
-
-      registerInJMX(objectName, addressControl);
-
+      registerInJMX(objectNameBuilder.getAddressObjectName(addressInfo.getName()), addressControl);
       registerInRegistry(ResourceNames.ADDRESS + addressInfo.getName(), addressControl);
-
       registerAddressMeters(addressInfo, addressControl);
-
-      logger.debug("registered address {}", objectName);
    }
 
    @Override
@@ -266,73 +277,38 @@ public class ManagementServiceImpl implements ManagementService {
          MetricsManager metricsManager = messagingServer.getMetricsManager();
          if (metricsManager != null) {
             metricsManager.registerAddressGauge(addressInfo.getName().toString(), builder -> {
-               builder.build(AddressMetricNames.ROUTED_MESSAGE_COUNT, addressInfo, metrics -> Double.valueOf(addressInfo.getRoutedMessageCount()), AddressControl.ROUTED_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(AddressMetricNames.UNROUTED_MESSAGE_COUNT, addressInfo, metrics -> Double.valueOf(addressInfo.getUnRoutedMessageCount()), AddressControl.UNROUTED_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(AddressMetricNames.ADDRESS_SIZE, addressInfo, metrics -> Double.valueOf(addressControl.getAddressSize()), AddressControl.ADDRESS_SIZE_DESCRIPTION);
-               builder.build(AddressMetricNames.PAGES_COUNT, addressInfo, metrics -> Double.valueOf(addressControl.getNumberOfPages()), AddressControl.NUMBER_OF_PAGES_DESCRIPTION);
+               builder.build(AddressMetricNames.ROUTED_MESSAGE_COUNT, addressInfo, metrics -> (double) addressInfo.getRoutedMessageCount(), AddressControl.ROUTED_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(AddressMetricNames.UNROUTED_MESSAGE_COUNT, addressInfo, metrics -> (double) addressInfo.getUnRoutedMessageCount(), AddressControl.UNROUTED_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(AddressMetricNames.ADDRESS_SIZE, addressInfo, metrics -> (double) addressControl.getAddressSize(), AddressControl.ADDRESS_SIZE_DESCRIPTION, Collections.emptyList());
+               builder.build(AddressMetricNames.PAGES_COUNT, addressInfo, metrics -> (double) addressControl.getNumberOfPages(), AddressControl.NUMBER_OF_PAGES_DESCRIPTION, Collections.emptyList());
             });
          }
       }
    }
 
    @Override
-   public synchronized void unregisterAddress(final SimpleString address) throws Exception {
-      ObjectName objectName = objectNameBuilder.getAddressObjectName(address);
-
-      unregisterFromJMX(objectName);
+   public void unregisterAddress(final SimpleString address) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getAddressObjectName(address));
       unregisterFromRegistry(ResourceNames.ADDRESS + address);
       unregisterMeters(ResourceNames.ADDRESS + address);
    }
 
-   public synchronized void registerQueue(final Queue queue,
-                                          final AddressInfo addressInfo,
-                                          final StorageManager storageManager) throws Exception {
-      registerQueue(queue, addressInfo, storageManager, false);
-   }
-
-   private synchronized void registerQueue(final Queue queue,
-                                          final AddressInfo addressInfo,
-                                          final StorageManager storageManager,
-                                          boolean forceInternal) throws Exception {
-
-      if (!forceInternal && (addressInfo.isInternal() || queue.isInternalQueue())) {
-         logger.debug("won't register internal queue: {}", queue);
-         return;
-      }
-
-      QueueControlImpl queueControl = new QueueControlImpl(queue, addressInfo.getName().toString(), messagingServer, storageManager, securityStore, addressSettingsRepository);
+   @Override
+   public void registerQueue(final Queue queue, final SimpleString address, final StorageManager storageManager) throws Exception {
+      QueueControlImpl queueControl = new QueueControlImpl(queue, address.toString(), messagingServer, storageManager, securityStore, addressSettingsRepository);
       if (messageCounterManager != null) {
          MessageCounter counter = new MessageCounter(queue.getName().toString(), null, queue, false, queue.isDurable(), messageCounterManager.getMaxDayCount());
          queueControl.setMessageCounter(counter);
          messageCounterManager.registerMessageCounter(queue.getName().toString(), counter);
       }
-      ObjectName objectName = objectNameBuilder.getQueueObjectName(addressInfo.getName(), queue.getName(), queue.getRoutingType());
-      registerInJMX(objectName, queueControl);
+      registerInJMX(objectNameBuilder.getQueueObjectName(address, queue.getName(), queue.getRoutingType()), queueControl);
       registerInRegistry(ResourceNames.QUEUE + queue.getName(), queueControl);
       registerQueueMeters(queue);
-
-      logger.debug("registered queue {}", objectName);
    }
 
    @Override
-   public synchronized void registerQueue(final Queue queue,
-                                          final SimpleString address,
-                                          final StorageManager storageManager) throws Exception {
-      registerQueue(queue, new AddressInfo(address), storageManager);
-   }
-
-   @Override
-   public synchronized void registerQueue(final Queue queue,
-                                          final SimpleString address,
-                                          final StorageManager storageManager,
-                                          final boolean forceInternal) throws Exception {
-      registerQueue(queue, new AddressInfo(address), storageManager, forceInternal);
-   }
-
-   @Override
-   public synchronized void unregisterQueue(final SimpleString name, final SimpleString address, RoutingType routingType) throws Exception {
-      ObjectName objectName = objectNameBuilder.getQueueObjectName(address, name, routingType);
-      unregisterFromJMX(objectName);
+   public void unregisterQueue(final SimpleString name, final SimpleString address, RoutingType routingType) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getQueueObjectName(address, name, routingType));
       unregisterFromRegistry(ResourceNames.QUEUE + name);
       unregisterMeters(ResourceNames.QUEUE + name);
       if (messageCounterManager != null) {
@@ -345,26 +321,26 @@ public class ManagementServiceImpl implements ManagementService {
          MetricsManager metricsManager = messagingServer.getMetricsManager();
          if (metricsManager != null) {
             metricsManager.registerQueueGauge(queue.getAddress().toString(), queue.getName().toString(), (builder) -> {
-               builder.build(QueueMetricNames.MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getMessageCount()), QueueControl.MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.DURABLE_MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getDurableMessageCount()), QueueControl.DURABLE_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getPersistentSize()), QueueControl.PERSISTENT_SIZE_DESCRIPTION);
-               builder.build(QueueMetricNames.DURABLE_PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getDurablePersistentSize()), QueueControl.DURABLE_PERSISTENT_SIZE_DESCRIPTION);
+               builder.build(QueueMetricNames.MESSAGE_COUNT, queue, metrics -> (double) queue.getMessageCount(), QueueControl.MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.DURABLE_MESSAGE_COUNT, queue, metrics -> (double) queue.getDurableMessageCount(), QueueControl.DURABLE_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.PERSISTENT_SIZE, queue, metrics -> (double) queue.getPersistentSize(), QueueControl.PERSISTENT_SIZE_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.DURABLE_PERSISTENT_SIZE, queue, metrics -> (double) queue.getDurablePersistentSize(), QueueControl.DURABLE_PERSISTENT_SIZE_DESCRIPTION, Collections.emptyList());
 
-               builder.build(QueueMetricNames.DELIVERING_MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getDeliveringCount()), QueueControl.DELIVERING_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.DELIVERING_DURABLE_MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getDurableDeliveringCount()), QueueControl.DURABLE_DELIVERING_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.DELIVERING_PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getDeliveringSize()), QueueControl.DELIVERING_SIZE_DESCRIPTION);
-               builder.build(QueueMetricNames.DELIVERING_DURABLE_PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getDurableDeliveringSize()), QueueControl.DURABLE_DELIVERING_SIZE_DESCRIPTION);
+               builder.build(QueueMetricNames.DELIVERING_MESSAGE_COUNT, queue, metrics -> (double) queue.getDeliveringCount(), QueueControl.DELIVERING_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.DELIVERING_DURABLE_MESSAGE_COUNT, queue, metrics -> (double) queue.getDurableDeliveringCount(), QueueControl.DURABLE_DELIVERING_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.DELIVERING_PERSISTENT_SIZE, queue, metrics -> (double) queue.getDeliveringSize(), QueueControl.DELIVERING_SIZE_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.DELIVERING_DURABLE_PERSISTENT_SIZE, queue, metrics -> (double) queue.getDurableDeliveringSize(), QueueControl.DURABLE_DELIVERING_SIZE_DESCRIPTION, Collections.emptyList());
 
-               builder.build(QueueMetricNames.SCHEDULED_MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getScheduledCount()), QueueControl.SCHEDULED_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.SCHEDULED_DURABLE_MESSAGE_COUNT, queue, metrics -> Double.valueOf(queue.getDurableScheduledCount()), QueueControl.DURABLE_SCHEDULED_MESSAGE_COUNT_DESCRIPTION);
-               builder.build(QueueMetricNames.SCHEDULED_PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getScheduledSize()), QueueControl.SCHEDULED_SIZE_DESCRIPTION);
-               builder.build(QueueMetricNames.SCHEDULED_DURABLE_PERSISTENT_SIZE, queue, metrics -> Double.valueOf(queue.getDurableScheduledSize()), QueueControl.DURABLE_SCHEDULED_SIZE_DESCRIPTION);
+               builder.build(QueueMetricNames.SCHEDULED_MESSAGE_COUNT, queue, metrics -> (double) queue.getScheduledCount(), QueueControl.SCHEDULED_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.SCHEDULED_DURABLE_MESSAGE_COUNT, queue, metrics -> (double) queue.getDurableScheduledCount(), QueueControl.DURABLE_SCHEDULED_MESSAGE_COUNT_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.SCHEDULED_PERSISTENT_SIZE, queue, metrics -> (double) queue.getScheduledSize(), QueueControl.SCHEDULED_SIZE_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.SCHEDULED_DURABLE_PERSISTENT_SIZE, queue, metrics -> (double) queue.getDurableScheduledSize(), QueueControl.DURABLE_SCHEDULED_SIZE_DESCRIPTION, Collections.emptyList());
 
-               builder.build(QueueMetricNames.MESSAGES_ACKNOWLEDGED, queue, metrics -> Double.valueOf(queue.getMessagesAcknowledged()), QueueControl.MESSAGES_ACKNOWLEDGED_DESCRIPTION);
-               builder.build(QueueMetricNames.MESSAGES_ADDED, queue, metrics -> Double.valueOf(queue.getMessagesAdded()), QueueControl.MESSAGES_ADDED_DESCRIPTION);
-               builder.build(QueueMetricNames.MESSAGES_KILLED, queue, metrics -> Double.valueOf(queue.getMessagesKilled()), QueueControl.MESSAGES_KILLED_DESCRIPTION);
-               builder.build(QueueMetricNames.MESSAGES_EXPIRED, queue, metrics -> Double.valueOf(queue.getMessagesExpired()), QueueControl.MESSAGES_EXPIRED_DESCRIPTION);
-               builder.build(QueueMetricNames.CONSUMER_COUNT, queue, metrics -> Double.valueOf(queue.getConsumerCount()), QueueControl.CONSUMER_COUNT_DESCRIPTION);
+               builder.build(QueueMetricNames.MESSAGES_ACKNOWLEDGED, queue, metrics -> (double) queue.getMessagesAcknowledged(), QueueControl.MESSAGES_ACKNOWLEDGED_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.MESSAGES_ADDED, queue, metrics -> (double) queue.getMessagesAdded(), QueueControl.MESSAGES_ADDED_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.MESSAGES_KILLED, queue, metrics -> (double) queue.getMessagesKilled(), QueueControl.MESSAGES_KILLED_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.MESSAGES_EXPIRED, queue, metrics -> (double) queue.getMessagesExpired(), QueueControl.MESSAGES_EXPIRED_DESCRIPTION, Collections.emptyList());
+               builder.build(QueueMetricNames.CONSUMER_COUNT, queue, metrics -> (double) queue.getConsumerCount(), QueueControl.CONSUMER_COUNT_DESCRIPTION, Collections.emptyList());
             });
          }
       }
@@ -380,63 +356,47 @@ public class ManagementServiceImpl implements ManagementService {
    }
 
    @Override
-   public synchronized void registerDivert(final Divert divert) throws Exception {
-      ObjectName objectName = objectNameBuilder.getDivertObjectName(divert.getUniqueName().toString(), divert.getAddress().toString());
+   public void registerDivert(final Divert divert) throws Exception {
       DivertControl divertControl = new DivertControlImpl(divert, storageManager, messagingServer.getInternalNamingPrefix());
-      registerInJMX(objectName, divertControl);
+      registerInJMX(objectNameBuilder.getDivertObjectName(divert.getUniqueName().toString(), divert.getAddress().toString()), divertControl);
       registerInRegistry(ResourceNames.DIVERT + divert.getUniqueName(), divertControl);
-
-      logger.debug("registered divert {}", objectName);
    }
 
    @Override
-   public synchronized void unregisterDivert(final SimpleString name, final SimpleString address) throws Exception {
-      ObjectName objectName = objectNameBuilder.getDivertObjectName(name.toString(), address.toString());
-      unregisterFromJMX(objectName);
+   public void unregisterDivert(final SimpleString name, final SimpleString address) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getDivertObjectName(name.toString(), address.toString()));
       unregisterFromRegistry(ResourceNames.DIVERT + name);
    }
 
    @Override
-   public synchronized void registerAcceptor(final Acceptor acceptor,
-                                             final TransportConfiguration configuration) throws Exception {
-      ObjectName objectName = objectNameBuilder.getAcceptorObjectName(configuration.getName());
+   public void registerAcceptor(final Acceptor acceptor, final TransportConfiguration configuration) throws Exception {
       AcceptorControl control = new AcceptorControlImpl(acceptor, storageManager, configuration);
-      registerInJMX(objectName, control);
+      registerInJMX(objectNameBuilder.getAcceptorObjectName(configuration.getName()), control);
       registerInRegistry(ResourceNames.ACCEPTOR + configuration.getName(), control);
    }
 
    @Override
    public void unregisterAcceptors() {
-      List<String> acceptors = new ArrayList<>();
-      synchronized (this) {
-         for (String resourceName : registry.keySet()) {
-            if (resourceName.startsWith(ResourceNames.ACCEPTOR)) {
-               acceptors.add(resourceName);
+      for (String resourceName : new HashSet<>(registry.keySet())) {
+         if (resourceName.startsWith(ResourceNames.ACCEPTOR)) {
+            String name = resourceName.substring(ResourceNames.ACCEPTOR.length());
+            try {
+               unregisterAcceptor(name);
+            } catch (Exception e) {
+               ActiveMQServerLogger.LOGGER.failedToUnregisterAcceptor(name, e);
             }
-         }
-      }
-
-      for (String acceptor : acceptors) {
-         String name = acceptor.substring(ResourceNames.ACCEPTOR.length());
-         try {
-            unregisterAcceptor(name);
-         } catch (Exception e) {
-            ActiveMQServerLogger.LOGGER.failedToUnregisterAcceptors(e);
          }
       }
    }
 
-   public synchronized void unregisterAcceptor(final String name) throws Exception {
-      ObjectName objectName = objectNameBuilder.getAcceptorObjectName(name);
-      unregisterFromJMX(objectName);
+   public void unregisterAcceptor(final String name) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getAcceptorObjectName(name));
       unregisterFromRegistry(ResourceNames.ACCEPTOR + name);
    }
 
    @Override
-   public synchronized void registerBroadcastGroup(final BroadcastGroup broadcastGroup,
-                                                   final BroadcastGroupConfiguration configuration) throws Exception {
+   public void registerBroadcastGroup(final BroadcastGroup broadcastGroup, final BroadcastGroupConfiguration configuration) throws Exception {
       broadcastGroup.setNotificationService(this);
-      ObjectName objectName = objectNameBuilder.getBroadcastGroupObjectName(configuration.getName());
       BroadcastEndpointFactory endpointFactory = configuration.getEndpointFactory();
       BaseBroadcastGroupControl control = null;
       if (endpointFactory instanceof UDPBroadcastEndpointFactory) {
@@ -448,86 +408,71 @@ public class ManagementServiceImpl implements ManagementService {
       } else {
          control = new BaseBroadcastGroupControlImpl(broadcastGroup, storageManager, configuration);
       }
-      //shouldnt ever be null
-      if (control != null) {
-         registerInJMX(objectName, control);
-         registerInRegistry(ResourceNames.BROADCAST_GROUP + configuration.getName(), control);
-      }
+      registerInJMX(objectNameBuilder.getBroadcastGroupObjectName(configuration.getName()), control);
+      registerInRegistry(ResourceNames.BROADCAST_GROUP + configuration.getName(), control);
    }
 
    @Override
-   public synchronized void unregisterBroadcastGroup(final String name) throws Exception {
-      ObjectName objectName = objectNameBuilder.getBroadcastGroupObjectName(name);
-      unregisterFromJMX(objectName);
+   public void unregisterBroadcastGroup(final String name) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getBroadcastGroupObjectName(name));
       unregisterFromRegistry(ResourceNames.BROADCAST_GROUP + name);
    }
 
    @Override
-   public synchronized void registerBridge(final Bridge bridge) throws Exception {
+   public void registerBridge(final Bridge bridge) throws Exception {
       bridge.setNotificationService(this);
-      ObjectName objectName = objectNameBuilder.getBridgeObjectName(bridge.getName().toString());
       BridgeControl control = new BridgeControlImpl(bridge, storageManager);
-      registerInJMX(objectName, control);
+      registerInJMX(objectNameBuilder.getBridgeObjectName(bridge.getConfiguration().getName()), control);
       registerInRegistry(ResourceNames.BRIDGE + bridge.getName(), control);
    }
 
    @Override
-   public synchronized void unregisterBridge(final String name) throws Exception {
-      ObjectName objectName = objectNameBuilder.getBridgeObjectName(name);
-      unregisterFromJMX(objectName);
+   public void unregisterBridge(final String name) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getBridgeObjectName(name));
       unregisterFromRegistry(ResourceNames.BRIDGE + name);
    }
 
    @Override
-   public synchronized void registerCluster(final ClusterConnection cluster,
-                                            final ClusterConnectionConfiguration configuration) throws Exception {
-      ObjectName objectName = objectNameBuilder.getClusterConnectionObjectName(configuration.getName());
+   public void registerCluster(final ClusterConnection cluster, final ClusterConnectionConfiguration configuration) throws Exception {
       ClusterConnectionControl control = new ClusterConnectionControlImpl(cluster, storageManager, configuration);
-      registerInJMX(objectName, control);
+      registerInJMX(objectNameBuilder.getClusterConnectionObjectName(configuration.getName()), control);
       registerInRegistry(ResourceNames.CORE_CLUSTER_CONNECTION + configuration.getName(), control);
    }
 
    @Override
-   public synchronized void unregisterCluster(final String name) throws Exception {
-      ObjectName objectName = objectNameBuilder.getClusterConnectionObjectName(name);
-      unregisterFromJMX(objectName);
+   public void unregisterCluster(final String name) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getClusterConnectionObjectName(name));
       unregisterFromRegistry(ResourceNames.CORE_CLUSTER_CONNECTION + name);
    }
 
    @Override
-   public synchronized void registerConnectionRouter(final ConnectionRouter router) throws Exception {
-      ObjectName objectName = objectNameBuilder.getConnectionRouterObjectName(router.getName());
+   public void registerConnectionRouter(final ConnectionRouter router) throws Exception {
       ConnectionRouterControl connectionRouterControl = new ConnectionRouterControlImpl(router, storageManager);
-      registerInJMX(objectName, connectionRouterControl);
+      registerInJMX(objectNameBuilder.getConnectionRouterObjectName(router.getName()), connectionRouterControl);
       registerInRegistry(ResourceNames.CONNECTION_ROUTER + router.getName(), connectionRouterControl);
-
-      logger.debug("registered connection router {}", objectName);
    }
 
    @Override
-   public synchronized void unregisterConnectionRouter(final String name) throws Exception {
-      ObjectName objectName = objectNameBuilder.getConnectionRouterObjectName(name);
-      unregisterFromJMX(objectName);
+   public void unregisterConnectionRouter(final String name) throws Exception {
+      unregisterFromJMX(objectNameBuilder.getConnectionRouterObjectName(name));
       unregisterFromRegistry(ResourceNames.CONNECTION_ROUTER + name);
    }
 
    @Override
-   public void registerHawtioSecurity(ArtemisMBeanServerGuard mBeanServerGuard) throws Exception {
-      ObjectName objectName = objectNameBuilder.getManagementContextObjectName();
-      HawtioSecurityControl control = new HawtioSecurityControlImpl(mBeanServerGuard, storageManager);
-      registerInJMX(objectName, control);
+   public void registerHawtioSecurity(GuardInvocationHandler guard) throws Exception {
+      HawtioSecurityControl control = new HawtioSecurityControlImpl(guard, storageManager);
+      registerInJMX(objectNameBuilder.getSecurityObjectName(), control);
       registerInRegistry(ResourceNames.MANAGEMENT_SECURITY, control);
    }
 
    @Override
    public void unregisterHawtioSecurity() throws Exception {
-      ObjectName objectName = objectNameBuilder.getManagementContextObjectName();
-      unregisterFromJMX(objectName);
+      unregisterFromJMX(objectNameBuilder.getSecurityObjectName());
       unregisterFromRegistry(ResourceNames.MANAGEMENT_SECURITY);
    }
 
    @Override
-   public ICoreMessage handleMessage(Message message) throws Exception {
+   public ICoreMessage handleMessage(SecurityAuth auth, Message message) throws Exception {
       message = message.toCore();
       // a reply message is sent with the result stored in the message body.
       CoreMessage reply = new CoreMessage(storageManager.generateID(), 512);
@@ -553,7 +498,7 @@ public class ManagementServiceImpl implements ManagementService {
          }
 
          try {
-            Object result = invokeOperation(resourceName, operation, params);
+            Object result = invokeOperation(resourceName, operation, params, auth);
 
             ManagementHelper.storeResult(reply, result);
 
@@ -574,7 +519,7 @@ public class ManagementServiceImpl implements ManagementService {
 
          if (attribute != null) {
             try {
-               Object result = getAttribute(resourceName, attribute);
+               Object result = getAttribute(resourceName, attribute, auth);
 
                ManagementHelper.storeResult(reply, result);
 
@@ -596,24 +541,36 @@ public class ManagementServiceImpl implements ManagementService {
       return reply;
    }
 
+   protected void securityCheck(String controlName, CheckType permission, SecurityAuth auth) throws Exception {
+      if (managementMessageRbacResourceNamePrefix == null) {
+         return;
+      }
+      final SimpleString address = managementMessageRbacResourceNamePrefix.concat(controlName);
+      securityStore.check(address, permission, auth);
+   }
+
+   protected CheckType permissionForInvoke(String method) {
+      if (viewPermissionMatcher.matcher(method).matches()) {
+         return CheckType.VIEW;
+      }
+      return CheckType.EDIT;
+   }
+
    @Override
-   public synchronized Object getResource(final String resourceName) {
+   public Object getResource(final String resourceName) {
       return registry.get(resourceName);
    }
 
    @Override
-   public synchronized Object[] getResources(final Class<?> resourceType) {
+   public Object[] getResources(final Class<?> resourceType) {
       List<Object> resources = new ArrayList<>();
-      Collection<Object> clone = new ArrayList<>(registry.values());
-      for (Object entry : clone) {
+      for (Object entry : new ArrayList<>(registry.values())) {
          if (resourceType.isAssignableFrom(entry.getClass())) {
             resources.add(entry);
          }
       }
       return resources.toArray(new Object[resources.size()]);
    }
-
-   private final Set<ObjectName> registeredNames = new HashSet<>();
 
    @Override
    public void registerInJMX(final ObjectName objectName, final Object managedResource) throws Exception {
@@ -623,28 +580,13 @@ public class ManagementServiceImpl implements ManagementService {
 
       synchronized (mbeanServer) {
          unregisterFromJMX(objectName);
-
          mbeanServer.registerMBean(managedResource, objectName);
-
          registeredNames.add(objectName);
       }
+      logger.debug("Registered in JMX: {} as {}", objectName, managedResource);
    }
 
-   @Override
-   public synchronized void registerInRegistry(final String resourceName, final Object managedResource) {
-      unregisterFromRegistry(resourceName);
-
-      logger.debug("Registering {} as {}", resourceName, managedResource);
-
-      registry.put(resourceName, managedResource);
-   }
-
-   @Override
-   public synchronized void unregisterFromRegistry(final String resourceName) {
-      registry.remove(resourceName);
-   }
-
-   // the JMX unregistration is synchronized to avoid race conditions if 2 clients tries to
+   // the JMX unregistration is synchronized to avoid race conditions if 2 clients try to
    // unregister the same resource (e.g. a queue) at the same time since unregisterMBean()
    // will throw an exception if the MBean has already been unregistered
    @Override
@@ -656,9 +598,29 @@ public class ManagementServiceImpl implements ManagementService {
       synchronized (mbeanServer) {
          if (mbeanServer.isRegistered(objectName)) {
             mbeanServer.unregisterMBean(objectName);
-
             registeredNames.remove(objectName);
          }
+      }
+      logger.debug("Unregistered from JMX: {}", objectName);
+   }
+
+   @Override
+   public void registerInRegistry(final String resourceName, final Object managedResource) {
+      Object replaced = registry.put(resourceName, managedResource);
+      String addendum = "";
+      if (replaced != null) {
+         addendum = ". Replaced: " + replaced;
+      }
+      logger.debug("Registered in management: {} as {}{}", resourceName, managedResource, addendum);
+   }
+
+   @Override
+   public void unregisterFromRegistry(final String resourceName) {
+      Object removed = registry.remove(resourceName);
+      if (removed != null) {
+         logger.debug("Unregistered from management: {} as {}", resourceName, removed);
+      } else {
+         logger.debug("Attempted to unregister {} from management, but it was not registered.");
       }
    }
 
@@ -682,15 +644,15 @@ public class ManagementServiceImpl implements ManagementService {
       return managementNotificationAddress;
    }
 
-   // ActiveMQComponent implementation -----------------------------
-
    @Override
-   public void start() throws Exception {
+   public synchronized void start() throws Exception {
+      if (started) {
+         return;
+      }
+
       if (messageCounterEnabled) {
          messageCounterManager.start();
       }
-
-      started = true;
 
       /**
        * Ensure the management notification address is created otherwise if auto-create-address = false then cluster
@@ -709,10 +671,18 @@ public class ManagementServiceImpl implements ManagementService {
             }
          }
       });
+
+      started = true;
    }
 
    @Override
    public synchronized void stop() throws Exception {
+      if (!started) {
+         return;
+      }
+
+      started = false;
+
       Set<String> resourceNames = new HashSet<>(registry.keySet());
 
       for (String resourceName : resourceNames) {
@@ -772,11 +742,7 @@ public class ManagementServiceImpl implements ManagementService {
 
       storageManager = null;
 
-      messagingServer = null;
-
       registeredNames.clear();
-
-      started = false;
    }
 
    @Override
@@ -786,60 +752,56 @@ public class ManagementServiceImpl implements ManagementService {
 
    @Override
    public void sendNotification(final Notification notification) throws Exception {
-      if (logger.isTraceEnabled()) {
-         logger.trace("Sending Notification = {}, notificationEnabled={} messagingServerControl={}",
-                      notification, notificationsEnabled, messagingServerControl);
+      if (messagingServerControl == null || !notificationsEnabled) {
+         return;
       }
-      // This needs to be synchronized since we need to ensure notifications are processed in strict sequence
-      synchronized (this) {
-         if (messagingServerControl != null && notificationsEnabled) {
-            // We also need to synchronize on the post office notification lock
-            // otherwise we can get notifications arriving in wrong order / missing
-            // if a notification occurs at same time as sendQueueInfoToQueue is processed
-            synchronized (postOffice.getNotificationLock()) {
 
-               // First send to any local listeners
-               for (NotificationListener listener : listeners) {
-                  try {
-                     listener.onNotification(notification);
-                  } catch (Exception e) {
-                     // Exception thrown from one listener should not stop execution of others
-                     ActiveMQServerLogger.LOGGER.errorCallingNotifListener(e);
-                  }
-               }
+      // This needs to be synchronized since we need to ensure notifications are processed in strict sequence.
+      // Furthermore, this needs to synchronize on the PostOffice notificationLock otherwise we can get notifications
+      // arriving in the wrong order or missing notifications if one occurs at same time as sendQueueInfoToQueue is
+      // processed.
+      synchronized (postOffice.getNotificationLock()) {
+         logger.trace("Sending notification={}", notification);
 
-               // start sending notification *messages* only when server has initialised
-               // Note at backup initialisation we don't want to send notifications either
-               // https://jira.jboss.org/jira/browse/HORNETQ-317
-               if (messagingServer == null || !messagingServer.isActive()) {
-                  logger.debug("ignoring message {} as the server is not initialized", notification);
-
-                  return;
-               }
-
-               long messageID = storageManager.generateID();
-
-               Message notificationMessage = new CoreMessage(messageID, 512);
-
-               // Notification messages are always durable so the user can choose whether to add a durable queue to
-               // consume them in
-               notificationMessage.setDurable(true);
-               notificationMessage.setAddress(managementNotificationAddress);
-
-               if (notification.getProperties() != null) {
-                  TypedProperties props = notification.getProperties();
-                  props.forEach(notificationMessage::putObjectProperty);
-               }
-
-               notificationMessage.putStringProperty(ManagementHelper.HDR_NOTIFICATION_TYPE, new SimpleString(notification.getType().toString()));
-
-               long timestamp = System.currentTimeMillis();
-               notificationMessage.putLongProperty(ManagementHelper.HDR_NOTIFICATION_TIMESTAMP, timestamp);
-               notificationMessage.setTimestamp(timestamp);
-
-               postOffice.route(notificationMessage, false);
+         // First send to any local listeners
+         for (NotificationListener listener : listeners) {
+            try {
+               listener.onNotification(notification);
+            } catch (Exception e) {
+               // Exception thrown from one listener should not stop execution of others
+               ActiveMQServerLogger.LOGGER.errorCallingNotifListener(e);
             }
          }
+
+         // start sending notification *messages* only when server has initialised
+         // Note at backup initialisation we don't want to send notifications either
+         // https://jira.jboss.org/jira/browse/HORNETQ-317
+         if (messagingServer == null || !messagingServer.isActive()) {
+            logger.debug("ignoring message {} as the server is not initialized", notification);
+            return;
+         }
+
+         long messageID = storageManager.generateID();
+
+         Message notificationMessage = new CoreMessage(messageID, 512);
+
+         // Notification messages are always durable so the user can choose whether to add a durable queue to
+         // consume them in
+         notificationMessage.setDurable(true);
+         notificationMessage.setAddress(managementNotificationAddress);
+
+         if (notification.getProperties() != null) {
+            TypedProperties props = notification.getProperties();
+            props.forEach(notificationMessage::putObjectProperty);
+         }
+
+         notificationMessage.putStringProperty(ManagementHelper.HDR_NOTIFICATION_TYPE, SimpleString.of(notification.getType().toString()));
+
+         long timestamp = System.currentTimeMillis();
+         notificationMessage.putLongProperty(ManagementHelper.HDR_NOTIFICATION_TIMESTAMP, timestamp);
+         notificationMessage.setTimestamp(timestamp);
+
+         postOffice.route(notificationMessage, false);
       }
    }
 
@@ -849,7 +811,7 @@ public class ManagementServiceImpl implements ManagementService {
    }
 
    @Override
-   public Object getAttribute(final String resourceName, final String attribute) {
+   public Object getAttribute(final String resourceName, final String attribute, SecurityAuth auth) {
       try {
          Object resource = registry.get(resourceName);
 
@@ -857,7 +819,7 @@ public class ManagementServiceImpl implements ManagementService {
             throw ActiveMQMessageBundle.BUNDLE.cannotFindResource(resourceName);
          }
 
-         Method method = null;
+         Method method;
 
          String upperCaseAttribute = attribute.substring(0, 1).toUpperCase() + attribute.substring(1);
          try {
@@ -869,6 +831,11 @@ public class ManagementServiceImpl implements ManagementService {
                throw ActiveMQMessageBundle.BUNDLE.noGetterMethod(attribute);
             }
          }
+
+         final String methodName = method.getName();
+
+         securityCheck(resourceName + "." + methodName, permissionForInvoke(methodName), auth);
+
          return method.invoke(resource, new Object[0]);
       } catch (Throwable t) {
          throw new IllegalStateException("Problem while retrieving attribute " + attribute, t);
@@ -877,8 +844,9 @@ public class ManagementServiceImpl implements ManagementService {
 
    @Override
    public Object invokeOperation(final String resourceName,
-                                  final String operation,
-                                  final Object[] params) throws Exception {
+                                 final String operation,
+                                 final Object[] params,
+                                 SecurityAuth auth) throws Exception {
       Object resource = registry.get(resourceName);
 
       if (resource == null) {
@@ -926,8 +894,10 @@ public class ManagementServiceImpl implements ManagementService {
          throw ActiveMQMessageBundle.BUNDLE.noOperation(operation, params.length);
       }
 
-      Object result = method.invoke(resource, params);
-      return result;
+      final String methodName = method.getName();
+      securityCheck(resourceName + "." + methodName, permissionForInvoke(methodName), auth);
+
+      return method.invoke(resource, params);
    }
 
    /**
@@ -949,5 +919,4 @@ public class ManagementServiceImpl implements ManagementService {
 
       return correlationId;
    }
-
 }

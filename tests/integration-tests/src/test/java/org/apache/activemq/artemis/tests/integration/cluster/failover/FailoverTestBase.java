@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.failover;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.ArrayList;
@@ -37,7 +42,7 @@ import org.apache.activemq.artemis.core.client.impl.ClientSessionFactoryInternal
 import org.apache.activemq.artemis.core.client.impl.ServerLocatorInternal;
 import org.apache.activemq.artemis.core.config.ClusterConnectionConfiguration;
 import org.apache.activemq.artemis.core.config.Configuration;
-import org.apache.activemq.artemis.core.config.ha.DistributedPrimitiveManagerConfiguration;
+import org.apache.activemq.artemis.core.config.ha.DistributedLockManagerConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicaPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.SharedStorePrimaryPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.SharedStoreBackupPolicyConfiguration;
@@ -48,18 +53,17 @@ import org.apache.activemq.artemis.core.server.cluster.ha.HAPolicy;
 import org.apache.activemq.artemis.core.server.cluster.ha.ReplicatedPolicy;
 import org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl;
 import org.apache.activemq.artemis.core.server.impl.InVMNodeManager;
-import org.apache.activemq.artemis.quorum.file.FileBasedPrimitiveManager;
+import org.apache.activemq.artemis.lockmanager.file.FileBasedLockManager;
 import org.apache.activemq.artemis.tests.integration.cluster.util.SameProcessActiveMQServer;
 import org.apache.activemq.artemis.tests.integration.cluster.util.TestableServer;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.ReplicatedBackupUtils;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
 public abstract class FailoverTestBase extends ActiveMQTestBase {
 
-   protected static final SimpleString ADDRESS = new SimpleString("FailoverTestAddress");
+   protected static final SimpleString ADDRESS = SimpleString.of("FailoverTestAddress");
 
    /*
     * Used only by tests of large messages.
@@ -83,12 +87,12 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
 
    protected NodeManager backupNodeManager;
 
-   protected DistributedPrimitiveManagerConfiguration managerConfiguration;
+   protected DistributedLockManagerConfiguration managerConfiguration;
 
    protected boolean startBackupServer = true;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       createConfigs();
@@ -158,8 +162,8 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
       ActiveMQBuffer buffer = message.getBodyBuffer();
 
       for (int j = 0; j < LARGE_MESSAGE_SIZE; j++) {
-         Assert.assertTrue("msg " + i + ", expecting " + LARGE_MESSAGE_SIZE + " bytes, got " + j, buffer.readable());
-         Assert.assertEquals("equal at " + j, ActiveMQTestBase.getSamplebyte(j), buffer.readByte());
+         assertTrue(buffer.readable(), "msg " + i + ", expecting " + LARGE_MESSAGE_SIZE + " bytes, got " + j);
+         assertEquals(ActiveMQTestBase.getSamplebyte(j), buffer.readByte(), "equal at " + j);
       }
    }
 
@@ -236,8 +240,8 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
       primaryConfig = createDefaultInVMConfig();
 
       managerConfiguration =
-         new DistributedPrimitiveManagerConfiguration(FileBasedPrimitiveManager.class.getName(),
-                                                      Collections.singletonMap("locks-folder", temporaryFolder.newFolder("manager").toString()));
+         new DistributedLockManagerConfiguration(FileBasedLockManager.class.getName(),
+                                                 Collections.singletonMap("locks-folder", newFolder(temporaryFolder, "manager").toString()));
 
       ReplicatedBackupUtils.configurePluggableQuorumReplicationPair(backupConfig, backupConnector, backupAcceptor, primaryConfig, primaryConnector, null, managerConfiguration, managerConfiguration);
 
@@ -255,7 +259,7 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
    }
 
    protected void setupHAPolicyConfiguration() {
-      Assert.assertTrue(backupConfig.getHAPolicyConfiguration() instanceof ReplicaPolicyConfiguration);
+      assertTrue(backupConfig.getHAPolicyConfiguration() instanceof ReplicaPolicyConfiguration);
       ((ReplicaPolicyConfiguration) backupConfig.getHAPolicyConfiguration()).setMaxSavedReplicatedJournalsSize(-1).setAllowFailBack(true);
       ((ReplicaPolicyConfiguration) backupConfig.getHAPolicyConfiguration()).setRestartBackup(false);
    }
@@ -265,8 +269,8 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
       final TransportConfiguration backupConnector = getConnectorTransportConfiguration(false);
       if (server.getServer().getHAPolicy().isSharedStore()) {
          ClusterConnectionConfiguration cc = configuration.getClusterConfigurations().get(0);
-         Assert.assertNotNull("cluster connection configuration", cc);
-         Assert.assertNotNull("static connectors", cc.getStaticConnectors());
+         assertNotNull(cc, "cluster connection configuration");
+         assertNotNull(cc.getStaticConnectors(), "static connectors");
          cc.getStaticConnectors().add(backupConnector.getName());
          // backupConnector is only necessary for fail-back tests
          configuration.getConnectorConfigurations().put(backupConnector.getName(), backupConnector);
@@ -280,14 +284,14 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       logAndSystemOut("#test tearDown");
 
       InVMConnector.failOnCreateConnection = false;
 
       super.tearDown();
-      Assert.assertEquals(0, InVMRegistry.instance.size());
+      assertEquals(0, InVMRegistry.instance.size());
 
       backupServer = null;
 
@@ -319,7 +323,7 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
       ClientSessionFactoryInternal sf = (ClientSessionFactoryInternal) locator.createSessionFactory();
       addSessionFactory(sf);
 
-      Assert.assertTrue("topology members expected " + topologyMembers, countDownLatch.await(5, TimeUnit.SECONDS));
+      assertTrue(countDownLatch.await(5, TimeUnit.SECONDS), "topology members expected " + topologyMembers);
       return sf;
    }
 
@@ -388,5 +392,14 @@ public abstract class FailoverTestBase extends ActiveMQTestBase {
       public void nodeDown(final long uniqueEventID, String nodeID) {
          //To change body of implemented methods use File | Settings | File Templates.
       }
+
+   }
+
+   private static File newFolder(File root, String subFolder) throws IOException {
+      File result = new File(root, subFolder);
+      if (!result.mkdirs()) {
+         throw new IOException("Couldn't create folders " + root);
+      }
+      return result;
    }
 }

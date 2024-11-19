@@ -178,6 +178,8 @@ public interface Queue extends Bindable,CriticalComponent {
 
    long getRingSize();
 
+   int getInitialQueueBufferSize();
+
    default boolean isMirrorController() {
       return false;
    }
@@ -313,8 +315,6 @@ public interface Queue extends Bindable,CriticalComponent {
 
    MessageReference removeReferenceWithID(long id) throws Exception;
 
-   MessageReference getReference(long id) throws ActiveMQException;
-
    int deleteAllReferences() throws Exception;
 
    int deleteAllReferences(int flushLimit) throws Exception;
@@ -433,6 +433,10 @@ public interface Queue extends Bindable,CriticalComponent {
    }
 
    default MessageReference peekFirstMessage() {
+      return null;
+   }
+
+   default MessageReference peekFirstScheduledMessage() {
       return null;
    }
 

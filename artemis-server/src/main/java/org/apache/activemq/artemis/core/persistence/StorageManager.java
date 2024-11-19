@@ -30,18 +30,19 @@ import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.Pair;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.io.IOCallback;
+import org.apache.activemq.artemis.core.io.OperationConsistencyLevel;
 import org.apache.activemq.artemis.core.io.SequentialFile;
 import org.apache.activemq.artemis.core.io.SequentialFileFactory;
 import org.apache.activemq.artemis.core.journal.Journal;
 import org.apache.activemq.artemis.core.journal.JournalLoadInformation;
 import org.apache.activemq.artemis.core.journal.RecordInfo;
+import org.apache.activemq.artemis.core.journal.collections.MapStorageManager;
 import org.apache.activemq.artemis.core.paging.PageTransactionInfo;
 import org.apache.activemq.artemis.core.paging.PagedMessage;
 import org.apache.activemq.artemis.core.paging.PagingManager;
 import org.apache.activemq.artemis.core.paging.PagingStore;
 import org.apache.activemq.artemis.core.paging.cursor.PagePosition;
 import org.apache.activemq.artemis.core.persistence.config.AbstractPersistedAddressSetting;
-import org.apache.activemq.artemis.core.persistence.config.PersistedAddressSetting;
 import org.apache.activemq.artemis.core.persistence.config.PersistedAddressSettingJSON;
 import org.apache.activemq.artemis.core.persistence.config.PersistedBridgeConfiguration;
 import org.apache.activemq.artemis.core.persistence.config.PersistedConnector;
@@ -77,9 +78,14 @@ import org.apache.activemq.artemis.utils.IDGenerator;
  * I couldn't just get the IDGenerator from the inner part because the NullPersistent has its own sequence.
  * So the best was to add the interface and adjust the callers for the method
  */
-public interface StorageManager extends IDGenerator, ActiveMQComponent {
+public interface StorageManager extends MapStorageManager, IDGenerator, ActiveMQComponent {
 
    default long getMaxRecordSize() {
+      /** Null journal is pretty much memory */
+      return Long.MAX_VALUE;
+   }
+
+   default long getWarningRecordSize() {
       /** Null journal is pretty much memory */
       return Long.MAX_VALUE;
    }
@@ -122,14 +128,15 @@ public interface StorageManager extends IDGenerator, ActiveMQComponent {
 
    // Message related operations
 
-   void pageClosed(SimpleString storeName, long pageNumber);
+   void pageClosed(SimpleString address, long pageNumber);
 
-   void pageDeleted(SimpleString storeName, long pageNumber);
+   void pageDeleted(SimpleString address, long pageNumber);
 
-   void pageWrite(PagedMessage message, long pageNumber);
+   void pageWrite(SimpleString address, PagedMessage message, long pageNumber);
 
    void afterCompleteOperations(IOCallback run);
 
+   void afterCompleteOperations(IOCallback run, OperationConsistencyLevel consistencyLevel);
    /**
     * This is similar to afterComplete, however this only cares about the journal part.
     */
@@ -221,10 +228,10 @@ public interface StorageManager extends IDGenerator, ActiveMQComponent {
 
    void deleteDuplicateIDTransactional(long txID, long recordID) throws Exception;
 
-   LargeServerMessage createLargeMessage();
+   LargeServerMessage createCoreLargeMessage();
 
    /**
-    * Creates a new LargeMessage with the given id.
+    * Creates a new LargeServerMessage for the core Protocol with the given id.
     *
     * @param id
     * @param message This is a temporary message that holds the parsed properties. The remoting
@@ -232,9 +239,10 @@ public interface StorageManager extends IDGenerator, ActiveMQComponent {
     * @return a large message object
     * @throws Exception
     */
-   LargeServerMessage createLargeMessage(long id, Message message) throws Exception;
+   LargeServerMessage createCoreLargeMessage(long id, Message message) throws Exception;
 
-   LargeServerMessage largeMessageCreated(long id, LargeServerMessage largeMessage) throws Exception;
+   /** Other protocols may inform the storage manager when a large message was created. */
+   LargeServerMessage onLargeMessageCreate(long id, LargeServerMessage largeMessage) throws Exception;
 
    enum LargeMessageExtension {
       DURABLE(".msg"), TEMPORARY(".tmp"), SYNC(".sync");
@@ -366,13 +374,13 @@ public interface StorageManager extends IDGenerator, ActiveMQComponent {
 
    void deleteGrouping(long tx, GroupBinding groupBinding) throws Exception;
 
-   void storeAddressSetting(PersistedAddressSetting addressSetting) throws Exception;
-
    void storeAddressSetting(PersistedAddressSettingJSON addressSetting) throws Exception;
 
    void deleteAddressSetting(SimpleString addressMatch) throws Exception;
 
    List<AbstractPersistedAddressSetting> recoverAddressSettings() throws Exception;
+
+   AbstractPersistedAddressSetting recoverAddressSettings(SimpleString address);
 
    void storeSecuritySetting(PersistedSecuritySetting persistedRoles) throws Exception;
 

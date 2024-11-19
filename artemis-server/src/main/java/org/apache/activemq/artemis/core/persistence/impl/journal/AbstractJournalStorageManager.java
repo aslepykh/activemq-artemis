@@ -54,6 +54,8 @@ import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.filter.Filter;
 import org.apache.activemq.artemis.core.io.IOCallback;
 import org.apache.activemq.artemis.core.io.IOCriticalErrorListener;
+import org.apache.activemq.artemis.core.io.OperationConsistencyLevel;
+import org.apache.activemq.artemis.core.journal.IOCompletion;
 import org.apache.activemq.artemis.core.journal.Journal;
 import org.apache.activemq.artemis.core.journal.JournalLoadInformation;
 import org.apache.activemq.artemis.core.journal.PreparedTransactionInfo;
@@ -69,6 +71,7 @@ import org.apache.activemq.artemis.core.paging.impl.PageTransactionInfoImpl;
 import org.apache.activemq.artemis.core.persistence.AddressBindingInfo;
 import org.apache.activemq.artemis.core.persistence.GroupingInfo;
 import org.apache.activemq.artemis.core.persistence.OperationContext;
+import org.apache.activemq.artemis.core.persistence.Persister;
 import org.apache.activemq.artemis.core.persistence.QueueBindingInfo;
 import org.apache.activemq.artemis.core.persistence.AddressQueueStatus;
 import org.apache.activemq.artemis.core.persistence.StorageManager;
@@ -276,10 +279,14 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
       idGenerator = new BatchingIDGenerator(0, CHECKPOINT_BATCH_SIZE, this);
    }
 
-
    @Override
    public long getMaxRecordSize() {
       return messageJournal.getMaxRecordSize();
+   }
+
+   @Override
+   public long getWarningRecordSize() {
+      return messageJournal.getWarningRecordSize();
    }
 
 
@@ -349,8 +356,13 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
    }
 
    @Override
+   public void afterCompleteOperations(final IOCallback run, OperationConsistencyLevel consistencyLevel) {
+      getContext().executeOnCompletion(run, consistencyLevel);
+   }
+
+   @Override
    public void afterStoreOperations(IOCallback run) {
-      getContext().executeOnCompletion(run, true);
+      getContext().executeOnCompletion(run, OperationConsistencyLevel.STORAGE);
    }
 
    @Override
@@ -381,6 +393,45 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
       try (ArtemisCloseable lock = closeableReadLock()) {
          messageJournal.tryAppendDeleteRecord(recordID, true, this::messageUpdateCallback, getContext());
       }
+   }
+
+   @Override
+   public void storeMapRecord(long id,
+                              byte recordType,
+                              Persister persister,
+                              Object record,
+                              boolean sync,
+                              IOCompletion completionCallback) throws Exception {
+      try (ArtemisCloseable lock = closeableReadLock()) {
+         messageJournal.appendAddRecord(id, recordType, persister, record, sync, completionCallback);
+      }
+
+   }
+
+   @Override
+   public void storeMapRecord(long id,
+                              byte recordType,
+                              Persister persister,
+                              Object record,
+                              boolean sync) throws Exception {
+      try (ArtemisCloseable lock = closeableReadLock()) {
+         messageJournal.appendAddRecord(id, recordType, persister, record, sync);
+      }
+   }
+
+   @Override
+   public void deleteMapRecord(long id, boolean sync) throws Exception {
+      try (ArtemisCloseable lock = closeableReadLock()) {
+         messageJournal.appendDeleteRecord(id, sync);
+      }
+   }
+
+   @Override
+   public void deleteMapRecordTx(long txid, long id) throws Exception {
+      try (ArtemisCloseable lock = closeableReadLock()) {
+         messageJournal.appendDeleteRecordTransactional(txid, id);
+      }
+
    }
 
    @Override
@@ -731,18 +782,6 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
          messageJournal.tryAppendUpdateRecord(ref.getMessage().getMessageID(), JournalRecordIds.UPDATE_DELIVERY_COUNT, updateInfo, syncNonTransactional, true, this::messageUpdateCallback, getContext(syncNonTransactional));
       }
    }
-
-   @Override
-   public void storeAddressSetting(PersistedAddressSetting addressSetting) throws Exception {
-      deleteAddressSetting(addressSetting.getAddressMatch());
-      try (ArtemisCloseable lock = closeableReadLock()) {
-         long id = idGenerator.generateID();
-         addressSetting.setStoreId(id);
-         bindingsJournal.appendAddRecord(id, JournalRecordIds.ADDRESS_SETTING_RECORD, addressSetting, true);
-         mapPersistedAddressSettings.put(addressSetting.getAddressMatch(), addressSetting);
-      }
-   }
-
    @Override
    public void storeAddressSetting(PersistedAddressSettingJSON addressSetting) throws Exception {
       deleteAddressSetting(addressSetting.getAddressMatch());
@@ -757,6 +796,11 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
    @Override
    public List<AbstractPersistedAddressSetting> recoverAddressSettings() throws Exception {
       return new ArrayList<>(mapPersistedAddressSettings.values());
+   }
+
+   @Override
+   public AbstractPersistedAddressSetting recoverAddressSettings(SimpleString address) {
+      return mapPersistedAddressSettings.get(address);
    }
 
    @Override
@@ -1790,12 +1834,7 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
       }
 
       final CountDownLatch latch = new CountDownLatch(1);
-      executor.execute(new Runnable() {
-         @Override
-         public void run() {
-            latch.countDown();
-         }
-      });
+      executor.execute(latch::countDown);
 
       latch.await(30, TimeUnit.SECONDS);
 
@@ -2087,8 +2126,10 @@ public abstract class AbstractJournalStorageManager extends CriticalComponentImp
       }
 
       @Override
-      public void executeOnCompletion(IOCallback runnable, boolean storeOnly) {
-         executeOnCompletion(runnable);
+      public void executeOnCompletion(IOCallback runnable, OperationConsistencyLevel consistencyLevel) {
+         // There are no executeOnCompletion calls while using the DummyOperationContext
+         // However we keep the code here for correctness
+         runnable.done();
       }
 
       @Override

@@ -123,7 +123,8 @@ public class ClusterConnectionBridge extends BridgeImpl {
                                   final MessageFlowRecord flowRecord,
                                   final TransportConfiguration connector,
                                   final String storeAndForwardPrefix,
-                                  final StorageManager storageManager) throws ActiveMQException {
+                                  final StorageManager storageManager,
+                                  final String clientId) throws ActiveMQException {
       super(targetLocator, new BridgeConfiguration()
          .setName(name == null ? null : name.toString())
          .setInitialConnectAttempts(initialConnectAttempts)
@@ -138,7 +139,8 @@ public class ClusterConnectionBridge extends BridgeImpl {
          .setUser(user)
          .setPassword(password)
          .setTransformerConfiguration(transformer)
-         .setRoutingType(ComponentConfigurationRoutingType.valueOf(ActiveMQDefaultConfiguration.getDefaultBridgeRoutingType())), nodeUUID, queue, executor, scheduledExecutor, server);
+         .setRoutingType(ComponentConfigurationRoutingType.valueOf(ActiveMQDefaultConfiguration.getDefaultBridgeRoutingType()))
+         .setClientId(clientId), nodeUUID, queue, executor, scheduledExecutor, server);
 
       this.discoveryLocator = discoveryLocator;
 
@@ -245,9 +247,9 @@ public class ClusterConnectionBridge extends BridgeImpl {
             "." +
             clusterConnection.getServer().toString().replaceAll(CompositeAddress.SEPARATOR, "_");
 
-         SimpleString notifQueueName = new SimpleString(qName);
+         SimpleString notifQueueName = SimpleString.of(qName);
 
-         SimpleString filter = new SimpleString("(" + ManagementHelper.HDR_BINDING_TYPE + " <> " + BindingType.DIVERT.toInt() +
+         SimpleString filter = SimpleString.of("(" + ManagementHelper.HDR_BINDING_TYPE + " <> " + BindingType.DIVERT.toInt() +
                                                    " OR "
                                                    + ManagementHelper.HDR_BINDING_TYPE + " IS NULL)" +
                                                    " AND " +
@@ -281,7 +283,7 @@ public class ClusterConnectionBridge extends BridgeImpl {
                                                    createPermissiveManagementNotificationToFilter() +
                                                    ")");
 
-         sessionConsumer.createQueue(new QueueConfiguration(notifQueueName)
+         sessionConsumer.createQueue(QueueConfiguration.of(notifQueueName)
                                         .setAddress(managementNotificationAddress)
                                         .setFilterString(filter)
                                         .setDurable(false)

@@ -17,6 +17,8 @@
 
 package org.apache.activemq.artemis.tests.integration.cluster.failover;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -49,17 +51,16 @@ import org.apache.activemq.artemis.tests.integration.cluster.util.TestableServer
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.ReplicatedBackupUtils;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ReplicaTimeoutTest extends ActiveMQTestBase {
 
    protected ServerLocator locator;
 
-   protected static final SimpleString ADDRESS = new SimpleString("FailoverTestAddress");
+   protected static final SimpleString ADDRESS = SimpleString.of("FailoverTestAddress");
 
-   @Before
+   @BeforeEach
    public void setup() {
       locator = addServerLocator(ActiveMQClient.createServerLocatorWithHA(getConnectorTransportConfiguration(true), getConnectorTransportConfiguration(false))).setRetryInterval(50);
    }
@@ -92,7 +93,7 @@ public class ReplicaTimeoutTest extends ActiveMQTestBase {
       ClientSessionFactoryInternal sf = (ClientSessionFactoryInternal) locator.createSessionFactory();
       addSessionFactory(sf);
 
-      Assert.assertTrue("topology members expected " + topologyMembers, countDownLatch.await(5, TimeUnit.SECONDS));
+      assertTrue(countDownLatch.await(5, TimeUnit.SECONDS), "topology members expected " + topologyMembers);
       return sf;
    }
 
@@ -174,43 +175,40 @@ public class ReplicaTimeoutTest extends ActiveMQTestBase {
 
          ClientSession session = createSession(sf, true, true);
 
-         session.createQueue(new QueueConfiguration(ADDRESS));
+         session.createQueue(QueueConfiguration.of(ADDRESS));
 
          crash(primaryServer, backupServer, session);
 
          Wait.assertTrue(backupServer.getServer()::isActive);
 
-         ((ActiveMQServerImpl) backupServer.getServer()).setAfterActivationCreated(new Runnable() {
-            @Override
-            public void run() {
-               final Activation backupActivation = theBackup.getServer().getActivation();
-               if (backupActivation instanceof SharedNothingBackupActivation) {
-                  SharedNothingBackupActivation activation = (SharedNothingBackupActivation) backupActivation;
-                  ReplicationEndpoint repEnd = activation.getReplicationEndpoint();
-                  repEnd.addOutgoingInterceptorForReplication((packet, connection) -> {
+         ((ActiveMQServerImpl) backupServer.getServer()).setAfterActivationCreated(() -> {
+            final Activation backupActivation = theBackup.getServer().getActivation();
+            if (backupActivation instanceof SharedNothingBackupActivation) {
+               SharedNothingBackupActivation activation = (SharedNothingBackupActivation) backupActivation;
+               ReplicationEndpoint repEnd = activation.getReplicationEndpoint();
+               repEnd.addOutgoingInterceptorForReplication((packet, connection) -> {
+                  if (packet.getType() == PacketImpl.REPLICATION_RESPONSE_V2) {
+                     return false;
+                  }
+                  return true;
+               });
+            } else if (backupActivation instanceof ReplicationBackupActivation) {
+               ReplicationBackupActivation activation = (ReplicationBackupActivation) backupActivation;
+               activation.spyReplicationEndpointCreation(replicationEndpoint -> {
+                  replicationEndpoint.addOutgoingInterceptorForReplication((packet, connection) -> {
                      if (packet.getType() == PacketImpl.REPLICATION_RESPONSE_V2) {
                         return false;
                      }
                      return true;
                   });
-               } else if (backupActivation instanceof ReplicationBackupActivation) {
-                  ReplicationBackupActivation activation = (ReplicationBackupActivation) backupActivation;
-                  activation.spyReplicationEndpointCreation(replicationEndpoint -> {
-                     replicationEndpoint.addOutgoingInterceptorForReplication((packet, connection) -> {
-                        if (packet.getType() == PacketImpl.REPLICATION_RESPONSE_V2) {
-                           return false;
-                        }
-                        return true;
-                     });
-                  });
-               }
+               });
             }
          });
 
          try (AssertionLoggerHandler loggerHandler = new AssertionLoggerHandler(true)) {
             primaryServer.start();
 
-            Assert.assertTrue(Wait.waitFor(() -> loggerHandler.findTrace("AMQ229114")));
+            assertTrue(Wait.waitFor(() -> loggerHandler.findTrace("AMQ229114")));
          }
 
          if (expectPrimarySuicide()) {

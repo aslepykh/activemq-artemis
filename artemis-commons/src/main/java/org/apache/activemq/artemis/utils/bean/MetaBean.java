@@ -36,8 +36,8 @@ import org.slf4j.LoggerFactory;
  * Receives a metadata about a class with methods to read, write and certain gates.
  * And provides a generic logic to convert to and from JSON.
  * <p>
- * As a historical context the first try to make a few objects more dynamic (e.g AddressSettings) was
- * around BeanUtils however there was some implicit logic on when certain settins were Null or default values.
+ * As a historical context the first try to make a few objects more dynamic (e.g. AddressSettings) was
+ * around BeanUtils however there was some implicit logic on when certain settings were Null or default values.
  * for that reason I decided for a meta-data approach where extra semantic could be applied for each individual attributes
  * rather than a generic BeanUtils parser.
  */
@@ -192,7 +192,7 @@ public class MetaBean<T> {
             } else if (type == String.class) {
                setter.accept(resultObject, json.getString(name));
             } else if (type == SimpleString.class) {
-               setter.accept(resultObject, SimpleString.toSimpleString(json.getString(name)));
+               setter.accept(resultObject, SimpleString.of(json.getString(name)));
             } else if (type == Integer.class) {
                setter.accept(resultObject, json.getInt(name));
             } else if (type == Long.class) {

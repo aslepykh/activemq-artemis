@@ -138,8 +138,8 @@ public final class InVMAcceptor extends AbstractAcceptor {
 
       if (notificationService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(new SimpleString("factory"), new SimpleString(InVMAcceptorFactory.class.getName()));
-         props.putIntProperty(new SimpleString("id"), id);
+         props.putSimpleStringProperty(SimpleString.of("factory"), SimpleString.of(InVMAcceptorFactory.class.getName()));
+         props.putIntProperty(SimpleString.of("id"), id);
          Notification notification = new Notification(null, CoreNotificationType.ACCEPTOR_STARTED, props);
          notificationService.sendNotification(notification);
       }
@@ -167,8 +167,8 @@ public final class InVMAcceptor extends AbstractAcceptor {
 
       if (notificationService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(new SimpleString("factory"), new SimpleString(InVMAcceptorFactory.class.getName()));
-         props.putIntProperty(new SimpleString("id"), id);
+         props.putSimpleStringProperty(SimpleString.of("factory"), SimpleString.of(InVMAcceptorFactory.class.getName()));
+         props.putIntProperty(SimpleString.of("id"), id);
          Notification notification = new Notification(null, CoreNotificationType.ACCEPTOR_STOPPED, props);
          try {
             notificationService.sendNotification(notification);
@@ -243,7 +243,7 @@ public final class InVMAcceptor extends AbstractAcceptor {
       Connection conn = connections.get(connectionID);
 
       if (conn != null) {
-         conn.close();
+         conn.disconnect();
       }
    }
 
@@ -296,12 +296,9 @@ public final class InVMAcceptor extends AbstractAcceptor {
             listener.connectionDestroyed(connectionID, failed);
 
             // Execute on different thread after all the packets are sent, to avoid deadlocks
-            connection.getExecutor().execute(new Runnable() {
-               @Override
-               public void run() {
-                  // Remove on the other side too
-                  connector.disconnect((String) connectionID);
-               }
+            connection.getExecutor().execute(() -> {
+               // Remove on the other side too
+               connector.disconnect((String) connectionID);
             });
          }
       }

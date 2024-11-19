@@ -17,6 +17,12 @@
 
 package org.apache.activemq.artemis.tests.integration.amqp.connect;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.lang.invoke.MethodHandles;
 import java.util.Arrays;
 import java.util.Map;
@@ -48,8 +54,9 @@ import org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport;
 import org.apache.activemq.artemis.tests.integration.amqp.AmqpClientTestSupport;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,7 +93,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       params.put("amqpMinLargeMessageSize", MIN_LARGE_MESSAGE_SIZE);
    }
 
-   @After
+   @AfterEach
    @Override
    public void tearDown() throws Exception {
       super.tearDown();
@@ -108,12 +115,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnLocalBrokerFederatesMessagesFromRemoteAMQP() throws Exception {
       testAddresDemandOnLocalBrokerFederatesMessagesFromRemote("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnLocalBrokerFederatesMessagesFromRemoteCORE() throws Exception {
       testAddresDemandOnLocalBrokerFederatesMessagesFromRemote("CORE");
    }
@@ -158,8 +167,12 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.addressQuery(SimpleString.toSimpleString("test")).isExists());
-         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.addressQuery(SimpleString.of("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.of("test")).isExists());
+
+         // Captures state of JMS consumers and federation consumers attached on each node
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
+         Wait.assertTrue(() -> remoteServer.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
 
          final MessageProducer producerR = sessionR.createProducer(topic);
          final TextMessage message = sessionR.createTextMessage("Hello World");
@@ -177,12 +190,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testDivertAddressDemandOnLocalBrokerFederatesMessagesFromRemoteAMQP() throws Exception {
       testDivertAddresDemandOnLocalBrokerFederatesMessagesFromRemote("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testDivertAddresDemandOnLocalBrokerFederatesMessagesFromRemoteCORE() throws Exception {
       testDivertAddresDemandOnLocalBrokerFederatesMessagesFromRemote("CORE");
    }
@@ -218,7 +233,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       server.start();
       server.deployDivert(divert);
       // Currently the address must exist on the local before we will federate from the remote
-      server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("source"), RoutingType.MULTICAST));
+      server.addAddressInfo(new AddressInfo(SimpleString.of("source"), RoutingType.MULTICAST));
 
       final ConnectionFactory factoryLocal = CFUtil.createConnectionFactory(clientProtocol, "tcp://localhost:" + SERVER_PORT);
       final ConnectionFactory factoryRemote = CFUtil.createConnectionFactory(clientProtocol, "tcp://localhost:" + SERVER_PORT_REMOTE);
@@ -238,7 +253,11 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.toSimpleString("source")).isExists());
+         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.of("source")).isExists());
+
+         // Captures state of JMS consumers and federation consumers attached on each node
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("target"), false).getQueueNames().size() >= 1);
+         Wait.assertTrue(() -> remoteServer.bindingQuery(SimpleString.of("source"), false).getQueueNames().size() >= 1);
 
          final MessageProducer producerR = sessionR.createProducer(source);
          final TextMessage message = sessionR.createTextMessage("Hello World");
@@ -256,12 +275,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesMessagesFromRemoteAMQP() throws Exception {
       testQueueDemandOnLocalBrokerFederatesMessagesFromRemote("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesMessagesFromRemoteCORE() throws Exception {
       testQueueDemandOnLocalBrokerFederatesMessagesFromRemote("CORE");
    }
@@ -284,7 +305,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
 
       server.getConfiguration().addAMQPConnection(amqpConnection);
       remoteServer.start();
-      remoteServer.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      remoteServer.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                              .setAddress("test")
                                                              .setAutoCreated(false));
       server.start();
@@ -306,7 +327,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local queue should trigger receiver on remote.
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          final MessageProducer producerR = sessionR.createProducer(queue);
          final TextMessage message = sessionR.createTextMessage("Hello World");
@@ -324,12 +345,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnRemoteBrokerFederatesMessagesFromLocalAMQP() throws Exception {
       testAddresDemandOnRemoteBrokerFederatesMessagesFromLocal("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnRemoteBrokerFederatesMessagesFromLocalCORE() throws Exception {
       testAddresDemandOnRemoteBrokerFederatesMessagesFromLocal("CORE");
    }
@@ -374,8 +397,12 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.addressQuery(SimpleString.toSimpleString("test")).isExists());
-         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.addressQuery(SimpleString.of("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.of("test")).isExists());
+
+         // Captures state of JMS consumers and federation consumers attached on each node
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
+         Wait.assertTrue(() -> remoteServer.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
 
          final MessageProducer producerL = sessionL.createProducer(topic);
          final TextMessage message = sessionL.createTextMessage("Hello World");
@@ -393,12 +420,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnRemoteWithRemoteConfigrationLeadsToMessageBeingFederatedAMQP() throws Exception {
       testQueueDemandOnRemoteWithRemoteConfigrationLeadsToMessageBeingFederated("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnRemoteWithRemoteConfigrationLeadsToMessageBeingFederatedCORE() throws Exception {
       testQueueDemandOnRemoteWithRemoteConfigrationLeadsToMessageBeingFederated("CORE");
    }
@@ -422,7 +451,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       server.getConfiguration().addAMQPConnection(amqpConnection);
       remoteServer.start();
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -443,7 +472,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on remote queue should trigger receiver on remote.
-         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.of("test")).isExists());
 
          final MessageProducer producerL = sessionL.createProducer(queue);
          final TextMessage message = sessionL.createTextMessage("Hello World");
@@ -461,12 +490,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testDivertAddresDemandOnRemoteBrokerFederatesMessagesFromLocalAMQP() throws Exception {
       testDivertAddresDemandOnRemoteBrokerFederatesMessagesFromLocal("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testDivertAddresDemandOnRemoteBrokerFederatesMessagesFromLocalCORE() throws Exception {
       testDivertAddresDemandOnRemoteBrokerFederatesMessagesFromLocal("CORE");
    }
@@ -502,7 +533,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       // Currently the address must exist on the local before we will federate from the remote
       // and in this case since we are instructing the remote to federate from us the address must
       // exist on the remote for that to happen.
-      remoteServer.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("source"), RoutingType.MULTICAST));
+      remoteServer.addAddressInfo(new AddressInfo(SimpleString.of("source"), RoutingType.MULTICAST));
       server.getConfiguration().addAMQPConnection(amqpConnection);
       server.start();
 
@@ -524,7 +555,11 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.addressQuery(SimpleString.toSimpleString("source")).isExists());
+         Wait.assertTrue(() -> server.addressQuery(SimpleString.of("source")).isExists());
+
+         // Captures state of JMS consumers and federation consumers attached on each node
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("source"), false).getQueueNames().size() >= 1);
+         Wait.assertTrue(() -> remoteServer.bindingQuery(SimpleString.of("target"), false).getQueueNames().size() >= 1);
 
          final MessageProducer producerL = sessionL.createProducer(source);
          final TextMessage message = sessionL.createTextMessage("Hello World");
@@ -541,19 +576,22 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemoteAMQP() throws Exception {
       // core tunneling shouldn't affect the AMQP message that cross
       testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemote("AMQP", true);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemoteCORENoTunneling() throws Exception {
       // core message should be converted to AMQP and back.
       testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemote("CORE", false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemoteCOREWithTunneling() throws Exception {
       // core messages should be tunneled in an AMQP message an then read back
       testAddresDemandOnLocalBrokerFederatesLargeMessagesFromRemote("CORE", true);
@@ -607,8 +645,12 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.addressQuery(SimpleString.toSimpleString("test")).isExists());
-         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.addressQuery(SimpleString.of("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.addressQuery(SimpleString.of("test")).isExists());
+
+         // Captures state of JMS consumers and federation consumers attached on each node
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
+         Wait.assertTrue(() -> remoteServer.bindingQuery(SimpleString.of("test"), false).getQueueNames().size() >= 1);
 
          final MessageProducer producerR = sessionR.createProducer(topic);
          final BytesMessage message = sessionR.createBytesMessage();
@@ -635,13 +677,15 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesLargeMessagesFromRemoteAMQP() throws Exception {
       // core tunneling shouldn't affect the AMQP message that cross
       testQueueDemandOnLocalBrokerFederatesLargeMessagesFromRemote("AMQP", true);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesLargeMessagesFromRemoteCORENoTunneling() throws Exception {
       // core message should be converted to AMQP and back.
       testQueueDemandOnLocalBrokerFederatesLargeMessagesFromRemote("CORE", false);
@@ -672,7 +716,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
 
       server.getConfiguration().addAMQPConnection(amqpConnection);
       remoteServer.start();
-      remoteServer.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      remoteServer.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                              .setAddress("test")
                                                              .setAutoCreated(false));
       server.start();
@@ -701,8 +745,8 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
-         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.of("test")).isExists());
 
          final MessageProducer producerR = sessionR.createProducer(queue);
          final BytesMessage message = sessionR.createBytesMessage();
@@ -729,12 +773,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageCrossingAddressWithThreeBrokersWithoutTunneling() throws Exception {
       doTestCoreMessageCrossingAddressWithThreeBrokers(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageCrossingAddressWithThreeBrokersWithTunneling() throws Exception {
       doTestCoreMessageCrossingAddressWithThreeBrokers(true);
    }
@@ -749,7 +795,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       remoteServer2 = createServer(SERVER2_PORT_REMOTE, false);
 
       final String ADDRESS_NAME = "target";
-      final SimpleString ADDRESS_NAME_SS = SimpleString.toSimpleString(ADDRESS_NAME);
+      final SimpleString ADDRESS_NAME_SS = SimpleString.of(ADDRESS_NAME);
 
       final AMQPFederationAddressPolicyElement localAddressPolicy = new AMQPFederationAddressPolicyElement();
       localAddressPolicy.setName("two-hop-policy");
@@ -905,27 +951,32 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient() throws Exception {
       testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient("CORE", "AMQP", false); // Tunneling doesn't matter here
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreConsumerDemandOnLocalBrokerFederatesMessageFromCoreClientTunneled() throws Exception {
       testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient("CORE", "CORE", true);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreConsumerDemandOnLocalBrokerFederatesMessageFromCoreClientUnTunneled() throws Exception {
       testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient("CORE", "CORE", false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAMQPConsumerDemandOnLocalBrokerFederatesMessageFromCoreClientTunneled() throws Exception {
       testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient("AMQP", "CORE", true);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAMQPConsumerDemandOnLocalBrokerFederatesMessageFromCoreClientNotTunneled() throws Exception {
       testCoreConsumerDemandOnLocalBrokerFederatesMessageFromAMQPClient("AMQP", "CORE", false);
    }
@@ -951,7 +1002,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
 
       server.getConfiguration().addAMQPConnection(amqpConnection);
       remoteServer.start();
-      remoteServer.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      remoteServer.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                              .setAddress("test")
                                                              .setAutoCreated(false));
       server.start();
@@ -971,8 +1022,8 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local address should trigger receiver on remote.
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
-         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
+         Wait.assertTrue(() -> remoteServer.queueQuery(SimpleString.of("test")).isExists());
 
          final MessageProducer producerR = sessionR.createProducer(sessionR.createQueue("test"));
          final BytesMessage message = sessionR.createBytesMessage();
@@ -1008,12 +1059,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesMatchingFilteredMessagesFromRemoteAMQP() throws Exception {
       testQueueDemandOnLocalBrokerFederatesMatchingFilteredMessagesFromRemote("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testQueueDemandOnLocalBrokerFederatesMatchingFilteredMessagesFromRemoteCORE() throws Exception {
       testQueueDemandOnLocalBrokerFederatesMatchingFilteredMessagesFromRemote("CORE");
    }
@@ -1036,7 +1089,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
 
       server.getConfiguration().addAMQPConnection(amqpConnection);
       remoteServer.start();
-      remoteServer.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      remoteServer.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                              .setAddress("test")
                                                              .setFilterString("color='red' OR color='green' OR color='blue'")
                                                              .setAutoCreated(false));
@@ -1060,7 +1113,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionR.start();
 
          // Demand on local queue should trigger receiver on remote.
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          final MessageProducer producerR = sessionR.createProducer(queue);
 
@@ -1102,12 +1155,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressFederatedOverSingleConnectionNotReflectedBackToSendingNodeAMQP() throws Exception {
       doTestAddressFederatedOverSingleConnectionNotReflectedBackToSendingNode("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressFederatedOverSingleConnectionNotReflectedBackToSendingNodeCore() throws Exception {
       doTestAddressFederatedOverSingleConnectionNotReflectedBackToSendingNode("CORE");
    }
@@ -1168,7 +1223,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionL.start();
          connectionR.start();
 
-         final SimpleString addressName = SimpleString.toSimpleString("test");
+         final SimpleString addressName = SimpleString.of("test");
 
          Wait.assertTrue(() -> server.addressQuery(addressName).isExists());
          Wait.assertTrue(() -> remoteServer.addressQuery(addressName).isExists());
@@ -1210,12 +1265,14 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressFederatedOnTwoConnectionsNotReflectedBackToSendingNodeAMQP() throws Exception {
       doTestAddressFederatedOverTwoConnectionNotReflectedBackToSendingNode("AMQP");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressFederatedOnTwoConnectionsNotReflectedBackToSendingNodeCore() throws Exception {
       doTestAddressFederatedOverTwoConnectionNotReflectedBackToSendingNode("CORE");
    }
@@ -1285,7 +1342,7 @@ public class AMQPFederationServerToServerTest extends AmqpClientTestSupport {
          connectionL.start();
          connectionR.start();
 
-         final SimpleString addressName = SimpleString.toSimpleString("test");
+         final SimpleString addressName = SimpleString.of("test");
 
          Wait.assertTrue(() -> server.addressQuery(addressName).isExists());
          Wait.assertTrue(() -> remoteServer.addressQuery(addressName).isExists());

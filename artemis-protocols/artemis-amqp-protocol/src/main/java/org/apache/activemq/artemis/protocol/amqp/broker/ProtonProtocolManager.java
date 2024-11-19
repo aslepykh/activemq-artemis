@@ -31,6 +31,7 @@ import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ActiveMQClient;
 import org.apache.activemq.artemis.core.remoting.impl.netty.NettyServerConnection;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
+import org.apache.activemq.artemis.core.server.impl.QueueImpl;
 import org.apache.activemq.artemis.core.server.management.Notification;
 import org.apache.activemq.artemis.core.server.management.NotificationListener;
 import org.apache.activemq.artemis.protocol.amqp.client.ProtonClientProtocolManager;
@@ -64,7 +65,7 @@ public class ProtonProtocolManager extends AbstractProtocolManager<AMQPMessage, 
 
    private static final List<String> websocketRegistryNames = Arrays.asList("amqp");
 
-   public static final String MIRROR_ADDRESS = "$ACTIVEMQ_ARTEMIS_MIRROR";
+   public static final String MIRROR_ADDRESS = QueueImpl.MIRROR_ADDRESS;
 
    private final List<AmqpInterceptor> incomingInterceptors = new ArrayList<>();
    private final List<AmqpInterceptor> outgoingInterceptors = new ArrayList<>();
@@ -108,6 +109,8 @@ public class ProtonProtocolManager extends AbstractProtocolManager<AMQPMessage, 
 
    private Long amqpIdleTimeout;
 
+   private long ackManagerFlushTimeout = 10_000;
+
    private boolean directDeliver = true;
 
    private final AMQPRoutingHandler routingHandler;
@@ -143,6 +146,17 @@ public class ProtonProtocolManager extends AbstractProtocolManager<AMQPMessage, 
    @Override
    public void onNotification(Notification notification) {
 
+   }
+
+   /** Before the ackManager retries acks, it must flush the OperationContext on the MirrorTargets.
+    *  This is the timeout is in milliseconds*/
+   public long getAckManagerFlushTimeout() {
+      return ackManagerFlushTimeout;
+   }
+
+   public ProtonProtocolManager setAckManagerFlushTimeout(long ackManagerFlushTimeout) {
+      this.ackManagerFlushTimeout = ackManagerFlushTimeout;
+      return this;
    }
 
    public int getAmqpMinLargeMessageSize() {
@@ -335,14 +349,14 @@ public class ProtonProtocolManager extends AbstractProtocolManager<AMQPMessage, 
    @Override
    public void setAnycastPrefix(String anycastPrefix) {
       for (String prefix : anycastPrefix.split(",")) {
-         prefixes.put(SimpleString.toSimpleString(prefix), RoutingType.ANYCAST);
+         prefixes.put(SimpleString.of(prefix), RoutingType.ANYCAST);
       }
    }
 
    @Override
    public void setMulticastPrefix(String multicastPrefix) {
       for (String prefix : multicastPrefix.split(",")) {
-         prefixes.put(SimpleString.toSimpleString(prefix), RoutingType.MULTICAST);
+         prefixes.put(SimpleString.of(prefix), RoutingType.MULTICAST);
       }
    }
 

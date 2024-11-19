@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.ssl;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import java.lang.management.ManagementFactory;
 import java.net.URL;
 import java.util.HashMap;
@@ -46,9 +48,8 @@ import org.apache.activemq.artemis.spi.core.security.ActiveMQSecurityManager;
 import org.apache.activemq.artemis.tests.integration.security.SecurityTest;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * See the tests/security-resources/build.sh script for details on the security resources used.
@@ -97,7 +98,7 @@ public class SslPEMTest extends ActiveMQTestBase {
 
       producerSession = producerSessionFactory.createSession(false, true, true);
 
-      producerSession.createQueue(new QueueConfiguration(QUEUE).setDurable(false));
+      producerSession.createQueue(QueueConfiguration.of(QUEUE).setDurable(false));
       ClientProducer producer = producerSession.createProducer(QUEUE);
 
       ClientMessage message = createTextMessage(producerSession, RandomUtil.randomString());
@@ -110,19 +111,19 @@ public class SslPEMTest extends ActiveMQTestBase {
       consumerSession.start();
 
       Message m = consumer.receive(1000);
-      Assert.assertNotNull(m);
+      assertNotNull(m);
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
-      QUEUE = new SimpleString(getName());
+      QUEUE = SimpleString.of(getName());
 
       Map<String, Object> params = new HashMap<>();
       params.put(TransportConstants.SSL_ENABLED_PROP_NAME, true);
       params.put(TransportConstants.KEYSTORE_TYPE_PROP_NAME, "PEMCFG");
-      params.put(TransportConstants.KEYSTORE_PATH_PROP_NAME, "server-pem-props-config.txt");
+      params.put(TransportConstants.KEYSTORE_PATH_PROP_NAME, "server-keystore.pemcfg");
       params.put(TransportConstants.TRUSTSTORE_TYPE_PROP_NAME, "PEM");
       params.put(TransportConstants.TRUSTSTORE_PATH_PROP_NAME, "client-ca-cert.pem");
       params.put(TransportConstants.NEED_CLIENT_AUTH_PROP_NAME, true);
@@ -136,8 +137,8 @@ public class SslPEMTest extends ActiveMQTestBase {
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(config, ManagementFactory.getPlatformMBeanServer(), securityManager, false));
 
       HierarchicalRepository<Set<Role>> securityRepository = server.getSecurityRepository();
-      Role sendRole = new Role("producers", true, false, true, false, true, false, false, false, true, false);
-      Role receiveRole = new Role("consumers", false, true, false, false, false, false, false, false, false, false);
+      Role sendRole = new Role("producers", true, false, true, false, true, false, false, false, true, false, false, false);
+      Role receiveRole = new Role("consumers", false, true, false, false, false, false, false, false, false, false, false, false);
       Set<Role> roles = new HashSet<>();
       roles.add(sendRole);
       roles.add(receiveRole);

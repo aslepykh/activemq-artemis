@@ -31,6 +31,7 @@ import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.config.Configuration;
+import org.apache.activemq.artemis.core.filter.Filter;
 import org.apache.activemq.artemis.core.filter.FilterUtils;
 import org.apache.activemq.artemis.core.filter.impl.FilterImpl;
 import org.apache.activemq.artemis.core.journal.Journal;
@@ -121,10 +122,11 @@ public class PostOfficeJournalLoader implements JournalLoader {
       int duplicateID = 0;
       for (final QueueBindingInfo queueBindingInfo : queueBindingInfos) {
          queueBindingInfosMap.put(queueBindingInfo.getId(), queueBindingInfo);
+         Filter filter = FilterImpl.createFilter(queueBindingInfo.getFilterString());
 
          if (postOffice.getBinding(queueBindingInfo.getQueueName()) != null) {
 
-            if (FilterUtils.isTopicIdentification(FilterImpl.createFilter(queueBindingInfo.getFilterString()))) {
+            if (FilterUtils.isTopicIdentification(filter)) {
                final long tx = storageManager.generateID();
                storageManager.deleteQueueBinding(tx, queueBindingInfo.getId());
                storageManager.commitBindings(tx);
@@ -136,7 +138,7 @@ public class PostOfficeJournalLoader implements JournalLoader {
             }
          }
 
-         final Queue queue = queueFactory.createQueueWith(new QueueConfiguration(queueBindingInfo.getQueueName())
+         final Queue queue = queueFactory.createQueueWith(QueueConfiguration.of(queueBindingInfo.getQueueName())
                                                              .setId(queueBindingInfo.getId())
                                                              .setAddress(queueBindingInfo.getAddress())
                                                              .setFilterString(queueBindingInfo.getFilterString())
@@ -163,7 +165,8 @@ public class PostOfficeJournalLoader implements JournalLoader {
                                                              .setConfigurationManaged(queueBindingInfo.isConfigurationManaged())
                                                              .setRingSize(queueBindingInfo.getRingSize())
                                                              .setInternal(queueBindingInfo.isInternal()),
-                                                          pagingManager);
+                                                          pagingManager,
+                                                          filter);
 
 
          if (queueBindingInfo.getQueueStatusEncodings() != null) {
@@ -228,22 +231,18 @@ public class PostOfficeJournalLoader implements JournalLoader {
             try {
                long scheduledDeliveryTime = record.getScheduledDeliveryTime();
 
-               if (scheduledDeliveryTime != 0 && scheduledDeliveryTime <= currentTime) {
-                  scheduledDeliveryTime = 0;
-                  record.getMessage().setScheduledDeliveryTime(0L);
-               }
-
                if (scheduledDeliveryTime != 0) {
-                  record.getMessage().setScheduledDeliveryTime(scheduledDeliveryTime);
+                  if (scheduledDeliveryTime <= currentTime) {
+                     // scheduled delivery time already passed while the broker wasn't running
+                     record.getMessage().setScheduledDeliveryTime(0L);
+                  } else {
+                     record.getMessage().setScheduledDeliveryTime(scheduledDeliveryTime);
+                  }
                }
 
                MessageReference ref = postOffice.reload(record.getMessage(), queue, null);
 
                ref.setDeliveryCount(record.getDeliveryCount());
-
-               if (scheduledDeliveryTime != 0) {
-                  record.getMessage().setScheduledDeliveryTime(0L);
-               }
             } catch (Throwable t) {
                ActiveMQServerLogger.LOGGER.unableToLoadMessageFromJournal(t);
                continue;

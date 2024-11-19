@@ -23,17 +23,6 @@ import javax.jms.MessageConsumer;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
-
-import org.apache.activemq.artemis.api.core.TransportConfiguration;
-import org.apache.activemq.artemis.api.jms.ActiveMQJMSClient;
-import org.apache.activemq.artemis.api.jms.JMSFactoryType;
-import org.apache.activemq.artemis.core.management.impl.view.ConsumerField;
-import org.apache.activemq.artemis.core.paging.impl.PagingManagerTestAccessor;
-import org.apache.activemq.artemis.core.server.impl.QueueImplTestAccessor;
-import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
-import org.apache.activemq.artemis.json.JsonArray;
-import org.apache.activemq.artemis.json.JsonObject;
-
 import javax.jms.XAConnection;
 import javax.jms.XAConnectionFactory;
 import javax.jms.XASession;
@@ -65,12 +54,12 @@ import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.api.core.TransportConfiguration;
 import org.apache.activemq.artemis.api.core.client.ClientConsumer;
 import org.apache.activemq.artemis.api.core.client.ClientMessage;
 import org.apache.activemq.artemis.api.core.client.ClientProducer;
 import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
-import org.apache.activemq.artemis.api.core.client.MessageHandler;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.api.core.management.ActiveMQServerControl;
 import org.apache.activemq.artemis.api.core.management.CoreNotificationType;
@@ -79,53 +68,63 @@ import org.apache.activemq.artemis.api.core.management.MessageCounterInfo;
 import org.apache.activemq.artemis.api.core.management.ObjectNameBuilder;
 import org.apache.activemq.artemis.api.core.management.QueueControl;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
+import org.apache.activemq.artemis.api.jms.ActiveMQJMSClient;
+import org.apache.activemq.artemis.api.jms.JMSFactoryType;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.DivertConfiguration;
 import org.apache.activemq.artemis.core.management.impl.QueueControlImpl;
+import org.apache.activemq.artemis.core.management.impl.view.ConsumerField;
 import org.apache.activemq.artemis.core.messagecounter.impl.MessageCounterManagerImpl;
+import org.apache.activemq.artemis.core.paging.PagingStore;
+import org.apache.activemq.artemis.core.paging.impl.PagingManagerTestAccessor;
 import org.apache.activemq.artemis.core.postoffice.impl.LocalQueueBinding;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
+import org.apache.activemq.artemis.core.server.impl.QueueImplTestAccessor;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.core.transaction.impl.XidImpl;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.apache.activemq.artemis.json.JsonArray;
+import org.apache.activemq.artemis.json.JsonObject;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.integration.jms.server.management.JMSUtil;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.artemis.utils.Base64;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.apache.activemq.artemis.utils.RetryRule;
 import org.apache.qpid.jms.JmsConnectionFactory;
-import org.junit.Assert;
-import org.junit.Assume;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.activemq.artemis.core.message.openmbean.CompositeDataConstants.BODY;
 import static org.apache.activemq.artemis.core.message.openmbean.CompositeDataConstants.STRING_PROPERTIES;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-@RunWith(value = Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class QueueControlTest extends ManagementTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    private static final String NULL_DATE = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(new Date(0));
 
-   @Rule
-   public RetryRule retryRule = new RetryRule(2);
-
    private ActiveMQServer server;
    private ClientSession session;
    private ServerLocator locator;
    private final boolean durable;
 
-   @Parameterized.Parameters(name = "durable={0}")
+   @Parameters(name = "durable={0}")
    public static Collection<Object[]> getParams() {
       return Arrays.asList(new Object[][] {{true}, {false}});
    }
@@ -139,12 +138,69 @@ public class QueueControlTest extends ManagementTestBase {
       this.durable = durable;
    }
 
-   @Test
+   @TestTemplate
+   public void testMoveMessagesInPagingMode() throws Exception {
+      final int TOTAL_MESSAGES = 10000;
+      final String DLA = "DLA";
+      ClientSessionFactory sf = createSessionFactory(locator);
+      ClientSession session = sf.createSession(false, false);
+
+      SimpleString queueAddr = SimpleString.of("testQueue");
+      session.createQueue(QueueConfiguration.of(queueAddr).setDurable(durable));
+      SimpleString dlq = SimpleString.of(DLA);
+      session.createQueue(QueueConfiguration.of(dlq));
+
+      // Set up paging on the queue address
+      AddressSettings addressSettings = new AddressSettings().setPageSizeBytes(10 * 1024).setMaxSizeBytes(16 * 1024).setDeadLetterAddress(dlq);
+      server.getAddressSettingsRepository().addMatch("#", addressSettings);
+
+      sendMessageBatch(TOTAL_MESSAGES, session, queueAddr);
+
+      Queue queue = server.locateQueue(queueAddr);
+
+      // Give time Queue.deliverAsync to deliver messages
+      assertTrue(waitForMessages(queue, TOTAL_MESSAGES, 5000));
+
+      PagingStore queuePagingStore = queue.getPagingStore();
+      assertTrue(queuePagingStore != null && queuePagingStore.isPaging());
+
+      //invoke moveMessages op
+      String queueControlResourceName = ResourceNames.QUEUE + "testQueue";
+      Object resource = server.getManagementService().getResource(queueControlResourceName);
+      QueueControl queueControl = (QueueControl) resource;
+      assertEquals(queueControl.getMessageCount(), 10000);
+
+      // move messages to DLQ
+      int count = queueControl.moveMessages(500, "", DLA, false, 500);
+      assertEquals(500, count);
+
+      //messages shouldn't move on to the same queue
+      try {
+         queueControl.moveMessages(1000, "", "testQueue", false, 9000);
+         fail("messages cannot be moved on to the queue itself");
+      } catch (IllegalArgumentException ok) {
+         //ok
+      }
+
+      // 9500 left
+      count = queueControl.moveMessages(1000, "", DLA, false, 9000);
+      assertEquals(9000, count);
+
+      // 500 left, try move 1000
+      count = queueControl.moveMessages(100, "", DLA, false, 1000);
+      assertEquals(500, count);
+
+      // zero left, try move again
+      count = queueControl.moveMessages(100, "", DLA, false, 1000);
+      assertEquals(0, count);
+   }
+
+   @TestTemplate
    public void testGetPreparedTransactionMessageCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       ClientProducer producer = session.createProducer(address);
 
@@ -177,23 +233,23 @@ public class QueueControlTest extends ManagementTestBase {
 
       int count = queueControl.getPreparedTransactionMessageCount();
 
-      Assert.assertEquals(10, count);
+      assertEquals(10, count);
 
       consumer.close();
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetPreparedTransactionMessageCountDifferentQueues() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString address2 = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString queue2 = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
-      session.createQueue(new QueueConfiguration(queue2).setAddress(address2).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue2).setAddress(address2).setDurable(durable));
 
       ClientProducer producer = session.createProducer(address);
       ClientProducer producer2 = session.createProducer(address2);
@@ -233,7 +289,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       int count = queueControl.getPreparedTransactionMessageCount();
 
-      Assert.assertEquals(10, count);
+      assertEquals(10, count);
 
       consumer.close();
 
@@ -244,70 +300,90 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue2);
    }
 
-   @Test
+   @TestTemplate
    public void testGetPreparedTransactionMessageCountNoTX() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       int count = queueControl.getPreparedTransactionMessageCount();
 
-      Assert.assertEquals(0, count);
+      assertEquals(0, count);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testAttributes() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
-      SimpleString filter = new SimpleString("color = 'blue'");
+      SimpleString filter = SimpleString.of("color = 'blue'");
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setFilterString(filter).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setFilterString(filter).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(queue.toString(), queueControl.getName());
-      Assert.assertEquals(address.toString(), queueControl.getAddress());
-      Assert.assertEquals(filter.toString(), queueControl.getFilter());
-      Assert.assertEquals(durable, queueControl.isDurable());
-      Assert.assertFalse(queueControl.isTemporary());
+      assertEquals(queue.toString(), queueControl.getName());
+      assertEquals(address.toString(), queueControl.getAddress());
+      assertEquals(filter.toString(), queueControl.getFilter());
+      assertEquals(durable, queueControl.isDurable());
+      assertFalse(queueControl.isTemporary());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
+   public void testRegisterInternalQueues() throws Exception {
+      SimpleString queue = RandomUtil.randomSimpleString();
+
+      server.createQueue(QueueConfiguration.of(queue).setDurable(durable).setInternal(true));
+
+      QueueControl queueControl = createManagementControl(queue, queue);
+      assertNotNull(queueControl);
+      assertTrue(server.locateQueue(queue).isInternalQueue());
+      assertEquals(queue.toString(), queueControl.getName());
+      assertEquals(durable, queueControl.isDurable());
+
+      //check that internal queue can be managed
+      queueControl.pause();
+      assertTrue(queueControl.isPaused());
+
+      queueControl.resume();
+      assertFalse(queueControl.isPaused());
+   }
+
+   @TestTemplate
    public void testAutoDeleteAttribute() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertFalse(queueControl.isAutoDelete());
+      assertFalse(queueControl.isAutoDelete());
 
       session.deleteQueue(queue);
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setAutoDelete(true));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setAutoDelete(true));
 
       queueControl = createManagementControl(address, queue);
-      Assert.assertTrue(queueControl.isAutoDelete());
+      assertTrue(queueControl.isAutoDelete());
 
       session.deleteQueue(queue);
 
       server.getAddressSettingsRepository().addMatch(address.toString(), new AddressSettings().setAutoDeleteQueues(true));
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setAutoCreated(true));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setAutoCreated(true));
 
       queueControl = createManagementControl(address, queue);
-      Assert.assertTrue(queueControl.isAutoDelete());
+      assertTrue(queueControl.isAutoDelete());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGroupAttributes() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
@@ -315,14 +391,14 @@ public class QueueControlTest extends ManagementTestBase {
       session.createQueue(address, RoutingType.MULTICAST, queue);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertFalse(queueControl.isGroupRebalance());
-      Assert.assertEquals(-1, queueControl.getGroupBuckets());
-      Assert.assertEquals(null, queueControl.getGroupFirstKey());
+      assertFalse(queueControl.isGroupRebalance());
+      assertEquals(-1, queueControl.getGroupBuckets());
+      assertNull(queueControl.getGroupFirstKey());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRetroactiveResourceAttribute() throws Exception {
       SimpleString baseAddress = RandomUtil.randomSimpleString();
       String internalNamingPrefix = server.getInternalNamingPrefix();
@@ -331,106 +407,99 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString multicastQueue = ResourceNames.getRetroactiveResourceQueueName(internalNamingPrefix, delimiter, baseAddress, RoutingType.MULTICAST);
       SimpleString anycastQueue = ResourceNames.getRetroactiveResourceQueueName(internalNamingPrefix, delimiter, baseAddress, RoutingType.ANYCAST);
 
-      session.createQueue(new QueueConfiguration(multicastQueue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(anycastQueue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(multicastQueue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(anycastQueue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, multicastQueue);
-      Assert.assertTrue(queueControl.isRetroactiveResource());
+      assertTrue(queueControl.isRetroactiveResource());
       queueControl = createManagementControl(address, anycastQueue);
-      Assert.assertTrue(queueControl.isRetroactiveResource());
+      assertTrue(queueControl.isRetroactiveResource());
 
       session.deleteQueue(multicastQueue);
       session.deleteQueue(anycastQueue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetNullFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(queue.toString(), queueControl.getName());
-      Assert.assertNull(queueControl.getFilter());
+      assertEquals(queue.toString(), queueControl.getName());
+      assertNull(queueControl.getFilter());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetDeadLetterAddress() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       final SimpleString deadLetterAddress = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertNull(queueControl.getDeadLetterAddress());
+      assertNull(queueControl.getDeadLetterAddress());
 
       server.getAddressSettingsRepository().addMatch(address.toString(), new AddressSettings().setDeadLetterAddress(deadLetterAddress));
-      Assert.assertEquals(deadLetterAddress.toString(), queueControl.getDeadLetterAddress());
+      assertEquals(deadLetterAddress.toString(), queueControl.getDeadLetterAddress());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testSetDeadLetterAddress() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       String deadLetterAddress = RandomUtil.randomString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
-      AddressSettings addressSettings = new AddressSettings().setDeadLetterAddress(new SimpleString(deadLetterAddress));
+      AddressSettings addressSettings = new AddressSettings().setDeadLetterAddress(SimpleString.of(deadLetterAddress));
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      Assert.assertEquals(deadLetterAddress, queueControl.getDeadLetterAddress());
+      assertEquals(deadLetterAddress, queueControl.getDeadLetterAddress());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetExpiryAddress() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       final SimpleString expiryAddress = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertNull(queueControl.getExpiryAddress());
+      assertNull(queueControl.getExpiryAddress());
 
-      server.getAddressSettingsRepository().addMatch(address.toString(), new AddressSettings() {
-         private static final long serialVersionUID = 6745306517827764680L;
+      server.getAddressSettingsRepository().addMatch(address.toString(), new AddressSettings().setExpiryAddress(expiryAddress));
 
-         @Override
-         public SimpleString getExpiryAddress() {
-            return expiryAddress;
-         }
-      });
-
-      Assert.assertEquals(expiryAddress.toString(), queueControl.getExpiryAddress());
+      assertEquals(expiryAddress.toString(), queueControl.getExpiryAddress());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testSetExpiryAddress() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       String expiryAddress = RandomUtil.randomString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
-      AddressSettings addressSettings = new AddressSettings().setExpiryAddress(new SimpleString(expiryAddress));
+      AddressSettings addressSettings = new AddressSettings().setExpiryAddress(SimpleString.of(expiryAddress));
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      Assert.assertEquals(expiryAddress, queueControl.getExpiryAddress());
+      assertEquals(expiryAddress, queueControl.getExpiryAddress());
 
       Queue serverqueue = server.locateQueue(queue);
       assertEquals(expiryAddress, serverqueue.getExpiryAddress().toString());
@@ -438,16 +507,16 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
-      Assert.assertEquals(0, queueControl.getConsumerCount());
+      assertEquals(0, queueControl.getConsumerCount());
 
       ClientConsumer consumer = session.createConsumer(queue);
       Wait.assertEquals(1, () -> queueControl.getConsumerCount());
@@ -458,12 +527,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerJSON() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
@@ -481,7 +550,7 @@ public class QueueControlTest extends ManagementTestBase {
       assertEquals(0, obj.get(0).asJsonObject().getInt(ConsumerField.LAST_ACKNOWLEDGED_TIME.getName()));
 
       consumer.close();
-      Assert.assertEquals(0, queueControl.getConsumerCount());
+      assertEquals(0, queueControl.getConsumerCount());
 
       obj = JsonUtil.readJsonArray(queueControl.listConsumersAsJSON());
 
@@ -490,13 +559,13 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerWithMessagesJSON() throws Exception {
       long currentTime = System.currentTimeMillis();
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
@@ -561,16 +630,16 @@ public class QueueControlTest extends ManagementTestBase {
 
       long lastAcked = jsonObject.getJsonNumber(ConsumerField.LAST_ACKNOWLEDGED_TIME.getName()).longValue();
 
-      assertTrue("lastAcked = " + lastAcked + " lastDelivered = " + lastDelivered, lastAcked >= lastDelivered);
+      assertTrue(lastAcked >= lastDelivered, "lastAcked = " + lastAcked + " lastDelivered = " + lastDelivered);
 
       currentTime = System.currentTimeMillis();
 
       //now make sure they fall between the test time window
-      assertTrue("currentTime = " + currentTime + " lastAcked = " + lastAcked,currentTime >= lastAcked);
+      assertTrue(currentTime >= lastAcked,"currentTime = " + currentTime + " lastAcked = " + lastAcked);
 
       consumer.close();
 
-      Assert.assertEquals(0, queueControl.getConsumerCount());
+      assertEquals(0, queueControl.getConsumerCount());
 
       obj = JsonUtil.readJsonArray(queueControl.listConsumersAsJSON());
 
@@ -579,24 +648,24 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsAutoAckCore() throws Exception {
       ActiveMQConnectionFactory factory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(JMSFactoryType.CF, new TransportConfiguration(INVM_CONNECTOR_FACTORY));
       factory.setConsumerWindowSize(1);
       testGetConsumerMessageCountsAutoAck(factory, false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsAutoAckAMQP() throws Exception {
       testGetConsumerMessageCountsAutoAck(new JmsConnectionFactory("amqp://localhost:61616"), false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsAutoAckOpenWire() throws Exception {
       testGetConsumerMessageCountsAutoAck(new org.apache.activemq.ActiveMQConnectionFactory("tcp://localhost:61616"), false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsAutoAckCoreIndividualAck() throws Exception {
       ActiveMQConnectionFactory factory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(JMSFactoryType.CF, new TransportConfiguration(INVM_CONNECTOR_FACTORY));
       testGetConsumerMessageCountsAutoAck(factory, true);
@@ -604,7 +673,7 @@ public class QueueControlTest extends ManagementTestBase {
 
    public void testGetConsumerMessageCountsAutoAck(ConnectionFactory factory, boolean usePriority) throws Exception {
       SimpleString queueName = RandomUtil.randomSimpleString();
-      this.session.createQueue(new QueueConfiguration(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      this.session.createQueue(QueueConfiguration.of(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       QueueControl queueControl = createManagementControl(queueName, queueName, RoutingType.ANYCAST);
       Connection connection = factory.createConnection();
@@ -632,7 +701,7 @@ public class QueueControlTest extends ManagementTestBase {
 
          for (int i = 0; i < 100; i++) {
             message = consumer.receive(5000);
-            Assert.assertNotNull("message " + i + " not received",message);
+            assertNotNull(message,"message " + i + " not received");
          }
 
          JsonArray obj = JsonUtil.readJsonArray(queueControl.listConsumersAsJSON());
@@ -665,26 +734,26 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsClientAckCore() throws Exception {
       ActiveMQConnectionFactory factory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(JMSFactoryType.CF, new TransportConfiguration(INVM_CONNECTOR_FACTORY));
       factory.setConsumerWindowSize(1);
       testGetConsumerMessageCountsClientAck(factory, false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsClientAckAMQP() throws Exception {
       testGetConsumerMessageCountsClientAck(new JmsConnectionFactory("amqp://localhost:61616"), false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsClientAckOpenWire() throws Exception {
       testGetConsumerMessageCountsClientAck(new org.apache.activemq.ActiveMQConnectionFactory("tcp://localhost:61616"), false);
    }
 
    public void testGetConsumerMessageCountsClientAck(ConnectionFactory factory, boolean usePriority) throws Exception {
       SimpleString queueName = RandomUtil.randomSimpleString();
-      this.session.createQueue(new QueueConfiguration(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      this.session.createQueue(QueueConfiguration.of(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       QueueControl queueControl = createManagementControl(queueName, queueName, RoutingType.ANYCAST);
       Connection connection = factory.createConnection();
@@ -712,7 +781,7 @@ public class QueueControlTest extends ManagementTestBase {
 
          for (int i = 0; i < 100; i++) {
             message = consumer.receive(5000);
-            Assert.assertNotNull("message " + i + " not received",message);
+            assertNotNull(message,"message " + i + " not received");
             message.acknowledge();
          }
 
@@ -746,26 +815,26 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsTransactedCore() throws Exception {
       ActiveMQConnectionFactory factory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(JMSFactoryType.CF, new TransportConfiguration(INVM_CONNECTOR_FACTORY));
       factory.setConsumerWindowSize(1);
       testGetConsumerMessageCountsTransacted(factory, false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsTransactedAMQP() throws Exception {
       testGetConsumerMessageCountsTransacted(new JmsConnectionFactory("amqp://localhost:61616"), false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsTransactedOpenWire() throws Exception {
       testGetConsumerMessageCountsTransacted(new org.apache.activemq.ActiveMQConnectionFactory("tcp://localhost:61616"), false);
    }
 
    public void testGetConsumerMessageCountsTransacted(ConnectionFactory factory, boolean usePriority) throws Exception {
       SimpleString queueName = RandomUtil.randomSimpleString();
-      this.session.createQueue(new QueueConfiguration(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      this.session.createQueue(QueueConfiguration.of(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       QueueControl queueControl = createManagementControl(queueName, queueName, RoutingType.ANYCAST);
       Connection connection = factory.createConnection();
@@ -793,7 +862,7 @@ public class QueueControlTest extends ManagementTestBase {
 
          for (int i = 0; i < 100; i++) {
             message = consumer.receive(5000);
-            Assert.assertNotNull("message " + i + " not received",message);
+            assertNotNull(message,"message " + i + " not received");
          }
 
          session.commit();
@@ -826,20 +895,20 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsTransactedXACore() throws Exception {
       ActiveMQConnectionFactory factory = ActiveMQJMSClient.createConnectionFactoryWithoutHA(JMSFactoryType.CF, new TransportConfiguration(INVM_CONNECTOR_FACTORY));
       factory.setConsumerWindowSize(1);
       testGetConsumerMessageCountsTransactedXA(factory, false);
    }
 
-   @Test
+   @TestTemplate
    public void testGetConsumerMessageCountsTransactedXAOpenWire() throws Exception {
       testGetConsumerMessageCountsTransactedXA(new org.apache.activemq.ActiveMQXAConnectionFactory("tcp://localhost:61616"), false);
    }
    public void testGetConsumerMessageCountsTransactedXA(XAConnectionFactory factory, boolean usePriority) throws Exception {
       SimpleString queueName = RandomUtil.randomSimpleString();
-      this.session.createQueue(new QueueConfiguration(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      this.session.createQueue(QueueConfiguration.of(queueName).setAddress(queueName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       QueueControl queueControl = createManagementControl(queueName, queueName, RoutingType.ANYCAST);
       XAConnection connection = factory.createXAConnection();
@@ -870,7 +939,7 @@ public class QueueControlTest extends ManagementTestBase {
          session.getXAResource().start(xid, XAResource.TMNOFLAGS);
          for (int i = 0; i < 100; i++) {
             message = consumer.receive(5000);
-            Assert.assertNotNull("message " + i + " not received",message);
+            assertNotNull(message,"message " + i + " not received");
          }
          session.getXAResource().end(xid, XAResource.TMSUCCESS);
 
@@ -926,15 +995,15 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testGetMessageCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -947,15 +1016,15 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetFirstMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
 
       // It's empty, so it's supposed to be like this
       assertEquals("[{}]", queueControl.getFirstMessageAsJSON());
@@ -975,7 +1044,78 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
+   public void testPeekFirstMessage() throws Exception {
+      SimpleString address = RandomUtil.randomSimpleString();
+      SimpleString queue = RandomUtil.randomSimpleString();
+
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+
+      QueueControl queueControl = createManagementControl(address, queue);
+      assertEquals(0, getMessageCount(queueControl));
+
+      assertEquals("null", queueControl.peekFirstMessageAsJSON());
+
+      String fooValue = RandomUtil.randomString();
+      ClientProducer producer = session.createProducer(address);
+      producer.send(session.createMessage(false).putStringProperty("foo", fooValue));
+      Wait.assertEquals(1, queueControl::getMessageCount);
+
+      JsonObject messageAsJson = JsonUtil.readJsonObject(queueControl.peekFirstMessageAsJSON());
+      assertEquals(fooValue, messageAsJson.getString("foo"));
+
+      session.deleteQueue(queue);
+   }
+
+   @TestTemplate
+   public void testPeekFirstScheduledMessage() throws Exception {
+      SimpleString address = RandomUtil.randomSimpleString();
+      SimpleString queue = RandomUtil.randomSimpleString();
+
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+
+      QueueControl queueControl = createManagementControl(address, queue);
+      assertEquals(0, getMessageCount(queueControl));
+
+      // It's empty, so it's supposed to be like this
+      assertEquals("null", queueControl.peekFirstScheduledMessageAsJSON());
+
+      long timestampBeforeSend = System.currentTimeMillis();
+
+      ClientProducer producer = addClientProducer(session.createProducer(address));
+      ClientMessage message = session.createMessage(durable)
+              .putStringProperty("x", "valueX")
+              .putStringProperty("y", "valueY")
+              .putBooleanProperty("durable", durable)
+              .putLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME, timestampBeforeSend + 5000);
+      producer.send(message);
+
+      consumeMessages(0, session, queue);
+      assertScheduledMetrics(queueControl, 1, durable);
+
+      long timestampAfterSend = System.currentTimeMillis();
+
+      JsonObject messageAsJson = JsonUtil.readJsonObject(queueControl.peekFirstScheduledMessageAsJSON());
+      assertEquals("valueX", messageAsJson.getString("x"));
+      assertEquals("valueY", messageAsJson.getString("y"));
+      assertEquals(durable, messageAsJson.getBoolean("durable"));
+
+      long messageTimestamp = messageAsJson.getJsonNumber("timestamp").longValue();
+      assertTrue(messageTimestamp >= timestampBeforeSend);
+      assertTrue(messageTimestamp <= timestampAfterSend);
+
+      // Make sure that the message is no longer available the "not scheduled" way
+      assertEquals("[{}]", queueControl.getFirstMessageAsJSON());
+
+      queueControl.deliverScheduledMessage(messageAsJson.getInt("messageID"));
+      queueControl.flushExecutor();
+      assertScheduledMetrics(queueControl, 0, durable);
+
+      consumeMessages(1, session, queue);
+      session.deleteQueue(queue);
+   }
+
+   @TestTemplate
    public void testMessageAttributeLimits() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
@@ -983,7 +1123,7 @@ public class QueueControlTest extends ManagementTestBase {
       AddressSettings addressSettings = new AddressSettings().setManagementMessageAttributeSizeLimit(100);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       byte[] twoKBytes = new byte[2048];
       for (int i = 0; i < 2048; i++) {
@@ -1002,7 +1142,7 @@ public class QueueControlTest extends ManagementTestBase {
       clientMessage.getBodyBuffer().writeBytes(twoKBytes);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(clientMessage);
@@ -1039,13 +1179,13 @@ public class QueueControlTest extends ManagementTestBase {
 
                if (key.equals("StringProperties")) {
                   // these are very verbose composite data structures
-                  assertTrue(value.toString().length() + " truncated? " + key, value.toString().length() <= 3000);
+                  assertTrue(value.toString().length() <= 3000, value.toString().length() + " truncated? " + key);
                } else {
-                  assertTrue(value.toString().length() + " truncated? " + key, value.toString().length() <= 512);
+                  assertTrue(value.toString().length() <= 512, value.toString().length() + " truncated? " + key);
                }
 
                if (value instanceof byte[]) {
-                  assertTrue("truncated? " + key, ((byte[]) value).length <= 150);
+                  assertTrue(((byte[]) value).length <= 150, "truncated? " + key);
                }
             }
          }
@@ -1054,7 +1194,7 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testBytesMessageBodyWithoutLimits() throws Exception {
       final int BYTE_COUNT = 2048;
       SimpleString address = RandomUtil.randomSimpleString();
@@ -1063,7 +1203,7 @@ public class QueueControlTest extends ManagementTestBase {
       AddressSettings addressSettings = new AddressSettings().setManagementMessageAttributeSizeLimit(-1);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       byte[] randomBytes = RandomUtil.randomBytes(BYTE_COUNT);
 
@@ -1071,7 +1211,7 @@ public class QueueControlTest extends ManagementTestBase {
       clientMessage.getBodyBuffer().writeBytes(randomBytes);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(clientMessage);
@@ -1092,11 +1232,11 @@ public class QueueControlTest extends ManagementTestBase {
          }
       }
 
-      assertTrue("Nothing tested!", tested);
+      assertTrue(tested, "Nothing tested!");
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testTextMessageAttributeLimits() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
@@ -1104,16 +1244,16 @@ public class QueueControlTest extends ManagementTestBase {
       AddressSettings addressSettings = new AddressSettings().setManagementMessageAttributeSizeLimit(10);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       final String twentyBytes = new String(new char[20]).replace("\0", "#");
 
       ClientMessage clientMessage = session.createMessage(Message.TEXT_TYPE, durable);
-      clientMessage.getBodyBuffer().writeNullableSimpleString(SimpleString.toSimpleString(twentyBytes));
+      clientMessage.getBodyBuffer().writeNullableSimpleString(SimpleString.of(twentyBytes));
       clientMessage.putStringProperty("x", twentyBytes);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(clientMessage);
@@ -1122,27 +1262,27 @@ public class QueueControlTest extends ManagementTestBase {
 
       Map<String, Object>[] messages = queueControl.listMessages("");
       assertEquals(1, messages.length);
-      assertTrue("truncated? ", ((String)messages[0].get("x")).contains("more"));
+      assertTrue(((String)messages[0].get("x")).contains("more"), "truncated? ");
 
       CompositeData[] browseResult = queueControl.browse(1, 100);
       for (CompositeData compositeData : browseResult) {
          for (String key : new String[] {"text", "PropertiesText", "StringProperties"}) {
-            assertTrue("truncated? : " + key, compositeData.get(key).toString().contains("more"));
+            assertTrue(compositeData.get(key).toString().contains("more"), "truncated? : " + key);
          }
       }
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetMessagesAdded() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessagesAdded(queueControl));
+      assertEquals(0, getMessagesAdded(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -1152,20 +1292,20 @@ public class QueueControlTest extends ManagementTestBase {
 
       consumeMessages(2, session, queue);
 
-      Assert.assertEquals(2, getMessagesAdded(queueControl));
+      assertEquals(2, getMessagesAdded(queueControl));
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetMessagesAcknowledged() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+      assertEquals(0, queueControl.getMessagesAcknowledged());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(false));
@@ -1177,20 +1317,20 @@ public class QueueControlTest extends ManagementTestBase {
 
       //      ManagementTestBase.consumeMessages(2, session, queue);
 
-      //      Assert.assertEquals(2, getMessagesAdded(queueControl));
+      //      assertEquals(2, getMessagesAdded(queueControl));
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetMessagesAcknowledgedOnXARollback() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+      assertEquals(0, queueControl.getMessagesAcknowledged());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -1206,13 +1346,13 @@ public class QueueControlTest extends ManagementTestBase {
          XidImpl xid = newXID();
          xaSession.start(xid, XAResource.TMNOFLAGS);
          ClientMessage message = consumer.receive(1000);
-         Assert.assertNotNull(message);
+         assertNotNull(message);
          message.acknowledge();
-         Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+         assertEquals(0, queueControl.getMessagesAcknowledged());
          xaSession.end(xid, XAResource.TMSUCCESS);
-         Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+         assertEquals(0, queueControl.getMessagesAcknowledged());
          xaSession.prepare(xid);
-         Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+         assertEquals(0, queueControl.getMessagesAcknowledged());
          if (i + 1 == tries) {
             xaSession.commit(xid, false);
          } else {
@@ -1228,15 +1368,15 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetMessagesAcknowledgedOnRegularRollback() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+      assertEquals(0, queueControl.getMessagesAcknowledged());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -1250,9 +1390,9 @@ public class QueueControlTest extends ManagementTestBase {
       int tries = 10;
       for (int i = 0; i < tries; i++) {
          ClientMessage message = consumer.receive(1000);
-         Assert.assertNotNull(message);
+         assertNotNull(message);
          message.acknowledge();
-         Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+         assertEquals(0, queueControl.getMessagesAcknowledged());
          if (i + 1 == tries) {
             txSession.commit();
          } else {
@@ -1268,16 +1408,16 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetScheduledCount() throws Exception {
       long delay = 500;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getScheduledCount());
+      assertEquals(0, queueControl.getScheduledCount());
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
@@ -1296,7 +1436,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       Thread.sleep(delay * 2);
 
-      Assert.assertEquals(0, queueControl.getScheduledCount());
+      assertEquals(0, queueControl.getScheduledCount());
       consumeMessages(1, session, queue);
       assertMessageMetrics(queueControl, 0, durable);
       assertScheduledMetrics(queueControl, 0, durable);
@@ -1305,7 +1445,7 @@ public class QueueControlTest extends ManagementTestBase {
    }
 
    //https://issues.jboss.org/browse/HORNETQ-1231
-   @Test
+   @TestTemplate
    public void testListDeliveringMessagesWithRASession() throws Exception {
       ServerLocator locator1 = createInVMNonHALocator().setBlockOnNonDurableSend(true).setConsumerWindowSize(10240).setAckBatchSize(0);
       ClientSessionFactory sf = locator1.createSessionFactory();
@@ -1322,7 +1462,7 @@ public class QueueControlTest extends ManagementTestBase {
          SimpleString address = RandomUtil.randomSimpleString();
          queue = RandomUtil.randomSimpleString();
 
-         transSession.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+         transSession.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
          final QueueControl queueControl = createManagementControl(address, queue);
 
@@ -1330,7 +1470,7 @@ public class QueueControlTest extends ManagementTestBase {
 
          for (int i = 0; i < numMsg; i++) {
             ClientMessage message = transSession.createMessage(durable);
-            message.putIntProperty(new SimpleString("seqno"), i);
+            message.putIntProperty(SimpleString.of("seqno"), i);
             producer.send(message);
          }
 
@@ -1353,23 +1493,19 @@ public class QueueControlTest extends ManagementTestBase {
          final CountDownLatch latch2 = new CountDownLatch(1);
          final CountDownLatch latch3 = new CountDownLatch(10);
 
-         consumer.setMessageHandler(new MessageHandler() {
-
-            @Override
-            public void onMessage(ClientMessage message) {
-               try {
-                  message.acknowledge();
-               } catch (ActiveMQException e1) {
-                  e1.printStackTrace();
-               }
-               latch1.countDown();
-               try {
-                  latch2.await(10, TimeUnit.SECONDS);
-               } catch (InterruptedException e) {
-                  e.printStackTrace();
-               }
-               latch3.countDown();
+         consumer.setMessageHandler(message -> {
+            try {
+               message.acknowledge();
+            } catch (ActiveMQException e1) {
+               e1.printStackTrace();
             }
+            latch1.countDown();
+            try {
+               latch2.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+               e.printStackTrace();
+            }
+            latch3.countDown();
          });
 
          latch1.await(10, TimeUnit.SECONDS);
@@ -1402,12 +1538,12 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testListDeliveringMessages() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       int intValue = RandomUtil.randomInt();
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       Queue srvqueue = server.locateQueue(queue);
 
@@ -1415,7 +1551,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
-      message.putIntProperty(new SimpleString("key"), intValue);
+      message.putIntProperty(SimpleString.of("key"), intValue);
       producer.send(message);
       producer.send(session.createMessage(durable));
 
@@ -1444,12 +1580,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListDeliveringMessagesOnClosedConsumer() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       int intValue = RandomUtil.randomInt();
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       Queue srvqueue = server.locateQueue(queue);
 
@@ -1457,7 +1593,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
-      message.putIntProperty(new SimpleString("key"), intValue);
+      message.putIntProperty(SimpleString.of("key"), intValue);
       producer.send(message);
       producer.send(session.createMessage(durable));
 
@@ -1479,93 +1615,93 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListScheduledMessages() throws Exception {
       long delay = 2000;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       int intValue = RandomUtil.randomInt();
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
       message.putLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME, System.currentTimeMillis() + delay);
-      message.putIntProperty(new SimpleString("key"), intValue);
+      message.putIntProperty(SimpleString.of("key"), intValue);
       producer.send(message);
       // unscheduled message
       producer.send(session.createMessage(durable));
 
       Map<String, Object>[] messages = queueControl.listScheduledMessages();
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       assertScheduledMetrics(queueControl, 1, durable);
 
-      Assert.assertEquals(intValue, Integer.parseInt((messages[0].get("key")).toString()));
+      assertEquals(intValue, Integer.parseInt((messages[0].get("key")).toString()));
 
       Thread.sleep(delay + 500);
 
       messages = queueControl.listScheduledMessages();
-      Assert.assertEquals(0, messages.length);
+      assertEquals(0, messages.length);
 
       consumeMessages(2, session, queue);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListScheduledMessagesAsJSON() throws Exception {
       long delay = 2000;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       int intValue = RandomUtil.randomInt();
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(false);
       message.putLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME, System.currentTimeMillis() + delay);
-      message.putIntProperty(new SimpleString("key"), intValue);
+      message.putIntProperty(SimpleString.of("key"), intValue);
       producer.send(message);
       // unscheduled message
       producer.send(session.createMessage(durable));
 
       String jsonString = queueControl.listScheduledMessagesAsJSON();
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       JsonArray array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(1, array.size());
+      assertEquals(1, array.size());
       int i = Integer.parseInt(array.getJsonObject(0).get("key").toString().replaceAll("\"", ""));
-      Assert.assertEquals(intValue, i);
+      assertEquals(intValue, i);
 
       Thread.sleep(delay + 500);
 
       jsonString = queueControl.listScheduledMessagesAsJSON();
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(0, array.size());
+      assertEquals(0, array.size());
 
       consumeMessages(2, session, queue);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetDeliveringCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getDeliveringCount());
+      assertEquals(0, queueControl.getDeliveringCount());
 
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       assertDeliveringMetrics(queueControl, 1, durable);
 
       message.acknowledge();
@@ -1576,7 +1712,7 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testMessagesAddedAndMessagesAcknowledged() throws Exception {
       final int THREAD_COUNT = 5;
       final int MSG_COUNT = 1000;
@@ -1591,7 +1727,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString queue = RandomUtil.randomSimpleString();
 
       try {
-         session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+         session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
          for (int i = 0; i < THREAD_COUNT; i++) {
             producerExecutor.submit(() -> {
@@ -1617,7 +1753,7 @@ public class QueueControlTest extends ManagementTestBase {
                   session.start();
                   for (int j = 0; j < MSG_COUNT; j++) {
                      ClientMessage message = consumer.receive(500);
-                     Assert.assertNotNull(message);
+                     assertNotNull(message);
                      message.acknowledge();
                   }
                   session.commit();
@@ -1633,11 +1769,11 @@ public class QueueControlTest extends ManagementTestBase {
 
          QueueControl queueControl = createManagementControl(address, queue, RoutingType.MULTICAST);
          Thread.sleep(200);
-         Assert.assertEquals(0, queueControl.getMessageCount());
-         Assert.assertEquals(0, queueControl.getConsumerCount());
-         Assert.assertEquals(0, queueControl.getDeliveringCount());
-         Assert.assertEquals(THREAD_COUNT * MSG_COUNT, queueControl.getMessagesAdded());
-         Assert.assertEquals(THREAD_COUNT * MSG_COUNT, queueControl.getMessagesAcknowledged());
+         assertEquals(0, queueControl.getMessageCount());
+         assertEquals(0, queueControl.getConsumerCount());
+         assertEquals(0, queueControl.getDeliveringCount());
+         assertEquals(THREAD_COUNT * MSG_COUNT, queueControl.getMessagesAdded());
+         assertEquals(THREAD_COUNT * MSG_COUNT, queueControl.getMessagesAcknowledged());
 
          session.deleteQueue(queue);
       } finally {
@@ -1656,41 +1792,41 @@ public class QueueControlTest extends ManagementTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testListMessagesAsJSONWithNullFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       int intValue = RandomUtil.randomInt();
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
-      message.putIntProperty(new SimpleString("key"), intValue);
+      message.putIntProperty(SimpleString.of("key"), intValue);
       producer.send(message);
 
       String jsonString = queueControl.listMessagesAsJSON(null);
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       JsonArray array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(1, array.size());
+      assertEquals(1, array.size());
 
       long l = Long.parseLong(array.getJsonObject(0).get("key").toString().replaceAll("\"", ""));
-      Assert.assertEquals(intValue, l);
+      assertEquals(intValue, l);
 
       consumeMessages(1, session, queue);
 
       jsonString = queueControl.listMessagesAsJSON(null);
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(0, array.size());
+      assertEquals(0, array.size());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessagesWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
       String filter = key + " =" + matchingValue;
@@ -1698,7 +1834,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
@@ -1711,24 +1847,24 @@ public class QueueControlTest extends ManagementTestBase {
 
       assertMessageMetrics(queueControl, 2, durable);
       Map<String, Object>[] messages = queueControl.listMessages(filter);
-      Assert.assertEquals(1, messages.length);
-      Assert.assertEquals(matchingValue, Long.parseLong(messages[0].get("key").toString()));
+      assertEquals(1, messages.length);
+      assertEquals(matchingValue, Long.parseLong(messages[0].get("key").toString()));
 
       consumeMessages(2, session, queue);
 
       messages = queueControl.listMessages(filter);
-      Assert.assertEquals(0, messages.length);
+      assertEquals(0, messages.length);
       assertMessageMetrics(queueControl, 0, durable);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessagesWithNullFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
@@ -1744,12 +1880,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessagesWithEmptyFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
@@ -1765,9 +1901,9 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessagesAsJSONWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
       String filter = key + " =" + matchingValue;
@@ -1775,7 +1911,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientProducer producer = session.createProducer(address);
@@ -1787,19 +1923,19 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(unmatchingMessage);
 
       String jsonString = queueControl.listMessagesAsJSON(filter);
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       JsonArray array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(1, array.size());
+      assertEquals(1, array.size());
 
       long l = Long.parseLong(array.getJsonObject(0).get("key").toString().replaceAll("\"", ""));
-      Assert.assertEquals(matchingValue, l);
+      assertEquals(matchingValue, l);
 
       consumeMessages(2, session, queue);
 
       jsonString = queueControl.listMessagesAsJSON(filter);
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(0, array.size());
+      assertEquals(0, array.size());
 
       session.deleteQueue(queue);
    }
@@ -1807,19 +1943,19 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry - get a message from DLQ and put on original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryMessage() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
-      final SimpleString dlq = new SimpleString("DLQ1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
+      final SimpleString dlq = SimpleString.of("DLQ1");
       final String sampleText = "Put me on DLQ";
 
       AddressSettings addressSettings = new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla);
       server.getAddressSettingsRepository().addMatch(adName.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(durable));
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -1829,32 +1965,32 @@ public class QueueControlTest extends ManagementTestBase {
       ClientConsumer clientConsumer = session.createConsumer(qName);
       ClientMessage clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+      assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
 
       // force a rollback to DLQ
       session.rollback();
       clientMessage = clientConsumer.receiveImmediate();
-      Assert.assertNull(clientMessage);
+      assertNull(clientMessage);
 
       QueueControl queueControl = createManagementControl(dla, dlq);
       assertMessageMetrics(queueControl, 1, durable);
       final long messageID = getFirstMessageId(queueControl);
 
       // Retry the message - i.e. it should go from DLQ to original Queue.
-      Assert.assertTrue(queueControl.retryMessage(messageID));
+      assertTrue(queueControl.retryMessage(messageID));
 
       // Assert DLQ is empty...
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
       assertMessageMetrics(queueControl, 0, durable);
 
       // .. and that the message is now on the original queue once more.
       clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
@@ -1862,11 +1998,11 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry - get a message from auto-created DLA/DLQ and put on original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryMessageWithAutoCreatedResources() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
       final String sampleText = "Put me on DLQ";
 
       AddressSettings addressSettings = server.getAddressSettingsRepository().getMatch(adName.toString());
@@ -1874,7 +2010,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       server.getAddressSettingsRepository().addMatch(adName.toString(), new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla).setAutoCreateDeadLetterResources(true));
 
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -1884,46 +2020,46 @@ public class QueueControlTest extends ManagementTestBase {
       ClientConsumer clientConsumer = session.createConsumer(qName);
       ClientMessage clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+      assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
 
       // force a rollback to DLQ
       session.rollback();
       clientMessage = clientConsumer.receiveImmediate();
-      Assert.assertNull(clientMessage);
+      assertNull(clientMessage);
 
       QueueControl queueControl = createManagementControl(dla, dlq);
       assertMessageMetrics(queueControl, 1, true);
       final long messageID = getFirstMessageId(queueControl);
 
       // Retry the message - i.e. it should go from DLQ to original Queue.
-      Assert.assertTrue(queueControl.retryMessage(messageID));
+      assertTrue(queueControl.retryMessage(messageID));
 
       // Assert DLQ is empty...
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
       assertMessageMetrics(queueControl, 0, durable);
 
       // .. and that the message is now on the original queue once more.
       clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
 
-   @Test
+   @TestTemplate
    public void testRetryMessageWithoutDLQ() throws Exception {
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString qName2 = new SimpleString("q2");
-      final SimpleString adName = new SimpleString("ad1");
-      final SimpleString adName2 = new SimpleString("ad2");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString qName2 = SimpleString.of("q2");
+      final SimpleString adName = SimpleString.of("ad1");
+      final SimpleString adName2 = SimpleString.of("ad2");
       final String sampleText = "Put me on DLQ";
 
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
-      session.createQueue(new QueueConfiguration(qName2).setAddress(adName2).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName2).setAddress(adName2).setDurable(durable));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -1950,17 +2086,17 @@ public class QueueControlTest extends ManagementTestBase {
 
       ClientConsumer clientConsumer = session.createConsumer(qName);
       ClientMessage clientMessage = clientConsumer.receive(500);
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
       clientMessage.acknowledge();
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer = session.createConsumer(qName2);
       clientMessage = clientConsumer.receive(500);
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
       clientMessage.acknowledge();
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
@@ -1968,21 +2104,21 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry - get a diverted message from DLQ and put on original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryDivertedMessage() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString dlq = new SimpleString("DLQ");
-      final SimpleString forwardingQueue = new SimpleString("forwardingQueue");
-      final SimpleString forwardingAddress = new SimpleString("forwardingAddress");
-      final SimpleString myTopic = new SimpleString("myTopic");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString dlq = SimpleString.of("DLQ");
+      final SimpleString forwardingQueue = SimpleString.of("forwardingQueue");
+      final SimpleString forwardingAddress = SimpleString.of("forwardingAddress");
+      final SimpleString myTopic = SimpleString.of("myTopic");
       final String sampleText = "Put me on DLQ";
 
       AddressSettings addressSettings = new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla);
       server.getAddressSettingsRepository().addMatch(forwardingAddress.toString(), addressSettings);
 
       // create target queue, DLQ and source topic
-      session.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(durable));
-      session.createQueue(new QueueConfiguration(forwardingQueue).setAddress(forwardingAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(forwardingQueue).setAddress(forwardingAddress).setDurable(durable));
       session.createAddress(myTopic, RoutingType.MULTICAST, false);
 
       DivertConfiguration divert = new DivertConfiguration().setName("local-divert")
@@ -1998,14 +2134,14 @@ public class QueueControlTest extends ManagementTestBase {
       ClientConsumer clientConsumer = session.createConsumer(forwardingQueue);
       ClientMessage clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+      assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
 
       // force a rollback to DLQ
       session.rollback();
       clientMessage = clientConsumer.receiveImmediate();
-      Assert.assertNull(clientMessage);
+      assertNull(clientMessage);
 
       QueueControl queueControl = createManagementControl(dla, dlq, RoutingType.MULTICAST);
       assertMessageMetrics(queueControl, 1, durable);
@@ -2013,17 +2149,17 @@ public class QueueControlTest extends ManagementTestBase {
       final long messageID = getFirstMessageId(queueControl);
 
       // Retry the message - i.e. it should go from DLQ to original Queue.
-      Assert.assertTrue(queueControl.retryMessage(messageID));
+      assertTrue(queueControl.retryMessage(messageID));
 
       // Assert DLQ is empty...
       assertMessageMetrics(queueControl, 0, durable);
 
       // .. and that the message is now on the original queue once more.
       clientMessage = clientConsumer.receive(500);
-      Assert.assertNotNull(clientMessage); // fails because of AMQ222196 !!!
+      assertNotNull(clientMessage); // fails because of AMQ222196 !!!
       clientMessage.acknowledge();
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
@@ -2031,20 +2167,20 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry multiple messages from  DLQ to original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryMultipleMessages() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
-      final SimpleString dlq = new SimpleString("DLQ1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
+      final SimpleString dlq = SimpleString.of("DLQ1");
       final String sampleText = "Put me on DLQ";
       final int numMessagesToTest = 10;
 
       AddressSettings addressSettings = new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla);
       server.getAddressSettingsRepository().addMatch(adName.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(durable));
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -2068,12 +2204,12 @@ public class QueueControlTest extends ManagementTestBase {
       for (int i = 0; i < numMessagesToTest; i++) {
          ClientMessage clientMessage = clientConsumer.receive(500);
          clientMessage.acknowledge();
-         Assert.assertNotNull(clientMessage);
-         Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+         assertNotNull(clientMessage);
+         assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
          session.rollback();
       }
 
-      Assert.assertNull(clientConsumer.receiveImmediate());
+      assertNull(clientConsumer.receiveImmediate());
 
       //Verify that original queue has a memory size of 0 and DLQ is greater than 0 after rollback
       assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(q));
@@ -2083,7 +2219,7 @@ public class QueueControlTest extends ManagementTestBase {
       assertMessageMetrics(dlqQueueControl, numMessagesToTest, durable);
 
       // Retry all messages - i.e. they should go from DLQ to original Queue.
-      Assert.assertEquals(numMessagesToTest, dlqQueueControl.retryMessages());
+      assertEquals(numMessagesToTest, dlqQueueControl.retryMessages());
 
       // Assert DLQ is empty...
       assertMessageMetrics(dlqQueueControl, 0, durable);
@@ -2096,8 +2232,8 @@ public class QueueControlTest extends ManagementTestBase {
       for (int i = 0; i < numMessagesToTest; i++) {
          ClientMessage clientMessage = clientConsumer.receive(500);
          clientMessage.acknowledge();
-         Assert.assertNotNull(clientMessage);
-         Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+         assertNotNull(clientMessage);
+         assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
       }
 
       clientConsumer.close();
@@ -2110,12 +2246,12 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test send to DLA while paging includes paged messages
     */
-   @Test
+   @TestTemplate
    public void testSendToDLAIncludesPagedMessages() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
-      final SimpleString dlq = new SimpleString("DLQ1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
+      final SimpleString dlq = SimpleString.of("DLQ1");
       final String sampleText = "Put me on DLQ";
       final int messageCount = 10;
 
@@ -2123,8 +2259,8 @@ public class QueueControlTest extends ManagementTestBase {
       server.getAddressSettingsRepository().addMatch(adName.toString(), addressSettings);
       server.getAddressSettingsRepository().addMatch(dla.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(durable));
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue, make sure address enters paging.
       ClientProducer producer = session.createProducer(adName);
@@ -2136,12 +2272,12 @@ public class QueueControlTest extends ManagementTestBase {
 
       //Send all messages to DLA, make sure all are sent
       QueueControl queueControl = createManagementControl(adName, qName);
-      Assert.assertEquals(messageCount, queueControl.sendMessagesToDeadLetterAddress(null));
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(messageCount, queueControl.sendMessagesToDeadLetterAddress(null));
+      assertEquals(0, getMessageCount(queueControl));
 
       //Make sure all shows up on DLA
       queueControl = createManagementControl(dla, dlq);
-      Assert.assertEquals(messageCount, getMessageCount(queueControl));
+      assertEquals(messageCount, getMessageCount(queueControl));
 
       queueControl.removeAllMessages();
 
@@ -2150,12 +2286,12 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test send single message to DLA while paging includes paged message
     */
-   @Test
+   @TestTemplate
    public void testSendMessageToDLAIncludesPagedMessage() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
-      final SimpleString dlq = new SimpleString("DLQ1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
+      final SimpleString dlq = SimpleString.of("DLQ1");
       final String sampleText = "Message Content";
       final int messageCount = 10;
 
@@ -2163,8 +2299,8 @@ public class QueueControlTest extends ManagementTestBase {
       server.getAddressSettingsRepository().addMatch(adName.toString(), addressSettings);
       server.getAddressSettingsRepository().addMatch(dla.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(durable));
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue, make sure address enters paging.
       ClientProducer producer = session.createProducer(adName);
@@ -2180,14 +2316,14 @@ public class QueueControlTest extends ManagementTestBase {
       Map<String, Object>[] messages = queueControl.listMessages(null);
       long messageID = (Long) messages[messageCount].get("messageID");
 
-      Assert.assertTrue(queueControl.sendMessageToDeadLetterAddress(messageID));
+      assertTrue(queueControl.sendMessageToDeadLetterAddress(messageID));
       queueControl.removeAllMessages();
 
       //Make sure it shows up on DLA
       queueControl = createManagementControl(dla, dlq);
       messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
-      Assert.assertEquals("unique", (String) messages[0].get("myID"));
+      assertEquals(1, messages.length);
+      assertEquals("unique", (String) messages[0].get("myID"));
 
       queueControl.removeAllMessages();
 
@@ -2201,15 +2337,15 @@ public class QueueControlTest extends ManagementTestBase {
     * <li>consume the message from otherQueue</li>
     * </ol>
     */
-   @Test
+   @TestTemplate
    public void testMoveMessages() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString otherAddress = RandomUtil.randomSimpleString();
       SimpleString otherQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue).setAddress(otherAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2226,15 +2362,15 @@ public class QueueControlTest extends ManagementTestBase {
       assertMessageMetrics(queueControl, 1, durable);
 
       //verify memory usage is greater than 0
-      Assert.assertTrue(QueueImplTestAccessor.getQueueMemorySize(q) > 0);
+      assertTrue(QueueImplTestAccessor.getQueueMemorySize(q) > 0);
 
       // moved all messages to otherQueue
       int movedMessagesCount = queueControl.moveMessages(null, otherQueue.toString());
-      Assert.assertEquals(1, movedMessagesCount);
+      assertEquals(1, movedMessagesCount);
       assertMessageMetrics(queueControl, 0, durable);
 
       //verify memory usage is 0 after move
-      Assert.assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(q));
+      assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(q));
 
       // check there is no message to consume from queue
       consumeMessages(0, session, queue);
@@ -2242,7 +2378,7 @@ public class QueueControlTest extends ManagementTestBase {
       // consume the message from otherQueue
       ClientConsumer otherConsumer = session.createConsumer(otherQueue);
       ClientMessage m = otherConsumer.receive(500);
-      Assert.assertEquals(value, m.getObjectProperty(key));
+      assertEquals(value, m.getObjectProperty(key));
 
       m.acknowledge();
 
@@ -2251,16 +2387,16 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(otherQueue);
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessages2() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
-      SimpleString queueA = new SimpleString("A");
-      SimpleString queueB = new SimpleString("B");
-      SimpleString queueC = new SimpleString("C");
+      SimpleString queueA = SimpleString.of("A");
+      SimpleString queueB = SimpleString.of("B");
+      SimpleString queueC = SimpleString.of("C");
 
-      server.createQueue(new QueueConfiguration(queueA).setAddress(address).setDurable(durable));
-      server.createQueue(new QueueConfiguration(queueB).setAddress(address).setDurable(durable));
-      server.createQueue(new QueueConfiguration(queueC).setAddress(address).setDurable(durable));
+      server.createQueue(QueueConfiguration.of(queueA).setAddress(address).setDurable(durable));
+      server.createQueue(QueueConfiguration.of(queueB).setAddress(address).setDurable(durable));
+      server.createQueue(QueueConfiguration.of(queueC).setAddress(address).setDurable(durable));
 
 
       QueueControl queueControlA = createManagementControl(address, queueA);
@@ -2269,8 +2405,8 @@ public class QueueControlTest extends ManagementTestBase {
 
       // send two messages on queueA
 
-      queueControlA.sendMessage(new HashMap<String, String>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
-      queueControlA.sendMessage(new HashMap<String, String>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody2".getBytes()), true, "myUser", "myPassword");
+      queueControlA.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
+      queueControlA.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody2".getBytes()), true, "myUser", "myPassword");
 
       Wait.assertEquals(2, () -> getMessageCount(queueControlA));
       Wait.assertEquals(0, () -> getMessageCount(queueControlB));
@@ -2283,7 +2419,7 @@ public class QueueControlTest extends ManagementTestBase {
       Wait.assertEquals(2, () -> getMessageCount(queueControlB));
 
       // move 1 message to queueC
-      queueControlA.sendMessage(new HashMap<String, String>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody3".getBytes()), true, "myUser", "myPassword");
+      queueControlA.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody3".getBytes()), true, "myUser", "myPassword");
       Wait.assertEquals(1, () -> getMessageCount(queueControlA));
       queueControlA.moveMessages(null, queueC.toString());
       Wait.assertEquals(1, () -> getMessageCount(queueControlC));
@@ -2315,13 +2451,13 @@ public class QueueControlTest extends ManagementTestBase {
 
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessagesToUnknownQueue() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString unknownQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2337,10 +2473,10 @@ public class QueueControlTest extends ManagementTestBase {
       // moved all messages to unknown queue
       try {
          queueControl.moveMessages(null, unknownQueue.toString());
-         Assert.fail("operation must fail if the other queue does not exist");
+         fail("operation must fail if the other queue does not exist");
       } catch (Exception e) {
       }
-      Assert.assertEquals(1, getMessageCount(queueControl));
+      assertEquals(1, getMessageCount(queueControl));
       assertMessageMetrics(queueControl, 1, durable);
 
       consumeMessages(1, session, queue);
@@ -2356,9 +2492,9 @@ public class QueueControlTest extends ManagementTestBase {
     * <li>consume the message which <strong>did</strong> matches the filter from otherQueue</li>
     * </ol>
     */
-   @Test
+   @TestTemplate
    public void testMoveMessagesWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
@@ -2367,8 +2503,8 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString otherAddress = RandomUtil.randomSimpleString();
       SimpleString otherQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue).setAddress(otherAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2384,20 +2520,20 @@ public class QueueControlTest extends ManagementTestBase {
 
       // moved matching messages to otherQueue
       int movedMatchedMessagesCount = queueControl.moveMessages(key + " =" + matchingValue, otherQueue.toString());
-      Assert.assertEquals(1, movedMatchedMessagesCount);
-      Assert.assertEquals(1, getMessageCount(queueControl));
+      assertEquals(1, movedMatchedMessagesCount);
+      assertEquals(1, getMessageCount(queueControl));
 
       // consume the unmatched message from queue
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(unmatchingValue, m.getObjectProperty(key));
+      assertNotNull(m);
+      assertEquals(unmatchingValue, m.getObjectProperty(key));
 
       // consume the matched message from otherQueue
       ClientConsumer otherConsumer = session.createConsumer(otherQueue);
       m = otherConsumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(matchingValue, m.getObjectProperty(key));
+      assertNotNull(m);
+      assertEquals(matchingValue, m.getObjectProperty(key));
 
       m.acknowledge();
 
@@ -2407,15 +2543,15 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(otherQueue);
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessagesWithMessageCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString otherAddress = RandomUtil.randomSimpleString();
       SimpleString otherQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue).setAddress(otherAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       for (int i = 0; i < 10; i++) {
@@ -2430,12 +2566,12 @@ public class QueueControlTest extends ManagementTestBase {
       Wait.assertEquals(10, () -> binding.getQueue().getMessageCount());
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(10, queueControl.getMessageCount());
+      assertEquals(10, queueControl.getMessageCount());
 
       // moved all messages to otherQueue
       int movedMessagesCount = queueControl.moveMessages(QueueControlImpl.FLUSH_LIMIT, null, otherQueue.toString(), false, 5);
-      Assert.assertEquals(5, movedMessagesCount);
-      Assert.assertEquals(5, queueControl.getMessageCount());
+      assertEquals(5, movedMessagesCount);
+      assertEquals(5, queueControl.getMessageCount());
 
       consumeMessages(5, session, queue);
 
@@ -2445,15 +2581,15 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(otherQueue);
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString otherAddress = RandomUtil.randomSimpleString();
       SimpleString otherQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue).setAddress(otherAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue
@@ -2467,11 +2603,11 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       boolean moved = queueControl.moveMessage(messageID, otherQueue.toString());
-      Assert.assertTrue(moved);
+      assertTrue(moved);
       assertMessageMetrics(queueControl, 1, durable);
       assertMessageMetrics(otherQueueControl, 1, durable);
 
@@ -2497,17 +2633,17 @@ public class QueueControlTest extends ManagementTestBase {
     *             </multicast>
     *          </address>
     */
-   @Test
+   @TestTemplate
    public void testMoveMessageToFQQN() throws Exception {
-      SimpleString address = new SimpleString("ErrorQueue");
-      SimpleString queue = new SimpleString("ErrorQueue");
-      SimpleString otherAddress = new SimpleString("parent.addr.1");
-      SimpleString otherQueue1 = new SimpleString("child.queue.1");
-      SimpleString otherQueue2 = new SimpleString("child.queue.2");
+      SimpleString address = SimpleString.of("ErrorQueue");
+      SimpleString queue = SimpleString.of("ErrorQueue");
+      SimpleString otherAddress = SimpleString.of("parent.addr.1");
+      SimpleString otherQueue1 = SimpleString.of("child.queue.1");
+      SimpleString otherQueue2 = SimpleString.of("child.queue.2");
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setRoutingType(RoutingType.ANYCAST).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue1).setAddress(otherAddress).setDurable(durable));
-      session.createQueue(new QueueConfiguration(otherQueue2).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setRoutingType(RoutingType.ANYCAST).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue1).setAddress(otherAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(otherQueue2).setAddress(otherAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       producer.send(session.createMessage(durable));
@@ -2522,11 +2658,11 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       boolean moved = queueControl.moveMessage(messageID, otherQueue1.toString());
-      Assert.assertTrue(moved);
+      assertTrue(moved);
       assertMessageMetrics(queueControl, 1, durable);
       assertMessageMetrics(otherQueue1Control, 1, durable);
       assertMessageMetrics(otherQueue2Control, 0, durable);
@@ -2539,13 +2675,13 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(otherQueue2);
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessageToUnknownQueue() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString unknownQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue
@@ -2556,30 +2692,30 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       // moved all messages to unknown queue
       try {
          queueControl.moveMessage(messageID, unknownQueue.toString());
-         Assert.fail("operation must fail if the other queue does not exist");
+         fail("operation must fail if the other queue does not exist");
       } catch (Exception e) {
       }
-      Assert.assertEquals(1, getMessageCount(queueControl));
+      assertEquals(1, getMessageCount(queueControl));
 
       consumeMessages(1, session, queue);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCopiedMessageProperties() throws Exception {
       final String testAddress = "testAddress";
-      final SimpleString queue = SimpleString.toSimpleString("queue");
+      final SimpleString queue = SimpleString.of("queue");
       final int COUNT = 5;
 
       for (int i = 0; i < COUNT; i++) {
-         server.createQueue(new QueueConfiguration(queue.concat(Integer.toString(i))).setAddress(testAddress + i).setRoutingType(RoutingType.ANYCAST));
+         server.createQueue(QueueConfiguration.of(queue.concat(Integer.toString(i))).setAddress(testAddress + i).setRoutingType(RoutingType.ANYCAST));
       }
 
       ServerLocator locator = createInVMNonHALocator();
@@ -2587,30 +2723,30 @@ public class QueueControlTest extends ManagementTestBase {
       ClientSession session = sf.createSession(false, true, true);
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress + "0"));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress + "0"));
       ClientMessage message = session.createMessage(durable);
       producer.send(message);
       producer.close();
 
       for (int i = 0; i < COUNT - 1; i++) {
-         QueueControl queueControl = createManagementControl(SimpleString.toSimpleString(testAddress + i), queue.concat(Integer.toString(i)), RoutingType.ANYCAST);
-         QueueControl otherQueueControl = createManagementControl(SimpleString.toSimpleString(testAddress + (i + 1)), queue.concat(Integer.toString(i + 1)), RoutingType.ANYCAST);
+         QueueControl queueControl = createManagementControl(SimpleString.of(testAddress + i), queue.concat(Integer.toString(i)), RoutingType.ANYCAST);
+         QueueControl otherQueueControl = createManagementControl(SimpleString.of(testAddress + (i + 1)), queue.concat(Integer.toString(i + 1)), RoutingType.ANYCAST);
          assertMessageMetrics(queueControl, 1, durable);
          assertMessageMetrics(otherQueueControl, 0, durable);
 
          int moved = queueControl.moveMessages(null, queue.concat(Integer.toString(i + 1)).toString());
-         Assert.assertEquals(1, moved);
+         assertEquals(1, moved);
          assertMessageMetrics(queueControl, 0, durable);
          assertMessageMetrics(otherQueueControl, 1, durable);
       }
 
       ClientConsumer consumer1 = session.createConsumer(queue.concat(Integer.toString(COUNT - 1)));
       message = consumer1.receive(1000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
       System.out.println(message);
-      Assert.assertEquals(testAddress + (COUNT - 1), message.getAddress());
-      Assert.assertEquals(testAddress + (COUNT - 2), message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
+      assertEquals(testAddress + (COUNT - 1), message.getAddress());
+      assertEquals(testAddress + (COUNT - 2), message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
    }
 
    /**
@@ -2621,16 +2757,16 @@ public class QueueControlTest extends ManagementTestBase {
     * </ol>
     */
 
-   @Test
+   @TestTemplate
    public void testRemoveMessages() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2646,35 +2782,35 @@ public class QueueControlTest extends ManagementTestBase {
 
       // removed matching messages to otherQueue
       int removedMatchedMessagesCount = queueControl.removeMessages(key + " =" + matchingValue);
-      Assert.assertEquals(1, removedMatchedMessagesCount);
-      Assert.assertEquals(1, getMessageCount(queueControl));
+      assertEquals(1, removedMatchedMessagesCount);
+      assertEquals(1, getMessageCount(queueControl));
 
       // consume the unmatched message from queue
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(unmatchingValue, m.getObjectProperty(key));
+      assertNotNull(m);
+      assertEquals(unmatchingValue, m.getObjectProperty(key));
 
       m.acknowledge();
 
       // check there is no other message to consume:
       m = consumer.receiveImmediate();
-      Assert.assertNull(m);
+      assertNull(m);
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveMessagesWithLimit() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2690,31 +2826,31 @@ public class QueueControlTest extends ManagementTestBase {
 
       // removed matching messages to otherQueue
       int removedMatchedMessagesCount = queueControl.removeMessages(5, key + " =" + matchingValue);
-      Assert.assertEquals(1, removedMatchedMessagesCount);
+      assertEquals(1, removedMatchedMessagesCount);
       assertMessageMetrics(queueControl, 1, durable);
 
       // consume the unmatched message from queue
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(unmatchingValue, m.getObjectProperty(key));
+      assertNotNull(m);
+      assertEquals(unmatchingValue, m.getObjectProperty(key));
 
       m.acknowledge();
 
       // check there is no other message to consume:
       m = consumer.receiveImmediate();
-      Assert.assertNull(m);
+      assertNull(m);
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveMessagesWithNullFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2726,18 +2862,18 @@ public class QueueControlTest extends ManagementTestBase {
 
       // removed matching messages to otherQueue
       int removedMatchedMessagesCount = queueControl.removeMessages(null);
-      Assert.assertEquals(2, removedMatchedMessagesCount);
+      assertEquals(2, removedMatchedMessagesCount);
       assertMessageMetrics(queueControl, 0, durable);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveAllMessages() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2749,13 +2885,13 @@ public class QueueControlTest extends ManagementTestBase {
 
       // removed matching messages to otherQueue
       int removedMatchedMessagesCount = queueControl.removeAllMessages();
-      Assert.assertEquals(2, removedMatchedMessagesCount);
+      assertEquals(2, removedMatchedMessagesCount);
       assertMessageMetrics(queueControl, 0, durable);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveAllWithPagingMode() throws Exception {
 
       final int MESSAGE_SIZE = 1024 * 3; // 3k
@@ -2766,10 +2902,10 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queueName = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queueName).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queueName).setAddress(address).setDurable(durable));
 
       Queue queue = server.locateQueue(queueName);
-      Assert.assertFalse(queue.getPageSubscription().isPaging());
+      assertFalse(queue.getPageSubscription().isPaging());
 
       ClientProducer producer = session.createProducer(address);
 
@@ -2793,25 +2929,25 @@ public class QueueControlTest extends ManagementTestBase {
          producer.send(message);
       }
 
-      Assert.assertTrue(queue.getPageSubscription().isPaging());
+      assertTrue(queue.getPageSubscription().isPaging());
 
       QueueControl queueControl = createManagementControl(address, queueName);
       assertMessageMetrics(queueControl, numberOfMessages, durable);
       int removedMatchedMessagesCount = queueControl.removeAllMessages();
-      Assert.assertEquals(numberOfMessages, removedMatchedMessagesCount);
+      assertEquals(numberOfMessages, removedMatchedMessagesCount);
       assertMessageMetrics(queueControl, 0, durable);
 
-      Assert.assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(queue));
+      assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(queue));
 
       session.deleteQueue(queueName);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveMessagesWithEmptyFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -2823,18 +2959,18 @@ public class QueueControlTest extends ManagementTestBase {
 
       // removed matching messages to otherQueue
       int removedMatchedMessagesCount = queueControl.removeMessages("");
-      Assert.assertEquals(2, removedMatchedMessagesCount);
+      assertEquals(2, removedMatchedMessagesCount);
       assertMessageMetrics(queueControl, 0, durable);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue
@@ -2846,12 +2982,12 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       // delete 1st message
       boolean deleted = queueControl.removeMessage(messageID);
-      Assert.assertTrue(deleted);
+      assertTrue(deleted);
       assertMessageMetrics(queueControl, 1, durable);
 
       // check there is a single message to consume from queue
@@ -2860,12 +2996,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveScheduledMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue, both scheduled
@@ -2878,16 +3014,16 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(m2);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(2, queueControl.getScheduledCount());
+      assertEquals(2, queueControl.getScheduledCount());
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listScheduledMessages();
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       // delete 1st message
       boolean deleted = queueControl.removeMessage(messageID);
-      Assert.assertTrue(deleted);
+      assertTrue(deleted);
       assertScheduledMetrics(queueControl, 1, durable);
 
       // check there is a single message to consume from queue
@@ -2900,13 +3036,13 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveScheduledMessageRestart() throws Exception {
-      Assume.assumeTrue(durable);
+      assumeTrue(durable);
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue, both scheduled
@@ -2923,12 +3059,12 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listScheduledMessages();
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       // delete 1st message
       boolean deleted = queueControl.removeMessage(messageID);
-      Assert.assertTrue(deleted);
+      assertTrue(deleted);
       assertScheduledMetrics(queueControl, 1, durable);
 
       locator.close();
@@ -2938,12 +3074,12 @@ public class QueueControlTest extends ManagementTestBase {
       assertScheduledMetrics(queueControl, 1, durable);
    }
 
-   @Test
+   @TestTemplate
    public void testRemoveMessage2() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send messages on queue
@@ -2968,14 +3104,14 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(50, messages.length);
+      assertEquals(50, messages.length);
       int i = Integer.parseInt((messages[0].get("count")).toString());
       assertEquals(50, i);
       long messageID = (Long) messages[0].get("messageID");
 
       // delete 1st message
       boolean deleted = queueControl.removeMessage(messageID);
-      Assert.assertTrue(deleted);
+      assertTrue(deleted);
       assertMessageMetrics(queueControl, 99, durable);
 
       cons.close();
@@ -2986,16 +3122,16 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountDeliveringMessageCountWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomPositiveLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage matchingMessage = session.createMessage(false);
@@ -3007,31 +3143,31 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(matchingMessage);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.countDeliveringMessages(null));
-      Assert.assertEquals(0, queueControl.countDeliveringMessages(key + " =" + matchingValue));
-      Assert.assertEquals(0, queueControl.countDeliveringMessages(key + " =" + unmatchingValue));
+      assertEquals(0, queueControl.countDeliveringMessages(null));
+      assertEquals(0, queueControl.countDeliveringMessages(key + " =" + matchingValue));
+      assertEquals(0, queueControl.countDeliveringMessages(key + " =" + unmatchingValue));
 
       ClientConsumer consumer = session.createConsumer(queue, null, 1024 * 1024, 1, false);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
-      Assert.assertEquals(3, queueControl.countDeliveringMessages(null));
-      Assert.assertEquals(2, queueControl.countDeliveringMessages(key + " =" + matchingValue));
-      Assert.assertEquals(1, queueControl.countDeliveringMessages(key + " =" + unmatchingValue));
+      assertNotNull(message);
+      assertEquals(3, queueControl.countDeliveringMessages(null));
+      assertEquals(2, queueControl.countDeliveringMessages(key + " =" + matchingValue));
+      assertEquals(1, queueControl.countDeliveringMessages(key + " =" + unmatchingValue));
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountDeliveringMessageCountNoFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage matchingMessage = session.createMessage(false);
@@ -3043,27 +3179,27 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(matchingMessage);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.countDeliveringMessages(null));
+      assertEquals(0, queueControl.countDeliveringMessages(null));
 
       ClientConsumer consumer = session.createConsumer(queue, null, 1024 * 1024, 1, false);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
-      Assert.assertEquals(3, queueControl.countDeliveringMessages(null));
+      assertNotNull(message);
+      assertEquals(3, queueControl.countDeliveringMessages(null));
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountDeliveringMessageCountNoGroupNoFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage matchingMessage = session.createMessage(false);
@@ -3078,21 +3214,21 @@ public class QueueControlTest extends ManagementTestBase {
       QueueControl queueControl = createManagementControl(address, queue);
       String result = queueControl.countDeliveringMessages(null, null);
       JsonObject jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(0, jsonObject.getInt("null"));
+      assertEquals(0, jsonObject.getInt("null"));
 
       ClientConsumer consumer = session.createConsumer(queue, null, 1024 * 1024, 1, false);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
       result = queueControl.countDeliveringMessages(null, null);
       jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(3, jsonObject.getInt("null"));
+      assertEquals(3, jsonObject.getInt("null"));
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountDeliveringMessageCountGroupNoFilter() throws Exception {
       String key = new String("key_group");
       String valueGroup1 = "group_1";
@@ -3101,7 +3237,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage message1 = session.createMessage(false);
@@ -3115,23 +3251,23 @@ public class QueueControlTest extends ManagementTestBase {
       QueueControl queueControl = createManagementControl(address, queue);
       String result = queueControl.countDeliveringMessages(null, key);
       JsonObject jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertTrue(jsonObject.isEmpty());
+      assertTrue(jsonObject.isEmpty());
 
       ClientConsumer consumer = session.createConsumer(queue, null, 1024 * 1024, 1, false);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
       result = queueControl.countDeliveringMessages(null, key);
       jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(2, jsonObject.getInt(valueGroup1));
-      Assert.assertEquals(1, jsonObject.getInt(valueGroup2));
-      Assert.assertFalse(jsonObject.containsKey(null));
+      assertEquals(2, jsonObject.getInt(valueGroup1));
+      assertEquals(1, jsonObject.getInt(valueGroup2));
+      assertFalse(jsonObject.containsKey(null));
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountDeliveringMessageCountGroupFilter() throws Exception {
       String key = new String("key_group");
       long valueGroup1 = RandomUtil.randomLong();
@@ -3140,7 +3276,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage message1 = session.createMessage(false);
@@ -3155,32 +3291,32 @@ public class QueueControlTest extends ManagementTestBase {
       QueueControl queueControl = createManagementControl(address, queue);
       String result = queueControl.countDeliveringMessages(key + " =" + valueGroup1, key);
       JsonObject jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertTrue(jsonObject.isEmpty());
+      assertTrue(jsonObject.isEmpty());
 
       ClientConsumer consumer = session.createConsumer(queue, null, 1024 * 1024, 1, false);
       ClientMessage message = consumer.receive(500);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
       result = queueControl.countDeliveringMessages(key + " =" + valueGroup1, key);
       jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(2, jsonObject.getInt(String.valueOf(valueGroup1)));
-      Assert.assertFalse(jsonObject.containsKey(String.valueOf(valueGroup2)));
-      Assert.assertFalse(jsonObject.containsKey(null));
+      assertEquals(2, jsonObject.getInt(String.valueOf(valueGroup1)));
+      assertFalse(jsonObject.containsKey(String.valueOf(valueGroup2)));
+      assertFalse(jsonObject.containsKey(null));
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountMessagesWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -3193,44 +3329,44 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(matchingMessage);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(3, getMessageCount(queueControl));
+      assertEquals(3, getMessageCount(queueControl));
       assertMessageMetrics(queueControl, 3, durable);
 
-      Assert.assertEquals(2, queueControl.countMessages(key + " =" + matchingValue));
-      Assert.assertEquals(1, queueControl.countMessages(key + " =" + unmatchingValue));
+      assertEquals(2, queueControl.countMessages(key + " =" + matchingValue));
+      assertEquals(1, queueControl.countMessages(key + " =" + unmatchingValue));
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountMessagesWithInvalidFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       String matchingValue = "MATCH";
       String nonMatchingValue = "DIFFERENT";
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
       for (int i = 0; i < 100; i++) {
          ClientMessage msg = session.createMessage(durable);
-         msg.putStringProperty(key, SimpleString.toSimpleString(matchingValue));
+         msg.putStringProperty(key, SimpleString.of(matchingValue));
          producer.send(msg);
       }
 
       for (int i = 0; i < 10; i++) {
          ClientMessage msg = session.createMessage(durable);
-         msg.putStringProperty(key, SimpleString.toSimpleString(nonMatchingValue));
+         msg.putStringProperty(key, SimpleString.of(nonMatchingValue));
          producer.send(msg);
       }
 
       // this is just to guarantee a round trip and avoid in transit messages, so they are all accounted for
       session.commit();
 
-      ClientConsumer consumer = session.createConsumer(queue, SimpleString.toSimpleString("nonExistentProperty like \'%Temp/88\'"));
+      ClientConsumer consumer = session.createConsumer(queue, SimpleString.of("nonExistentProperty like \'%Temp/88\'"));
 
       session.start();
 
@@ -3239,17 +3375,17 @@ public class QueueControlTest extends ManagementTestBase {
       QueueControl queueControl = createManagementControl(address, queue);
       assertMessageMetrics(queueControl, 110, durable);
 
-      Assert.assertEquals(0, queueControl.countMessages("nonExistentProperty like \'%Temp/88\'"));
+      assertEquals(0, queueControl.countMessages("nonExistentProperty like \'%Temp/88\'"));
 
-      Assert.assertEquals(100, queueControl.countMessages(key + "=\'" + matchingValue + "\'"));
-      Assert.assertEquals(10, queueControl.countMessages(key + " = \'" + nonMatchingValue + "\'"));
+      assertEquals(100, queueControl.countMessages(key + "=\'" + matchingValue + "\'"));
+      assertEquals(10, queueControl.countMessages(key + " = \'" + nonMatchingValue + "\'"));
 
       consumer.close();
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountMessagesPropertyExist() throws Exception {
       String key = new String("key_group");
       String valueGroup1 = "group_1";
@@ -3258,7 +3394,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       for (int i = 0; i < 100; i++) {
@@ -3277,21 +3413,21 @@ public class QueueControlTest extends ManagementTestBase {
       }
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(120, getMessageCount(queueControl));
+      assertEquals(120, getMessageCount(queueControl));
       String result = queueControl.countMessages(null, key);
       JsonObject jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(34, jsonObject.getInt(valueGroup1));
-      Assert.assertEquals(66, jsonObject.getInt(valueGroup2));
-      Assert.assertEquals(20, jsonObject.getInt("null"));
+      assertEquals(34, jsonObject.getInt(valueGroup1));
+      assertEquals(66, jsonObject.getInt(valueGroup2));
+      assertEquals(20, jsonObject.getInt("null"));
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testCountMessagesPropertyWithNullFilter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(address);
 
       for (int i = 0; i < 100; i++) {
@@ -3301,24 +3437,24 @@ public class QueueControlTest extends ManagementTestBase {
       }
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(100, getMessageCount(queueControl));
+      assertEquals(100, getMessageCount(queueControl));
       String result = queueControl.countMessages(null,null);
       JsonObject jsonObject = JsonUtil.readJsonObject(result);
-      Assert.assertEquals(100, jsonObject.getInt("null"));
+      assertEquals(100, jsonObject.getInt("null"));
       session.deleteQueue(queue);
    }
 
 
-   @Test
+   @TestTemplate
    public void testExpireMessagesWithFilter() throws Exception {
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -3330,38 +3466,38 @@ public class QueueControlTest extends ManagementTestBase {
       producer.send(unmatchingMessage);
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(2, getMessageCount(queueControl));
+      assertEquals(2, getMessageCount(queueControl));
 
       int expiredMessagesCount = queueControl.expireMessages(key + " =" + matchingValue);
-      Assert.assertEquals(1, expiredMessagesCount);
+      assertEquals(1, expiredMessagesCount);
       assertMessageMetrics(queueControl, 1, durable);
 
       // consume the unmatched message from queue
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(unmatchingValue, m.getObjectProperty(key));
+      assertNotNull(m);
+      assertEquals(unmatchingValue, m.getObjectProperty(key));
 
       m.acknowledge();
 
       // check there is no other message to consume:
       m = consumer.receiveImmediate();
-      Assert.assertNull(m);
+      assertNull(m);
 
       consumer.close();
       session.deleteQueue(queue);
       session.close();
    }
 
-   @Test
+   @TestTemplate
    public void testExpireMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString expiryAddress = RandomUtil.randomSimpleString();
       SimpleString expiryQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(expiryQueue).setAddress(expiryAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(expiryQueue).setAddress(expiryAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send on queue
@@ -3374,14 +3510,14 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       AddressSettings addressSettings = new AddressSettings().setExpiryAddress(expiryAddress);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
       boolean expired = queueControl.expireMessage(messageID);
-      Assert.assertTrue(expired);
+      assertTrue(expired);
       Thread.sleep(200);
       assertMessageMetrics(queueControl, 0, durable);
       assertMessageMetrics(expiryQueueControl, 1, durable);
@@ -3394,15 +3530,15 @@ public class QueueControlTest extends ManagementTestBase {
       session.close();
    }
 
-   @Test
+   @TestTemplate
    public void testSendMessageToDeadLetterAddress() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
       SimpleString deadLetterAddress = RandomUtil.randomSimpleString();
       SimpleString deadLetterQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
-      session.createQueue(new QueueConfiguration(deadLetterQueue).setAddress(deadLetterAddress).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(deadLetterQueue).setAddress(deadLetterAddress).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       // send 2 messages on queue
@@ -3415,15 +3551,15 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(2, messages.length);
+      assertEquals(2, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       AddressSettings addressSettings = new AddressSettings().setDeadLetterAddress(deadLetterAddress);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      Assert.assertEquals(0, getMessageCount(deadLetterQueueControl));
+      assertEquals(0, getMessageCount(deadLetterQueueControl));
       boolean movedToDeadLetterAddress = queueControl.sendMessageToDeadLetterAddress(messageID);
-      Assert.assertTrue(movedToDeadLetterAddress);
+      assertTrue(movedToDeadLetterAddress);
       assertMessageMetrics(queueControl, 1, durable);
       Thread.sleep(200);
       assertMessageMetrics(deadLetterQueueControl, 1, durable);
@@ -3438,7 +3574,7 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(deadLetterQueue);
    }
 
-   @Test
+   @TestTemplate
    public void testChangeMessagePriority() throws Exception {
       byte originalPriority = (byte) 1;
       byte newPriority = (byte) 8;
@@ -3446,7 +3582,7 @@ public class QueueControlTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage message = session.createMessage(durable);
@@ -3458,29 +3594,29 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       boolean priorityChanged = queueControl.changeMessagePriority(messageID, newPriority);
-      Assert.assertTrue(priorityChanged);
+      assertTrue(priorityChanged);
 
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertEquals(newPriority, m.getPriority());
+      assertNotNull(m);
+      assertEquals(newPriority, m.getPriority());
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testChangeMessagePriorityWithInvalidValue() throws Exception {
       byte invalidPriority = (byte) 23;
 
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       ClientProducer producer = session.createProducer(address);
 
       ClientMessage message = session.createMessage(durable);
@@ -3491,30 +3627,30 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       try {
          queueControl.changeMessagePriority(messageID, invalidPriority);
-         Assert.fail("operation fails when priority value is < 0 or > 9");
+         fail("operation fails when priority value is < 0 or > 9");
       } catch (Exception e) {
       }
 
       ClientConsumer consumer = session.createConsumer(queue);
       ClientMessage m = consumer.receive(500);
-      Assert.assertNotNull(m);
-      Assert.assertTrue(invalidPriority != m.getPriority());
+      assertNotNull(m);
+      assertTrue(invalidPriority != m.getPriority());
 
       consumer.close();
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessageCounter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ActiveMQServerControl serverControl = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
@@ -3524,8 +3660,8 @@ public class QueueControlTest extends ManagementTestBase {
       String jsonString = queueControl.listMessageCounter();
       MessageCounterInfo info = MessageCounterInfo.fromJSON(jsonString);
 
-      Assert.assertEquals(0, info.getDepth());
-      Assert.assertEquals(0, info.getCount());
+      assertEquals(0, info.getDepth());
+      assertEquals(0, info.getCount());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -3535,12 +3671,12 @@ public class QueueControlTest extends ManagementTestBase {
       Thread.sleep(50);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(1, info.getDepth());
-      Assert.assertEquals(1, info.getDepthDelta());
-      Assert.assertEquals(1, info.getCount());
-      Assert.assertEquals(1, info.getCountDelta());
-      Assert.assertEquals(info.getUpdateTimestamp(), info.getLastAddTimestamp());
-      Assert.assertEquals(NULL_DATE, info.getLastAckTimestamp()); // no acks received yet
+      assertEquals(1, info.getDepth());
+      assertEquals(1, info.getDepthDelta());
+      assertEquals(1, info.getCount());
+      assertEquals(1, info.getCountDelta());
+      assertEquals(info.getUpdateTimestamp(), info.getLastAddTimestamp());
+      assertEquals(NULL_DATE, info.getLastAckTimestamp()); // no acks received yet
 
       producer.send(session.createMessage(durable));
       Wait.assertTrue(() -> server.locateQueue(queue).getMessageCount() == 2);
@@ -3549,12 +3685,12 @@ public class QueueControlTest extends ManagementTestBase {
       Thread.sleep(50);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(2, info.getDepth());
-      Assert.assertEquals(1, info.getDepthDelta());
-      Assert.assertEquals(2, info.getCount());
-      Assert.assertEquals(1, info.getCountDelta());
-      Assert.assertEquals(info.getUpdateTimestamp(), info.getLastAddTimestamp());
-      Assert.assertEquals(NULL_DATE, info.getLastAckTimestamp()); // no acks received yet
+      assertEquals(2, info.getDepth());
+      assertEquals(1, info.getDepthDelta());
+      assertEquals(2, info.getCount());
+      assertEquals(1, info.getCountDelta());
+      assertEquals(info.getUpdateTimestamp(), info.getLastAddTimestamp());
+      assertEquals(NULL_DATE, info.getLastAckTimestamp()); // no acks received yet
 
       consumeMessages(2, session, queue);
 
@@ -3562,21 +3698,21 @@ public class QueueControlTest extends ManagementTestBase {
       Thread.sleep(50);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(0, info.getDepth());
-      Assert.assertEquals(-2, info.getDepthDelta());
-      Assert.assertEquals(2, info.getCount());
-      Assert.assertEquals(0, info.getCountDelta());
-      Assert.assertEquals(info.getUpdateTimestamp(), info.getLastAckTimestamp());
+      assertEquals(0, info.getDepth());
+      assertEquals(-2, info.getDepthDelta());
+      assertEquals(2, info.getCount());
+      assertEquals(0, info.getCountDelta());
+      assertEquals(info.getUpdateTimestamp(), info.getLastAckTimestamp());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testResetMessageCounter() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ActiveMQServerControl serverControl = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
@@ -3586,8 +3722,8 @@ public class QueueControlTest extends ManagementTestBase {
       String jsonString = queueControl.listMessageCounter();
       MessageCounterInfo info = MessageCounterInfo.fromJSON(jsonString);
 
-      Assert.assertEquals(0, info.getDepth());
-      Assert.assertEquals(0, info.getCount());
+      assertEquals(0, info.getDepth());
+      assertEquals(0, info.getCount());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -3595,55 +3731,55 @@ public class QueueControlTest extends ManagementTestBase {
       Thread.sleep(MessageCounterManagerImpl.MIN_SAMPLE_PERIOD * 2);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(1, info.getDepth());
-      Assert.assertEquals(1, info.getDepthDelta());
-      Assert.assertEquals(1, info.getCount());
-      Assert.assertEquals(1, info.getCountDelta());
+      assertEquals(1, info.getDepth());
+      assertEquals(1, info.getDepthDelta());
+      assertEquals(1, info.getCount());
+      assertEquals(1, info.getCountDelta());
 
       consumeMessages(1, session, queue);
 
       Thread.sleep(MessageCounterManagerImpl.MIN_SAMPLE_PERIOD * 2);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(0, info.getDepth());
-      Assert.assertEquals(-1, info.getDepthDelta());
-      Assert.assertEquals(1, info.getCount());
-      Assert.assertEquals(0, info.getCountDelta());
+      assertEquals(0, info.getDepth());
+      assertEquals(-1, info.getDepthDelta());
+      assertEquals(1, info.getCount());
+      assertEquals(0, info.getCountDelta());
 
       queueControl.resetMessageCounter();
 
       Thread.sleep(MessageCounterManagerImpl.MIN_SAMPLE_PERIOD * 2);
       jsonString = queueControl.listMessageCounter();
       info = MessageCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(0, info.getDepth());
-      Assert.assertEquals(0, info.getDepthDelta());
-      Assert.assertEquals(0, info.getCount());
-      Assert.assertEquals(0, info.getCountDelta());
+      assertEquals(0, info.getDepth());
+      assertEquals(0, info.getDepthDelta());
+      assertEquals(0, info.getCount());
+      assertEquals(0, info.getCountDelta());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessageCounterAsHTML() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       String history = queueControl.listMessageCounterAsHTML();
-      Assert.assertNotNull(history);
+      assertNotNull(history);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessageCounterHistory() throws Exception {
       long counterPeriod = 1000;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ActiveMQServerControl serverControl = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
@@ -3652,18 +3788,18 @@ public class QueueControlTest extends ManagementTestBase {
 
       String jsonString = queueControl.listMessageCounterHistory();
       DayCounterInfo[] infos = DayCounterInfo.fromJSON(jsonString);
-      Assert.assertEquals(1, infos.length);
+      assertEquals(1, infos.length);
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testListMessageCounterHistoryAsHTML() throws Exception {
       long counterPeriod = 1000;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
       QueueControl queueControl = createManagementControl(address, queue);
 
       ActiveMQServerControl serverControl = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
@@ -3671,16 +3807,16 @@ public class QueueControlTest extends ManagementTestBase {
       serverControl.setMessageCounterSamplePeriod(counterPeriod);
 
       String history = queueControl.listMessageCounterHistoryAsHTML();
-      Assert.assertNotNull(history);
+      assertNotNull(history);
 
       session.deleteQueue(queue);
 
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessagesBack() throws Exception {
-      server.createQueue(new QueueConfiguration(new SimpleString("q1")).setRoutingType(RoutingType.MULTICAST).setDurable(durable));
-      server.createQueue(new QueueConfiguration(new SimpleString("q2")).setRoutingType(RoutingType.MULTICAST).setDurable(durable));
+      server.createQueue(QueueConfiguration.of("q1").setRoutingType(RoutingType.MULTICAST).setDurable(durable));
+      server.createQueue(QueueConfiguration.of("q2").setRoutingType(RoutingType.MULTICAST).setDurable(durable));
 
       ServerLocator locator = createInVMNonHALocator();
 
@@ -3693,7 +3829,7 @@ public class QueueControlTest extends ManagementTestBase {
       for (int i = 0; i < 10; i++) {
          ClientMessage msg = session.createMessage(durable);
 
-         msg.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, new SimpleString("dupl-" + i));
+         msg.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, SimpleString.of("dupl-" + i));
 
          prod1.send(msg);
       }
@@ -3706,9 +3842,9 @@ public class QueueControlTest extends ManagementTestBase {
       assertNotNull(consumer.receive(5000));
       consumer.close();
 
-      QueueControl q1Control = ManagementControlHelper.createQueueControl(new SimpleString("q1"), new SimpleString("q1"), mbeanServer);
+      QueueControl q1Control = ManagementControlHelper.createQueueControl(SimpleString.of("q1"), SimpleString.of("q1"), mbeanServer);
 
-      QueueControl q2Control = ManagementControlHelper.createQueueControl(new SimpleString("q2"), new SimpleString("q2"), mbeanServer);
+      QueueControl q2Control = ManagementControlHelper.createQueueControl(SimpleString.of("q2"), SimpleString.of("q2"), mbeanServer);
 
       assertEquals(10, q1Control.moveMessages(null, "q2"));
 
@@ -3741,10 +3877,10 @@ public class QueueControlTest extends ManagementTestBase {
 
    }
 
-   @Test
+   @TestTemplate
    public void testMoveMessagesBack2() throws Exception {
-      server.createQueue(new QueueConfiguration(new SimpleString("q1")).setRoutingType(RoutingType.MULTICAST).setDurable(durable));
-      server.createQueue(new QueueConfiguration(new SimpleString("q2")).setRoutingType(RoutingType.MULTICAST).setDurable(durable));
+      server.createQueue(QueueConfiguration.of("q1").setRoutingType(RoutingType.MULTICAST).setDurable(durable));
+      server.createQueue(QueueConfiguration.of("q2").setRoutingType(RoutingType.MULTICAST).setDurable(durable));
 
       ServerLocator locator = createInVMNonHALocator();
 
@@ -3759,7 +3895,7 @@ public class QueueControlTest extends ManagementTestBase {
       for (int i = 0; i < NUMBER_OF_MSGS; i++) {
          ClientMessage msg = session.createMessage(durable);
 
-         msg.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, new SimpleString("dupl-" + i));
+         msg.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, SimpleString.of("dupl-" + i));
 
          prod1.send(msg);
       }
@@ -3772,9 +3908,9 @@ public class QueueControlTest extends ManagementTestBase {
       assertNotNull(consumer.receive(5000));
       consumer.close();
 
-      QueueControl q1Control = ManagementControlHelper.createQueueControl(new SimpleString("q1"), new SimpleString("q1"), mbeanServer);
+      QueueControl q1Control = ManagementControlHelper.createQueueControl(SimpleString.of("q1"), SimpleString.of("q1"), mbeanServer);
 
-      QueueControl q2Control = ManagementControlHelper.createQueueControl(new SimpleString("q2"), new SimpleString("q2"), mbeanServer);
+      QueueControl q2Control = ManagementControlHelper.createQueueControl(SimpleString.of("q2"), SimpleString.of("q2"), mbeanServer);
 
       assertEquals(NUMBER_OF_MSGS, q1Control.moveMessages(null, "q2"));
 
@@ -3814,38 +3950,38 @@ public class QueueControlTest extends ManagementTestBase {
       session.close();
    }
 
-   @Test
+   @TestTemplate
    public void testPauseAndResume() {
       long counterPeriod = 1000;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
       try {
-         session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+         session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
          QueueControl queueControl = createManagementControl(address, queue);
 
          ActiveMQServerControl serverControl = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
          serverControl.enableMessageCounters();
          serverControl.setMessageCounterSamplePeriod(counterPeriod);
-         Assert.assertFalse(queueControl.isPaused());
+         assertFalse(queueControl.isPaused());
          queueControl.pause();
-         Assert.assertTrue(queueControl.isPaused());
+         assertTrue(queueControl.isPaused());
          queueControl.resume();
-         Assert.assertFalse(queueControl.isPaused());
+         assertFalse(queueControl.isPaused());
       } catch (Exception e) {
          e.printStackTrace();
       }
    }
 
-   @Test
+   @TestTemplate
    public void testResetMessagesAdded() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, getMessagesAdded(queueControl));
+      assertEquals(0, getMessagesAdded(queueControl));
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
@@ -3864,40 +4000,40 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testResetMessagesAcknowledged() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+      assertEquals(0, queueControl.getMessagesAcknowledged());
 
       ClientProducer producer = session.createProducer(address);
       producer.send(session.createMessage(durable));
       consumeMessages(1, session, queue);
-      Assert.assertEquals(1, queueControl.getMessagesAcknowledged());
+      assertEquals(1, queueControl.getMessagesAcknowledged());
       producer.send(session.createMessage(durable));
       consumeMessages(1, session, queue);
-      Assert.assertEquals(2, queueControl.getMessagesAcknowledged());
+      assertEquals(2, queueControl.getMessagesAcknowledged());
 
       queueControl.resetMessagesAcknowledged();
 
-      Assert.assertEquals(0, queueControl.getMessagesAcknowledged());
+      assertEquals(0, queueControl.getMessagesAcknowledged());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testResetMessagesExpired() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesExpired());
+      assertEquals(0, queueControl.getMessagesExpired());
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
@@ -3910,7 +4046,7 @@ public class QueueControlTest extends ManagementTestBase {
       long messageID = (Long) messages[0].get("messageID");
 
       queueControl.expireMessage(messageID);
-      Assert.assertEquals(1, queueControl.getMessagesExpired());
+      assertEquals(1, queueControl.getMessagesExpired());
 
       message = session.createMessage(durable);
       producer.send(message);
@@ -3921,28 +4057,28 @@ public class QueueControlTest extends ManagementTestBase {
 
       // the message IDs are set on the server
       messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       messageID = (Long) messages[0].get("messageID");
 
       queueControl.expireMessage(messageID);
-      Assert.assertEquals(2, queueControl.getMessagesExpired());
+      assertEquals(2, queueControl.getMessagesExpired());
 
       queueControl.resetMessagesExpired();
 
-      Assert.assertEquals(0, queueControl.getMessagesExpired());
+      assertEquals(0, queueControl.getMessagesExpired());
 
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testResetMessagesKilled() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getMessagesExpired());
+      assertEquals(0, queueControl.getMessagesExpired());
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage message = session.createMessage(durable);
@@ -3951,11 +4087,11 @@ public class QueueControlTest extends ManagementTestBase {
       Wait.assertEquals(1, queueControl::getMessageCount);
       // the message IDs are set on the server
       Map<String, Object>[] messages = queueControl.listMessages(null);
-      Assert.assertEquals(1, messages.length);
+      assertEquals(1, messages.length);
       long messageID = (Long) messages[0].get("messageID");
 
       queueControl.sendMessageToDeadLetterAddress(messageID);
-      Assert.assertEquals(1, queueControl.getMessagesKilled());
+      assertEquals(1, queueControl.getMessagesKilled());
       assertMessageMetrics(queueControl, 0, durable);
 
       message = session.createMessage(false);
@@ -3972,25 +4108,25 @@ public class QueueControlTest extends ManagementTestBase {
 
       consumer.close();
 
-      Assert.assertEquals(2, queueControl.getMessagesKilled());
+      assertEquals(2, queueControl.getMessagesKilled());
 
       queueControl.resetMessagesKilled();
 
-      Assert.assertEquals(0, queueControl.getMessagesKilled());
+      assertEquals(0, queueControl.getMessagesKilled());
 
       session.deleteQueue(queue);
    }
 
    //make sure notifications are always received no matter whether
    //a Queue is created via QueueControl or by JMSServerManager directly.
-   @Test
+   @TestTemplate
    public void testCreateQueueNotification() throws Exception {
       JMSUtil.JMXListener listener = new JMSUtil.JMXListener();
       this.mbeanServer.addNotificationListener(ObjectNameBuilder.DEFAULT.getActiveMQServerObjectName(), listener, null, null);
 
-      SimpleString testQueueName = new SimpleString("newQueue");
+      SimpleString testQueueName = SimpleString.of("newQueue");
       String testQueueName2 = "newQueue2";
-      this.server.createQueue(new QueueConfiguration(testQueueName).setDurable(durable));
+      this.server.createQueue(QueueConfiguration.of(testQueueName).setDurable(durable));
 
       Notification notif = listener.getNotification();
 
@@ -4003,7 +4139,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       ActiveMQServerControl control = ManagementControlHelper.createActiveMQServerControl(mbeanServer);
 
-      control.createQueue(new QueueConfiguration(testQueueName2).setRoutingType(RoutingType.MULTICAST).toJSON());
+      control.createQueue(QueueConfiguration.of(testQueueName2).setRoutingType(RoutingType.MULTICAST).toJSON());
 
       notif = listener.getNotification();
       assertEquals(CoreNotificationType.BINDING_ADDED.toString(), notif.getType());
@@ -4014,16 +4150,16 @@ public class QueueControlTest extends ManagementTestBase {
       assertEquals(CoreNotificationType.BINDING_REMOVED.toString(), notif.getType());
    }
 
-   @Test
+   @TestTemplate
    public void testSendMessage() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
-      queueControl.sendMessage(new HashMap<String, String>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
+      queueControl.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
       queueControl.sendMessage(null, Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
 
       Wait.assertEquals(2, () -> getMessageCount(queueControl));
@@ -4031,29 +4167,29 @@ public class QueueControlTest extends ManagementTestBase {
       // the message IDs are set on the server
       CompositeData[] browse = queueControl.browse(null);
 
-      Assert.assertEquals(2, browse.length);
+      assertEquals(2, browse.length);
 
       byte[] body = (byte[]) browse[0].get(BODY);
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
 
       body = (byte[]) browse[1].get(BODY);
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
    }
 
 
-   @Test
+   @TestTemplate
    public void testSendMessageWithAMQP() throws Exception {
-      SimpleString address = new SimpleString("address_testSendMessageWithAMQP");
-      SimpleString queue = new SimpleString("queue_testSendMessageWithAMQP");
+      SimpleString address = SimpleString.of("address_testSendMessageWithAMQP");
+      SimpleString queue = SimpleString.of("queue_testSendMessageWithAMQP");
 
       server.addAddressInfo(new AddressInfo(address).setAutoCreated(false).addRoutingType(RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       Wait.assertTrue(() -> server.locateQueue(queue) != null && server.getAddressInfo(address) != null);
 
@@ -4088,42 +4224,42 @@ public class QueueControlTest extends ManagementTestBase {
       // the message IDs are set on the server
       CompositeData[] browse = queueControl.browse(null);
 
-      Assert.assertEquals(2, browse.length);
+      assertEquals(2, browse.length);
 
       String userID = (String) browse[0].get("userID");
 
-      Assert.assertTrue(userID.startsWith("ID:"));
+      assertTrue(userID.startsWith("ID:"));
 
-      Assert.assertFalse(userID.startsWith("ID:ID:"));
+      assertFalse(userID.startsWith("ID:ID:"));
 
       String body = (String) browse[0].get("text");
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals("theAMQPBody", body);
+      assertEquals("theAMQPBody", body);
 
       userID = (String) browse[1].get("userID");
 
-      Assert.assertTrue(userID.startsWith("ID:"));
+      assertTrue(userID.startsWith("ID:"));
 
-      Assert.assertFalse(userID.startsWith("ID:ID:"));
+      assertFalse(userID.startsWith("ID:ID:"));
 
       body = (String) browse[1].get("text");
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals("theCoreBody", body);
+      assertEquals("theCoreBody", body);
 
    }
 
 
-   @Test
+   @TestTemplate
    public void testSendMessageWithAMQPLarge() throws Exception {
-      SimpleString address = new SimpleString("address_testSendMessageWithAMQP");
-      SimpleString queue = new SimpleString("queue_testSendMessageWithAMQP");
+      SimpleString address = SimpleString.of("address_testSendMessageWithAMQP");
+      SimpleString queue = SimpleString.of("queue_testSendMessageWithAMQP");
 
       server.addAddressInfo(new AddressInfo(address).setAutoCreated(false).addRoutingType(RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       Wait.assertTrue(() -> server.locateQueue(queue) != null && server.getAddressInfo(address) != null);
 
@@ -4163,28 +4299,28 @@ public class QueueControlTest extends ManagementTestBase {
       // the message IDs are set on the server
       CompositeData[] browse = queueControl.browse(null);
 
-      Assert.assertEquals(2, browse.length);
+      assertEquals(2, browse.length);
 
       String body = (String) browse[0].get("text");
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
       body = (String) browse[1].get("text");
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
    }
 
-   @Test
+   @TestTemplate
    public void testSendMessageWithMessageId() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
-      queueControl.sendMessage(new HashMap<String, String>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
+      queueControl.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
       queueControl.sendMessage(null, Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword", true);
 
       Wait.assertEquals(2, () -> getMessageCount(queueControl));
@@ -4192,35 +4328,50 @@ public class QueueControlTest extends ManagementTestBase {
       // the message IDs are set on the server
       CompositeData[] browse = queueControl.browse(null);
 
-      Assert.assertEquals(2, browse.length);
+      assertEquals(2, browse.length);
 
       byte[] body = (byte[]) browse[0].get(BODY);
 
       String messageID = (String) browse[0].get("userID");
 
-      Assert.assertEquals(0, messageID.length());
+      assertEquals(0, messageID.length());
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
 
       body = (byte[]) browse[1].get(BODY);
 
       messageID = (String) browse[1].get("userID");
 
-      Assert.assertTrue(messageID.length() > 0);
+      assertTrue(messageID.length() > 0);
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
    }
 
-   @Test
+   @TestTemplate
+   public void testSendMessageToQueueWithFilter() throws Exception {
+      SimpleString address = RandomUtil.randomSimpleString();
+      SimpleString queue = RandomUtil.randomSimpleString();
+
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable).setFilterString("foo = 'foo'"));
+
+      QueueControl queueControl = createManagementControl(address, queue);
+
+      queueControl.sendMessage(new HashMap<>(), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
+      queueControl.sendMessage(Map.of("foo", "foo"), Message.BYTES_TYPE, Base64.encodeBytes("theBody".getBytes()), true, "myUser", "myPassword");
+
+      Wait.assertEquals(1, () -> getMessageCount(queueControl));
+   }
+
+   @TestTemplate
    public void testSendMessageWithProperties() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
@@ -4235,28 +4386,28 @@ public class QueueControlTest extends ManagementTestBase {
       // the message IDs are set on the server
       CompositeData[] browse = queueControl.browse(null);
 
-      Assert.assertEquals(2, browse.length);
+      assertEquals(2, browse.length);
 
       byte[] body = (byte[]) browse[0].get(BODY);
 
       for (Object prop : ((TabularDataSupport)browse[0].get(STRING_PROPERTIES)).values()) {
          CompositeDataSupport cds = (CompositeDataSupport) prop;
-         Assert.assertTrue(headers.containsKey(cds.get("key")));
-         Assert.assertTrue(headers.containsValue(cds.get("value")));
+         assertTrue(headers.containsKey(cds.get("key")));
+         assertTrue(headers.containsValue(cds.get("value")));
       }
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
 
       body = (byte[]) browse[1].get(BODY);
 
-      Assert.assertNotNull(body);
+      assertNotNull(body);
 
-      Assert.assertEquals(new String(body), "theBody");
+      assertEquals(new String(body), "theBody");
    }
 
-   @Test
+   @TestTemplate
    public void testBrowseLimitOnListBrowseAndFilteredCount() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
@@ -4264,7 +4415,7 @@ public class QueueControlTest extends ManagementTestBase {
       AddressSettings addressSettings = new AddressSettings().setManagementBrowsePageSize(5);
       server.getAddressSettingsRepository().addMatch(address.toString(), addressSettings);
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       ClientProducer producer = session.createProducer(address);
       for (int i = 0; i < 10; i++) {
@@ -4290,12 +4441,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testBrowseWithNullPropertyValue() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       ClientProducer producer = session.createProducer(address);
       ClientMessage m = session.createMessage(true);
@@ -4310,12 +4461,12 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testBrowseWithNullPropertyValueWithAMQP() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       JmsConnectionFactory cf = new JmsConnectionFactory("amqp://localhost:61616");
       Connection c = cf.createConnection();
@@ -4333,23 +4484,18 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testResetGroups() throws Exception {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       ClientConsumer consumer = session.createConsumer(queue);
-      Assert.assertEquals(1, queueControl.getConsumerCount());
-      consumer.setMessageHandler(new MessageHandler() {
-         @Override
-         public void onMessage(ClientMessage message) {
-            logger.debug("{}", message);
-         }
-      });
+      assertEquals(1, queueControl.getConsumerCount());
+      consumer.setMessageHandler(message -> logger.debug("{}", message));
       session.start();
 
       ClientProducer producer = session.createProducer(address);
@@ -4375,16 +4521,16 @@ public class QueueControlTest extends ManagementTestBase {
       session.deleteQueue(queue);
    }
 
-   @Test
+   @TestTemplate
    public void testGetScheduledCountOnRemove() throws Exception {
       long delay = Integer.MAX_VALUE;
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(queue).setAddress(address).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(queue).setAddress(address).setDurable(durable));
 
       QueueControl queueControl = createManagementControl(address, queue);
-      Assert.assertEquals(0, queueControl.getScheduledCount());
+      assertEquals(0, queueControl.getScheduledCount());
 
       final LocalQueueBinding binding = (LocalQueueBinding) server.getPostOffice().getBinding(queue);
       Queue q = binding.getQueue();
@@ -4397,7 +4543,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       queueControl.removeAllMessages();
 
-      Assert.assertEquals(0, queueControl.getMessageCount());
+      assertEquals(0, queueControl.getMessageCount());
 
       //Verify that original queue has a memory size of 0
       assertEquals(0, QueueImplTestAccessor.getQueueMemorySize(q));
@@ -4408,18 +4554,18 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry - get a message from auto-created DLA/DLQ with HDR_ORIG_RoutingType set and put on original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryMessageWithAutoCreatedResourcesAndOrigRoutingType() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
       final String sampleText = "Put me on DLQ";
 
       AddressSettings addressSettings = server.getAddressSettingsRepository().getMatch(adName.toString());
       final SimpleString dlq = addressSettings.getDeadLetterQueuePrefix().concat(adName).concat(addressSettings.getDeadLetterQueueSuffix());
 
       server.getAddressSettingsRepository().addMatch(adName.toString(), new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla).setAutoCreateDeadLetterResources(true));
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable).setRoutingType(RoutingType.ANYCAST));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -4433,33 +4579,33 @@ public class QueueControlTest extends ManagementTestBase {
       ClientConsumer clientConsumer = session.createConsumer(qName);
       ClientMessage clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+      assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
 
       // force a rollback to DLQ
       session.rollback();
       clientMessage = clientConsumer.receiveImmediate();
-      Assert.assertNull(clientMessage);
+      assertNull(clientMessage);
 
       QueueControl queueControl = createManagementControl(dla, dlq);
       assertMessageMetrics(queueControl, 1, true);
       final long messageID = getFirstMessageId(queueControl);
 
       // Retry the message - i.e. it should go from DLQ to original Queue.
-      Assert.assertTrue(queueControl.retryMessage(messageID));
+      assertTrue(queueControl.retryMessage(messageID));
 
       // Assert DLQ is empty...
-      Assert.assertEquals(0, getMessageCount(queueControl));
+      assertEquals(0, getMessageCount(queueControl));
       assertMessageMetrics(queueControl, 0, durable);
 
       // .. and that the message is now on the original queue with ORIG RoutingType set as RoutingType
       clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
       assertTrue(clientMessage.getRoutingType() == RoutingType.ANYCAST);
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
@@ -4467,11 +4613,11 @@ public class QueueControlTest extends ManagementTestBase {
    /**
     * Test retry - get a message from auto-created DLA/DLQ and put on original queue.
     */
-   @Test
+   @TestTemplate
    public void testRetryMessageReturnedWhenNoOrigQueue() throws Exception {
-      final SimpleString dla = new SimpleString("DLA");
-      final SimpleString qName = new SimpleString("q1");
-      final SimpleString adName = new SimpleString("ad1");
+      final SimpleString dla = SimpleString.of("DLA");
+      final SimpleString qName = SimpleString.of("q1");
+      final SimpleString adName = SimpleString.of("ad1");
       final String sampleText = "Put me on DLQ";
 
       AddressSettings addressSettings = server.getAddressSettingsRepository().getMatch(adName.toString());
@@ -4479,7 +4625,7 @@ public class QueueControlTest extends ManagementTestBase {
 
       server.getAddressSettingsRepository().addMatch(adName.toString(), new AddressSettings().setMaxDeliveryAttempts(1).setDeadLetterAddress(dla).setAutoCreateDeadLetterResources(true));
 
-      session.createQueue(new QueueConfiguration(qName).setAddress(adName).setDurable(durable));
+      session.createQueue(QueueConfiguration.of(qName).setAddress(adName).setDurable(durable));
 
       // Send message to queue.
       ClientProducer producer = session.createProducer(adName);
@@ -4489,14 +4635,14 @@ public class QueueControlTest extends ManagementTestBase {
       ClientConsumer clientConsumer = session.createConsumer(qName);
       ClientMessage clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
+      assertEquals(clientMessage.getBodyBuffer().readString(), sampleText);
 
       // force a rollback to DLQ
       session.rollback();
       clientMessage = clientConsumer.receiveImmediate();
-      Assert.assertNull(clientMessage);
+      assertNull(clientMessage);
       clientConsumer.close();
 
       QueueControl queueControl = createManagementControl(dla, dlq);
@@ -4510,15 +4656,15 @@ public class QueueControlTest extends ManagementTestBase {
       Thread.sleep(100);
 
       // Assert DLQ is not empty...
-      Assert.assertEquals(1, getMessageCount(queueControl));
+      assertEquals(1, getMessageCount(queueControl));
 
       // .. and that the message is still intact on DLQ
       clientConsumer = session.createConsumer(dlq);
       clientMessage = clientConsumer.receive(500);
       clientMessage.acknowledge();
-      Assert.assertNotNull(clientMessage);
+      assertNotNull(clientMessage);
 
-      Assert.assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
+      assertEquals(sampleText, clientMessage.getBodyBuffer().readString());
 
       clientConsumer.close();
    }
@@ -4526,7 +4672,7 @@ public class QueueControlTest extends ManagementTestBase {
 
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       Configuration conf = createDefaultConfig(true).setJMXManagementEnabled(true);
@@ -4566,16 +4712,16 @@ public class QueueControlTest extends ManagementTestBase {
                                 Supplier<Number> durableCount, Supplier<Number> durableSize) throws Exception {
 
       //make sure count stat equals message count
-      Assert.assertTrue(Wait.waitFor(() -> count.get().longValue() == messageCount, 3 * 1000, 100));
+      assertTrue(Wait.waitFor(() -> count.get().longValue() == messageCount, 3 * 1000, 100));
 
       if (messageCount > 0) {
          //verify size stat greater than 0
-         Assert.assertTrue(Wait.waitFor(() -> size.get().longValue() > 0, 3 * 1000, 100));
+         assertTrue(Wait.waitFor(() -> size.get().longValue() > 0, 3 * 1000, 100));
 
          //If durable then make sure durable count and size are correct
          if (durable) {
             Wait.assertEquals(messageCount, () -> durableCount.get().longValue(), 3 * 1000, 100);
-            Assert.assertTrue(Wait.waitFor(() -> durableSize.get().longValue() > 0, 3 * 1000, 100));
+            assertTrue(Wait.waitFor(() -> durableSize.get().longValue() > 0, 3 * 1000, 100));
          } else {
             Wait.assertEquals(0L, () -> durableCount.get().longValue(), 3 * 1000, 100);
             Wait.assertEquals(0L, () -> durableSize.get().longValue(), 3 * 1000, 100);

@@ -69,7 +69,7 @@ public class FilterImpl implements Filter {
     * @throws ActiveMQException if the string does not correspond to a valid filter
     */
    public static Filter createFilter(final String filterStr) throws ActiveMQException {
-      return FilterImpl.createFilter(SimpleString.toSimpleString(filterStr == null ? null : filterStr.trim()));
+      return FilterImpl.createFilter(SimpleString.of(filterStr == null ? null : filterStr.trim()));
    }
 
    /**
@@ -159,21 +159,25 @@ public class FilterImpl implements Filter {
    private static Object getHeaderFieldValue(final Message msg, final SimpleString fieldName) {
       if (FilterConstants.ACTIVEMQ_USERID.equals(fieldName)) {
          if (msg.getUserID() == null) {
-            // Proton stores JMSMessageID as NATIVE_MESSAGE_ID that is an arbitrary string
+            // Artemis can store JMSMessageID as NATIVE_MESSAGE_ID that is an arbitrary string,
+            // in wrapper used internally when converting from Core to AMQP.
             String amqpNativeID = msg.getStringProperty(NATIVE_MESSAGE_ID);
             if (amqpNativeID != null) {
-               return SimpleString.toSimpleString(amqpNativeID);
+               return SimpleString.of(amqpNativeID);
+            } else {
+               return null;
+            }
+         } else {
+            // It's the stringified (hex) representation of a user id that can be used in a selector expression
+            String userID = msg.getUserID().toString();
+            if (userID.startsWith("ID:")) {
+               return SimpleString.of(userID);
+            } else {
+               return SimpleString.of("ID:" + msg.getUserID());
             }
          }
-         // It's the stringified (hex) representation of a user id that can be used in a selector expression
-         String userID = msg.getUserID().toString();
-         if (userID.startsWith("ID:")) {
-            return SimpleString.toSimpleString(userID);
-         } else {
-            return SimpleString.toSimpleString("ID:" + msg.getUserID());
-         }
       } else if (FilterConstants.ACTIVEMQ_PRIORITY.equals(fieldName)) {
-         return Integer.valueOf(msg.getPriority());
+         return (int) msg.getPriority();
       } else if (FilterConstants.ACTIVEMQ_TIMESTAMP.equals(fieldName)) {
          return msg.getTimestamp();
       } else if (FilterConstants.ACTIVEMQ_DURABLE.equals(fieldName)) {

@@ -43,7 +43,6 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.RoutingContext;
 import org.apache.activemq.artemis.core.server.impl.RoutingContextImpl;
-import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.core.transaction.Transaction;
 import org.apache.activemq.artemis.core.transaction.impl.TransactionImpl;
 import org.apache.activemq.artemis.selector.filter.Filterable;
@@ -51,15 +50,20 @@ import org.apache.activemq.artemis.tests.unit.core.postoffice.impl.fakes.FakeQue
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.RandomUtil;
 import org.apache.activemq.artemis.utils.collections.LinkedListIterator;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PageCursorStressTest extends ActiveMQTestBase {
 
 
 
-   private final SimpleString ADDRESS = new SimpleString("test-add");
+   private final SimpleString ADDRESS = SimpleString.of("test-add");
 
    private ActiveMQServer server;
 
@@ -143,7 +147,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
          @Override
          public SimpleString getFilterString() {
-            return new SimpleString("even=true");
+            return SimpleString.of("even=true");
          }
 
       });
@@ -172,7 +176,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
          @Override
          public SimpleString getFilterString() {
-            return new SimpleString("even=true");
+            return SimpleString.of("even=true");
          }
 
       });
@@ -366,7 +370,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
          msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
 
-         Assert.assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
+         assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
 
          PagedReference readMessage = iterator.next();
 
@@ -399,7 +403,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
             msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
 
-            Assert.assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
+            assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
          }
 
          PagedReference readMessage = iterator.next();
@@ -429,7 +433,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
             msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
 
-            Assert.assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
+            assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
          }
 
          PagedReference readMessage = iterator.next();
@@ -489,45 +493,42 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
       final AtomicInteger exceptions = new AtomicInteger(0);
 
-      Thread t1 = new Thread() {
-         @Override
-         public void run() {
-            try {
-               int count = 0;
+      Thread t1 = new Thread(() -> {
+         try {
+            int count = 0;
 
-               for (int txCount = 0; txCount < NUM_TX; txCount++) {
+            for (int txCount = 0; txCount < NUM_TX; txCount++) {
 
-                  Transaction tx = null;
+               Transaction tx = null;
 
-                  if (txCount % 2 == 0) {
-                     tx = new TransactionImpl(storage);
-                  }
-
-                  RoutingContext ctx = generateCTX(tx);
-
-                  for (int i = 0; i < MSGS_TX; i++) {
-                     //System.out.println("Sending " + count);
-                     ActiveMQBuffer buffer = RandomUtil.randomBuffer(messageSize, count);
-
-                     Message msg = new CoreMessage(i, buffer.writerIndex());
-                     msg.putIntProperty("key", count++);
-
-                     msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
-
-                     Assert.assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
-                  }
-
-                  if (tx != null) {
-                     tx.commit();
-                  }
-
+               if (txCount % 2 == 0) {
+                  tx = new TransactionImpl(storage);
                }
-            } catch (Throwable e) {
-               e.printStackTrace();
-               exceptions.incrementAndGet();
+
+               RoutingContext ctx = generateCTX(tx);
+
+               for (int i = 0; i < MSGS_TX; i++) {
+                  //System.out.println("Sending " + count);
+                  ActiveMQBuffer buffer = RandomUtil.randomBuffer(messageSize, count);
+
+                  Message msg = new CoreMessage(i, buffer.writerIndex());
+                  msg.putIntProperty("key", count++);
+
+                  msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
+
+                  assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
+               }
+
+               if (tx != null) {
+                  tx.commit();
+               }
+
             }
+         } catch (Throwable e) {
+            e.printStackTrace();
+            exceptions.incrementAndGet();
          }
-      };
+      });
 
       t1.start();
 
@@ -582,7 +583,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
          Thread.sleep(100);
       }
 
-      assertTrue("expected " + lookupPageStore(ADDRESS).getNumberOfPages(), lookupPageStore(ADDRESS).getNumberOfPages() <= 2);
+      assertTrue(lookupPageStore(ADDRESS).getNumberOfPages() <= 2, "expected " + lookupPageStore(ADDRESS).getNumberOfPages());
    }
 
    @Test
@@ -616,7 +617,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
       // First consume what's already there without any tx as nothing was committed
       for (int i = 100; i < 200; i++) {
          PagedReference pos = iterator.next();
-         assertNotNull("Null at position " + i, pos);
+         assertNotNull(pos, "Null at position " + i);
          assertEquals(i, pos.getMessage().getIntProperty("key").intValue());
          cursor.ack(pos);
       }
@@ -629,7 +630,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
       for (int i = 0; i < 100; i++) {
          PagedReference pos = iterator.next();
-         assertNotNull("Null at position " + i, pos);
+         assertNotNull(pos, "Null at position " + i);
          assertEquals(i, pos.getMessage().getIntProperty("key").intValue());
          cursor.ack(pos);
       }
@@ -733,7 +734,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
          msg.getBodyBuffer().writeBytes(buffer, 0, buffer.writerIndex());
 
-         Assert.assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
+         assertTrue(pageStore.page(msg, ctx.getTransaction(), ctx.getContextListing(ADDRESS)));
       }
 
       return pageStore.getNumberOfPages();
@@ -750,7 +751,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       OperationContextImpl.clearContext();
@@ -768,14 +769,14 @@ public class PageCursorStressTest extends ActiveMQTestBase {
 
       Configuration config = createDefaultInVMConfig().setJournalSyncNonTransactional(true);
 
-      server = createServer(true, config, PAGE_SIZE, PAGE_MAX, new HashMap<String, AddressSettings>());
+      server = createServer(true, config, PAGE_SIZE, PAGE_MAX, new HashMap<>());
 
       server.start();
 
       queueList.clear();
 
       try {
-         queue = server.createQueue(new QueueConfiguration(ADDRESS).setRoutingType(RoutingType.ANYCAST));
+         queue = server.createQueue(QueueConfiguration.of(ADDRESS).setRoutingType(RoutingType.ANYCAST));
          queue.pause();
       } catch (Exception ignored) {
       }
@@ -787,7 +788,7 @@ public class PageCursorStressTest extends ActiveMQTestBase {
     */
    private PageSubscription createNonPersistentCursor(Filter filter) throws Exception {
       long id = server.getStorageManager().generateID();
-      FakeQueue queue = new FakeQueue(new SimpleString(filter.toString()), id);
+      FakeQueue queue = new FakeQueue(SimpleString.of(filter.toString()), id);
       queueList.add(queue);
 
       PageSubscription subs = lookupCursorProvider().createSubscription(id, filter, false);

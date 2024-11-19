@@ -24,10 +24,11 @@ import javax.management.openmbean.CompositeData;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.management.QueueControl;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-@RunWith(value = Parameterized.class)
+// Parameters set in super class
+@ExtendWith(ParameterizedTestExtension.class)
 public class QueueControlUsingCoreTest extends QueueControlTest {
 
    public QueueControlUsingCoreTest(boolean durable) {
@@ -253,6 +254,11 @@ public class QueueControlUsingCoreTest extends QueueControlTest {
          }
 
          @Override
+         public boolean isInternalQueue() {
+            return (boolean) proxy.retrieveAttributeValue("internalQueue");
+         }
+
+         @Override
          public int getConsumersBeforeDispatch() {
             return (Integer) proxy.retrieveAttributeValue("consumersBeforeDispatch");
          }
@@ -413,6 +419,22 @@ public class QueueControlUsingCoreTest extends QueueControlTest {
          @Override
          public String getFirstMessageAsJSON() throws Exception {
             return (String) proxy.invokeOperation("getFirstMessageAsJSON");
+         }
+
+         /**
+          * Returns the first message on the queue as JSON
+          */
+         @Override
+         public String peekFirstMessageAsJSON() throws Exception {
+            return (String) proxy.invokeOperation("peekFirstMessageAsJSON");
+         }
+
+         /**
+          * Returns the first scheduled message on the queue as JSON
+          */
+         @Override
+         public String peekFirstScheduledMessageAsJSON() throws Exception {
+            return (String) proxy.invokeOperation("peekFirstScheduledMessageAsJSON");
          }
 
          /**

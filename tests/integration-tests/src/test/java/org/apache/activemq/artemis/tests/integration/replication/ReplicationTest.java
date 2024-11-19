@@ -16,6 +16,14 @@
  */
 package org.apache.activemq.artemis.tests.integration.replication;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -49,7 +57,7 @@ import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.core.config.ClusterConnectionConfiguration;
 import org.apache.activemq.artemis.core.config.Configuration;
-import org.apache.activemq.artemis.core.config.ha.DistributedPrimitiveManagerConfiguration;
+import org.apache.activemq.artemis.core.config.ha.DistributedLockManagerConfiguration;
 import org.apache.activemq.artemis.core.config.ha.SharedStoreBackupPolicyConfiguration;
 import org.apache.activemq.artemis.core.io.IOCallback;
 import org.apache.activemq.artemis.core.io.SequentialFileFactory;
@@ -87,30 +95,32 @@ import org.apache.activemq.artemis.core.server.cluster.ClusterController;
 import org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl;
 import org.apache.activemq.artemis.core.settings.HierarchicalRepository;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
-import org.apache.activemq.artemis.quorum.file.FileBasedPrimitiveManager;
+import org.apache.activemq.artemis.lockmanager.file.FileBasedLockManager;
 import org.apache.activemq.artemis.spi.core.protocol.RemotingConnection;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameter;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.ReplicatedBackupUtils;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
+import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.artemis.utils.ActiveMQThreadFactory;
 import org.apache.activemq.artemis.utils.ExecutorFactory;
 import org.apache.activemq.artemis.utils.actors.OrderedExecutorFactory;
 import org.apache.activemq.artemis.utils.collections.SparseArrayLinkedList;
 import org.apache.activemq.artemis.utils.critical.EmptyCriticalAnalyzer;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public final class ReplicationTest extends ActiveMQTestBase {
 
-   @Parameterized.Parameter
+   @Parameter(index = 0)
    public boolean pluggableQuorum;
 
-   @Parameterized.Parameters(name = "PluggableQuorum={0}")
+   @Parameters(name = "PluggableQuorum={0}")
    public static Iterable<Object[]> data() {
       return Arrays.asList(new Object[][]{{true}, {false}});
    }
@@ -129,7 +139,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
    private ServerLocator locator;
 
    private ReplicationManager manager;
-   private static final SimpleString ADDRESS = new SimpleString("foobar123");
+   private static final SimpleString ADDRESS = SimpleString.of("foobar123");
 
    private void setupServer(boolean backup, String... interceptors) throws Exception {
       this.setupServer(false, backup, null, interceptors);
@@ -156,14 +166,14 @@ public final class ReplicationTest extends ActiveMQTestBase {
 
       Configuration primaryConfig = createDefaultInVMConfig();
 
-      Configuration backupConfig = createDefaultInVMConfig().setHAPolicyConfiguration(new SharedStoreBackupPolicyConfiguration()).setBindingsDirectory(getBindingsDir(0, true)).setJournalDirectory(getJournalDir(0, true)).setPagingDirectory(getPageDir(0, true)).setLargeMessagesDirectory(getLargeMessagesDir(0, true)).setIncomingInterceptorClassNames(incomingInterceptors.length > 0 ? Arrays.asList(incomingInterceptors) : new ArrayList<String>());
+      Configuration backupConfig = createDefaultInVMConfig().setHAPolicyConfiguration(new SharedStoreBackupPolicyConfiguration()).setBindingsDirectory(getBindingsDir(0, true)).setJournalDirectory(getJournalDir(0, true)).setPagingDirectory(getPageDir(0, true)).setLargeMessagesDirectory(getLargeMessagesDir(0, true)).setIncomingInterceptorClassNames(incomingInterceptors.length > 0 ? Arrays.asList(incomingInterceptors) : new ArrayList<>());
 
       if (!pluggableQuorum) {
          ReplicatedBackupUtils.configureReplicationPair(backupConfig, backupConnector, backupAcceptor, primaryConfig, primaryConnector, primaryAcceptor);
       } else {
-         DistributedPrimitiveManagerConfiguration managerConfiguration =
-            new DistributedPrimitiveManagerConfiguration(FileBasedPrimitiveManager.class.getName(),
-                                                         Collections.singletonMap("locks-folder", temporaryFolder.newFolder("manager").toString()));
+         DistributedLockManagerConfiguration managerConfiguration =
+            new DistributedLockManagerConfiguration(FileBasedLockManager.class.getName(),
+                                                    Collections.singletonMap("locks-folder", newFolder(temporaryFolder, "manager").toString()));
 
          ReplicatedBackupUtils.configurePluggableQuorumReplicationPair(backupConfig, backupConnector, backupAcceptor, primaryConfig, primaryConnector, primaryAcceptor, managerConfiguration, managerConfiguration);
       }
@@ -207,13 +217,13 @@ public final class ReplicationTest extends ActiveMQTestBase {
       waitForComponent(component, 3);
    }
 
-   @Test
+   @TestTemplate
    public void testBasicConnection() throws Exception {
       setupServer(true);
       waitForComponent(liveServer.getReplicationManager());
    }
 
-   @Test
+   @TestTemplate
    public void testConnectIntoNonBackup() throws Exception {
       setupServer(false);
       try {
@@ -221,7 +231,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
          manager = new ReplicationManager(null, (CoreRemotingConnection) sf.getConnection(), sf.getServerLocator().getCallTimeout(), sf.getServerLocator().getCallTimeout(), factory);
          addActiveMQComponent(manager);
          manager.start();
-         Assert.fail("Exception was expected");
+         fail("Exception was expected");
       } catch (ActiveMQNotConnectedException nce) {
          // ok
       } catch (ActiveMQException expected) {
@@ -229,7 +239,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testSendPackets() throws Exception {
       setupServer(true);
 
@@ -255,20 +265,20 @@ public final class ReplicationTest extends ActiveMQTestBase {
 
       blockOnReplication(storage, manager);
 
-      Assert.assertTrue("Expecting no active tokens:" + manager.getActiveTokens(), manager.getActiveTokens().isEmpty());
+      assertTrue(manager.getActiveTokens().isEmpty(), "Expecting no active tokens:" + manager.getActiveTokens());
 
       CoreMessage msg = new CoreMessage().initBuffer(1024).setMessageID(1);
 
-      SimpleString dummy = new SimpleString("dummy");
+      SimpleString dummy = SimpleString.of("dummy");
       msg.setAddress(dummy);
 
       replicatedJournal.appendAddRecordTransactional(23, 24, (byte) 1, new FakeData());
 
       PagedMessage pgmsg = new PagedMessageImpl(msg, new long[0]);
-      manager.pageWrite(pgmsg, 1);
-      manager.pageWrite(pgmsg, 2);
-      manager.pageWrite(pgmsg, 3);
-      manager.pageWrite(pgmsg, 4);
+      manager.pageWrite(dummy, pgmsg, 1);
+      manager.pageWrite(dummy, pgmsg, 2);
+      manager.pageWrite(dummy, pgmsg, 3);
+      manager.pageWrite(dummy, pgmsg, 4);
 
       blockOnReplication(storage, manager);
 
@@ -276,7 +286,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
 
       PagingStore store = pagingManager.getPageStore(dummy);
       store.start();
-      Assert.assertEquals(4, store.getNumberOfPages());
+      assertEquals(4, store.getNumberOfPages());
       store.stop();
 
       manager.pageDeleted(dummy, 1);
@@ -290,7 +300,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
 
       CoreMessage serverMsg = new CoreMessage();
       serverMsg.setMessageID(500);
-      serverMsg.setAddress(new SimpleString("tttt"));
+      serverMsg.setAddress(SimpleString.of("tttt"));
 
       ActiveMQBuffer buffer = ActiveMQBuffers.dynamicBuffer(100);
       serverMsg.encodeHeadersAndProperties(buffer.byteBuf());
@@ -299,16 +309,16 @@ public final class ReplicationTest extends ActiveMQTestBase {
 
       manager.largeMessageWrite(500, new byte[1024]);
 
-      manager.largeMessageDelete(Long.valueOf(500), storage);
+      manager.largeMessageDelete(500L, storage);
 
       blockOnReplication(storage, manager);
 
       store.start();
 
-      Assert.assertEquals(0, store.getNumberOfPages());
+      assertEquals(0, store.getNumberOfPages());
    }
 
-   @Test
+   @TestTemplate
    public void testSendPacketsWithFailure() throws Exception {
       final int nMsg = 100;
       final int stop = 37;
@@ -319,7 +329,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
       ClientSessionFactory sf = createSessionFactory(locator);
       final ClientSession session = sf.createSession();
       final ClientSession session2 = sf.createSession();
-      session.createQueue(new QueueConfiguration(ADDRESS));
+      session.createQueue(QueueConfiguration.of(ADDRESS));
 
       final ClientProducer producer = session.createProducer(ADDRESS);
 
@@ -338,9 +348,9 @@ public final class ReplicationTest extends ActiveMQTestBase {
                TestInterceptor.value.set(false);
             }
             ClientMessage msgRcvd = consumer.receive(1000);
-            Assert.assertNotNull("Message should exist!", msgRcvd);
+            assertNotNull(msgRcvd, "Message should exist!");
             assertMessageBody(i, msgRcvd);
-            Assert.assertEquals(i, msgRcvd.getIntProperty("counter").intValue());
+            assertEquals(i, msgRcvd.getIntProperty("counter").intValue());
             msgRcvd.acknowledge();
          }
       } finally {
@@ -352,7 +362,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testExceptionSettingActionBefore() throws Exception {
       OperationContext ctx = OperationContextImpl.getContext(factory);
 
@@ -381,13 +391,13 @@ public final class ReplicationTest extends ActiveMQTestBase {
          }
       });
 
-      Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+      assertTrue(latch.await(5, TimeUnit.SECONDS));
 
-      Assert.assertEquals(5, lastError.get());
+      assertEquals(5, lastError.get());
 
-      Assert.assertEquals(1, msgsResult.size());
+      assertEquals(1, msgsResult.size());
 
-      Assert.assertEquals(msg, msgsResult.get(0));
+      assertEquals(msg, msgsResult.get(0));
 
       final CountDownLatch latch2 = new CountDownLatch(1);
 
@@ -405,13 +415,13 @@ public final class ReplicationTest extends ActiveMQTestBase {
          }
       });
 
-      Assert.assertTrue(latch2.await(5, TimeUnit.SECONDS));
+      assertTrue(latch2.await(5, TimeUnit.SECONDS));
 
-      Assert.assertEquals(2, msgsResult.size());
+      assertEquals(2, msgsResult.size());
 
-      Assert.assertEquals(msg, msgsResult.get(0));
+      assertEquals(msg, msgsResult.get(0));
 
-      Assert.assertEquals(msg, msgsResult.get(1));
+      assertEquals(msg, msgsResult.get(1));
 
       final CountDownLatch latch3 = new CountDownLatch(1);
 
@@ -426,25 +436,21 @@ public final class ReplicationTest extends ActiveMQTestBase {
          }
       });
 
-      Assert.assertTrue(latch2.await(5, TimeUnit.SECONDS));
+      assertTrue(latch2.await(5, TimeUnit.SECONDS));
 
    }
 
-   @Test
+   @TestTemplate
    public void testClusterConnectionConfigs() throws Exception {
       final long ttlOverride = 123456789;
       final long checkPeriodOverride = 987654321;
 
-      ExtraConfigurer configurer = new ExtraConfigurer() {
-
-         @Override
-         public void config(Configuration primaryConfig, Configuration backupConfig) {
-            List<ClusterConnectionConfiguration> ccList = backupConfig.getClusterConfigurations();
-            assertTrue(ccList.size() > 0);
-            ClusterConnectionConfiguration cc = ccList.get(0);
-            cc.setConnectionTTL(ttlOverride);
-            cc.setClientFailureCheckPeriod(checkPeriodOverride);
-         }
+      ExtraConfigurer configurer = (primaryConfig, backupConfig) -> {
+         List<ClusterConnectionConfiguration> ccList = backupConfig.getClusterConfigurations();
+         assertTrue(ccList.size() > 0);
+         ClusterConnectionConfiguration cc = ccList.get(0);
+         cc.setConnectionTTL(ttlOverride);
+         cc.setClientFailureCheckPeriod(checkPeriodOverride);
       };
       this.setupServer(true, true, configurer);
       assertTrue(backupServer instanceof ActiveMQServerImpl);
@@ -484,10 +490,10 @@ public final class ReplicationTest extends ActiveMQTestBase {
          }
       });
 
-      Assert.assertTrue(latch.await(30, TimeUnit.SECONDS));
+      assertTrue(latch.await(30, TimeUnit.SECONDS));
    }
 
-   @Test
+   @TestTemplate
    public void testNoActions() throws Exception {
 
       setupServer(true);
@@ -512,12 +518,12 @@ public final class ReplicationTest extends ActiveMQTestBase {
          }
       });
 
-      Assert.assertTrue(latch.await(1, TimeUnit.SECONDS));
+      assertTrue(latch.await(1, TimeUnit.SECONDS));
 
-      Assert.assertEquals("should be empty " + manager.getActiveTokens(), 0, manager.getActiveTokens().size());
+      assertEquals(0, manager.getActiveTokens().size(), "should be empty " + manager.getActiveTokens());
    }
 
-   @Test
+   @TestTemplate
    public void testOrderOnNonPersistency() throws Exception {
 
       setupServer(true);
@@ -555,16 +561,16 @@ public final class ReplicationTest extends ActiveMQTestBase {
          });
       }
 
-      Assert.assertTrue(latch.await(10, TimeUnit.SECONDS));
+      assertTrue(latch.await(10, TimeUnit.SECONDS));
 
       for (int i = 0; i < numberOfAdds; i++) {
-         Assert.assertEquals(i, executions.get(i).intValue());
+         assertEquals(i, executions.get(i).intValue());
       }
 
-      Assert.assertEquals(0, manager.getActiveTokens().size());
+      assertEquals(0, manager.getActiveTokens().size());
    }
 
-   @Test
+   @TestTemplate
    public void testReplicationLargeMessageFileClose() throws Exception {
       setupServer(true);
 
@@ -574,17 +580,24 @@ public final class ReplicationTest extends ActiveMQTestBase {
       waitForComponent(manager);
 
       CoreMessage msg = new CoreMessage().initBuffer(1024).setMessageID(1);
-      LargeServerMessage largeMsg = liveServer.getStorageManager().createLargeMessage(500, msg);
+      LargeServerMessage largeMsg = liveServer.getStorageManager().createCoreLargeMessage(500, msg);
       largeMsg.addBytes(new byte[1024]);
-      largeMsg.releaseResources(true, true);
 
       blockOnReplication(storage, manager);
 
-      LargeServerMessageImpl message1 = (LargeServerMessageImpl) getReplicationEndpoint(backupServer).getLargeMessages().get(Long.valueOf(500));
+      LargeServerMessageImpl message1 = (LargeServerMessageImpl) getReplicationEndpoint(backupServer).getLargeMessages().get(500L);
 
-      Assert.assertNotNull(message1);
-      Assert.assertFalse(largeMsg.getAppendFile().isOpen());
-      Assert.assertFalse(message1.getAppendFile().isOpen());
+
+      assertNotNull(message1);
+      assertTrue(largeMsg.getAppendFile().isOpen());
+      assertTrue(message1.getAppendFile().isOpen());
+
+      largeMsg.releaseResources(true, true);
+
+      Wait.assertTrue(() -> getReplicationEndpoint(backupServer).getLargeMessages().get(500L) == null, 5000);
+
+      assertFalse(largeMsg.getAppendFile().isOpen());
+      assertFalse(message1.getAppendFile().isOpen());
    }
 
    class FakeData implements EncodingSupport {
@@ -606,7 +619,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -624,7 +637,7 @@ public final class ReplicationTest extends ActiveMQTestBase {
     * for leaking threads). Due to that, we need to close/stop all components here.
     */
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       stopComponent(manager);
       manager = null;
@@ -1068,10 +1081,23 @@ public final class ReplicationTest extends ActiveMQTestBase {
       public void replicationSyncFinished() {
          // no-op
       }
+
+      @Override
+      public long getWarningRecordSize() {
+         return getMaxRecordSize() - 2048;
+      }
    }
 
    private interface ExtraConfigurer {
 
       void config(Configuration primaryConfig, Configuration backupConfig);
+   }
+
+   private static File newFolder(File root, String subFolder) throws IOException {
+      File result = new File(root, subFolder);
+      if (!result.mkdirs()) {
+         throw new IOException("Couldn't create folders " + root);
+      }
+      return result;
    }
 }

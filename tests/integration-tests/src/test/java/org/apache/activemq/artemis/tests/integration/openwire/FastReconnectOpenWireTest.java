@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.openwire;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.MessageConsumer;
 import javax.jms.MessageProducer;
@@ -41,7 +43,8 @@ import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.transport.tcp.TcpTransport;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,18 +59,19 @@ public class FastReconnectOpenWireTest extends OpenWireTestBase {
    protected void configureAddressSettings(Map<String, AddressSettings> addressSettingsMap) {
       super.configureAddressSettings(addressSettingsMap);
       // force send to dlq early
-      addressSettingsMap.put("exampleQueue", new AddressSettings().setAutoCreateQueues(false).setAutoCreateAddresses(false).setDeadLetterAddress(new SimpleString("ActiveMQ.DLQ")).setAutoCreateAddresses(true).setMaxDeliveryAttempts(2));
+      addressSettingsMap.put("exampleQueue", new AddressSettings().setAutoCreateQueues(false).setAutoCreateAddresses(false).setDeadLetterAddress(SimpleString.of("ActiveMQ.DLQ")).setAutoCreateAddresses(true).setMaxDeliveryAttempts(2));
       // force send to dlq late
-      addressSettingsMap.put("exampleQueueTwo", new AddressSettings().setAutoCreateQueues(false).setAutoCreateAddresses(false).setDeadLetterAddress(new SimpleString("ActiveMQ.DLQ")).setAutoCreateAddresses(true).setMaxDeliveryAttempts(-1));
+      addressSettingsMap.put("exampleQueueTwo", new AddressSettings().setAutoCreateQueues(false).setAutoCreateAddresses(false).setDeadLetterAddress(SimpleString.of("ActiveMQ.DLQ")).setAutoCreateAddresses(true).setMaxDeliveryAttempts(-1));
    }
 
 
-   @Test(timeout = 60_000)
+   @Test
+   @Timeout(60)
    public void testFastReconnectCreateConsumerNoErrors() throws Exception {
 
       final ArrayList<Throwable> errors = new ArrayList<>();
-      SimpleString durableQueue = new SimpleString("exampleQueueTwo");
-      this.server.createQueue(new QueueConfiguration(durableQueue).setRoutingType(RoutingType.ANYCAST));
+      SimpleString durableQueue = SimpleString.of("exampleQueueTwo");
+      this.server.createQueue(QueueConfiguration.of(durableQueue).setRoutingType(RoutingType.ANYCAST));
 
       Queue queue = new ActiveMQQueue(durableQueue.toString());
 
@@ -124,12 +128,13 @@ public class FastReconnectOpenWireTest extends OpenWireTestBase {
 
    }
 
-   @Test(timeout = 60_000)
+   @Test
+   @Timeout(60)
    public void testFastReconnectCreateConsumerNoErrorsNoClientId() throws Exception {
 
       final ArrayList<Throwable> errors = new ArrayList<>();
-      SimpleString durableQueue = new SimpleString("exampleQueueTwo");
-      this.server.createQueue(new QueueConfiguration(durableQueue).setRoutingType(RoutingType.ANYCAST));
+      SimpleString durableQueue = SimpleString.of("exampleQueueTwo");
+      this.server.createQueue(QueueConfiguration.of(durableQueue).setRoutingType(RoutingType.ANYCAST));
 
       Queue queue = new ActiveMQQueue(durableQueue.toString());
 

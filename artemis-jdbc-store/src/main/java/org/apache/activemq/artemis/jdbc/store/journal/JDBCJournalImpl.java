@@ -155,6 +155,11 @@ public class JDBCJournalImpl extends AbstractJDBCDriver implements Journal {
    }
 
    @Override
+   public long getWarningRecordSize() {
+      return sqlProvider.getMaxBlobSize() - 2048;
+   }
+
+   @Override
    protected void createSchema() throws SQLException {
       createTable(sqlProvider.getCreateJournalTableSQL());
    }
@@ -322,15 +327,12 @@ public class JDBCJournalImpl extends AbstractJDBCDriver implements Journal {
    }
 
    private void executeCallbacks(final List<JDBCJournalRecord> records, final boolean success) {
-      Runnable r = new Runnable() {
-         @Override
-         public void run() {
-            for (JDBCJournalRecord record : records) {
-               if (logger.isTraceEnabled()) {
-                  logger.trace("Calling callback {} with success = {}", record, success);
-               }
-               record.complete(success);
+      Runnable r = () -> {
+         for (JDBCJournalRecord record : records) {
+            if (logger.isTraceEnabled()) {
+               logger.trace("Calling callback {} with success = {}", record, success);
             }
+            record.complete(success);
          }
       };
       completeExecutor.execute(r);

@@ -116,12 +116,7 @@ public class ServerUtil {
          builder.directory(new File(artemisInstance + "/bin"));
 
          final Process process = builder.start();
-         Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-               process.destroy();
-            }
-         });
+         Runtime.getRuntime().addShutdownHook(new Thread(() -> process.destroy()));
 
          ProcessLogger outputLogger = new ProcessLogger(true, process.getInputStream(), jobName, false);
          outputLogger.start();
@@ -194,7 +189,7 @@ public class ServerUtil {
       ClientSession session = ((ActiveMQConnection) connection).getInitialSession();
       TransportConfiguration transportConfiguration = session.getSessionFactory().getConnectorConfiguration();
       String port = (String) transportConfiguration.getParams().get("port");
-      return Integer.valueOf(port) - 61616;
+      return Integer.parseInt(port) - 61616;
    }
 
    public static Connection getServerConnection(int server, Connection... connections) {
@@ -202,7 +197,7 @@ public class ServerUtil {
          ClientSession session = ((ActiveMQConnection) connection).getInitialSession();
          TransportConfiguration transportConfiguration = session.getSessionFactory().getConnectorConfiguration();
          String port = (String) transportConfiguration.getParams().get("port");
-         if (Integer.valueOf(port) == server + 61616) {
+         if (Integer.parseInt(port) == server + 61616) {
             return connection;
          }
       }

@@ -24,7 +24,7 @@ import org.apache.activemq.artemis.utils.JsonLoader;
 
 public class AddressView extends ActiveMQAbstractView<AddressInfo> {
 
-   private static final String defaultSortColumn = AddressField.ID.getName();
+   private static final String defaultSortField = AddressField.ID.getName();
 
    private final ActiveMQServer server;
 
@@ -48,6 +48,7 @@ public class AddressView extends ActiveMQAbstractView<AddressInfo> {
       JsonObjectBuilder obj = JsonLoader.createObjectBuilder()
          .add(AddressField.ID.getName(), toString(address.getId()))
          .add(AddressField.NAME.getName(), toString(address.getName()))
+         .add(AddressField.INTERNAL.getName(), toString(address.isInternal()))
          .add(AddressField.ROUTING_TYPES.getName(), toString(address.getRoutingTypes()));
 
       try {
@@ -72,6 +73,8 @@ public class AddressView extends ActiveMQAbstractView<AddressInfo> {
             return address.getId();
          case NAME:
             return address.getName();
+         case INTERNAL:
+            return address.isInternal();
          case ROUTING_TYPES:
             return address.getRoutingTypes();
          case QUEUE_COUNT:
@@ -87,6 +90,6 @@ public class AddressView extends ActiveMQAbstractView<AddressInfo> {
 
    @Override
    public String getDefaultOrderColumn() {
-      return defaultSortColumn;
+      return defaultSortField;
    }
 }

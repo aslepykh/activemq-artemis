@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.stress.paging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.HashMap;
 
 import org.apache.activemq.artemis.api.core.ActiveMQException;
@@ -32,9 +34,8 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.jms.client.ActiveMQBytesMessage;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * This is an integration-tests that will take some time to run.
@@ -61,9 +62,9 @@ public class PageStressTest extends ActiveMQTestBase {
       ClientSessionFactory factory = createSessionFactory(locator);
       ClientSession session = addClientSession(factory.createSession(null, null, false, false, true, false, 1024 * NUMBER_OF_MESSAGES));
 
-      SimpleString address = new SimpleString("page-adr");
+      SimpleString address = SimpleString.of("page-adr");
 
-      session.createQueue(new QueueConfiguration(address));
+      session.createQueue(QueueConfiguration.of(address));
 
       ClientProducer prod = session.createProducer(address);
 
@@ -129,7 +130,7 @@ public class PageStressTest extends ActiveMQTestBase {
 
       System.out.println("msgs second time: " + msgs);
 
-      Assert.assertEquals(NUMBER_OF_MESSAGES, msgs);
+      assertEquals(NUMBER_OF_MESSAGES, msgs);
    }
 
    @Test
@@ -147,11 +148,11 @@ public class PageStressTest extends ActiveMQTestBase {
 
       session = factory.createSession(false, false, false);
 
-      SimpleString address = new SimpleString("page-adr");
-      SimpleString[] queue = new SimpleString[]{new SimpleString("queue1"), new SimpleString("queue2")};
+      SimpleString address = SimpleString.of("page-adr");
+      SimpleString[] queue = new SimpleString[]{SimpleString.of("queue1"), SimpleString.of("queue2")};
 
-      session.createQueue(new QueueConfiguration(queue[0]).setAddress(address));
-      session.createQueue(new QueueConfiguration(queue[1]).setAddress(address));
+      session.createQueue(QueueConfiguration.of(queue[0]).setAddress(address));
+      session.createQueue(QueueConfiguration.of(queue[1]).setAddress(address));
 
       ClientProducer prod = session.createProducer(address);
 
@@ -190,8 +191,8 @@ public class PageStressTest extends ActiveMQTestBase {
       consumers[0].close();
       consumers[1].close();
 
-      Assert.assertEquals(NUMBER_OF_MESSAGES, counters[0]);
-      Assert.assertEquals(NUMBER_OF_MESSAGES, counters[1]);
+      assertEquals(NUMBER_OF_MESSAGES, counters[0]);
+      assertEquals(NUMBER_OF_MESSAGES, counters[1]);
    }
 
    private int readMessages(final ClientSession session,
@@ -228,7 +229,7 @@ public class PageStressTest extends ActiveMQTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       locator = createInVMNonHALocator().setBlockOnAcknowledge(true).setBlockOnDurableSend(false).setBlockOnNonDurableSend(false);

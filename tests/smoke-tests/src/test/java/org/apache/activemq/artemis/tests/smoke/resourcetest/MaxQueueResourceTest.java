@@ -17,6 +17,9 @@
 
 package org.apache.activemq.artemis.tests.smoke.resourcetest;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSSecurityException;
@@ -30,31 +33,30 @@ import java.io.File;
 import org.apache.activemq.artemis.tests.smoke.common.SmokeTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.util.ServerUtil;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class MaxQueueResourceTest extends SmokeTestBase {
 
    public static final String SERVER_NAME_A = "MaxQueueResourceTest";
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
 
       File server0Location = getFileServerLocation(SERVER_NAME_A);
       deleteDirectory(server0Location);
 
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setUser("A").setPassword("A").setAllowAnonymous(false).setNoWeb(true).setArtemisInstance(server0Location).setConfiguration("./src/main/resources/servers/MaxQueueResourceTest");
          cliCreateServer.createServer();
       }
    }
 
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       startServer(SERVER_NAME_A, 0, 0);
       ServerUtil.waitForServerToStart(0, "admin", "admin", 30000);
@@ -92,8 +94,8 @@ public class MaxQueueResourceTest extends SmokeTestBase {
          } catch (JMSSecurityException e) {
             exception = e;
          }
-         Assert.assertNull(consumer4);
-         Assert.assertNotNull(exception);
+         assertNull(consumer4);
+         assertNotNull(exception);
          MessageProducer producerA = sessionA.createProducer(topic);
          for (int i = 0; i < 10; i++) {
             producerA.send(sessionA.createTextMessage("toB"));

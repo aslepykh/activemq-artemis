@@ -16,6 +16,7 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.failover;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,7 +30,7 @@ import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
 import org.apache.activemq.artemis.core.client.impl.ServerLocatorInternal;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.HAPolicyConfiguration;
-import org.apache.activemq.artemis.core.config.ha.DistributedPrimitiveManagerConfiguration;
+import org.apache.activemq.artemis.core.config.ha.DistributedLockManagerConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicaPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicatedPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicationBackupPolicyConfiguration;
@@ -39,14 +40,14 @@ import org.apache.activemq.artemis.core.config.ha.SharedStoreBackupPolicyConfigu
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.NodeManager;
 import org.apache.activemq.artemis.core.server.Queue;
-import org.apache.activemq.artemis.quorum.file.FileBasedPrimitiveManager;
+import org.apache.activemq.artemis.lockmanager.file.FileBasedLockManager;
 import org.apache.activemq.artemis.tests.integration.cluster.distribution.ClusterTestBase;
 import org.apache.activemq.artemis.tests.util.Wait;
+import org.junit.jupiter.api.BeforeEach;
 import org.apache.activemq.artemis.tests.integration.cluster.util.SameProcessActiveMQServer;
 import org.apache.activemq.artemis.tests.integration.cluster.util.TestableServer;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
-import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
@@ -54,14 +55,14 @@ import java.lang.invoke.MethodHandles;
 public abstract class MultipleServerFailoverTestBase extends ActiveMQTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-   private DistributedPrimitiveManagerConfiguration pluggableQuorumConfiguration = null;
+   private DistributedLockManagerConfiguration pluggableQuorumConfiguration = null;
 
-   private DistributedPrimitiveManagerConfiguration getOrCreatePluggableQuorumConfiguration() {
+   private DistributedLockManagerConfiguration getOrCreatePluggableQuorumConfiguration() {
       if (pluggableQuorumConfiguration != null) {
          return pluggableQuorumConfiguration;
       }
       try {
-         pluggableQuorumConfiguration = new DistributedPrimitiveManagerConfiguration(FileBasedPrimitiveManager.class.getName(), Collections.singletonMap("locks-folder", temporaryFolder.newFolder("manager").toString()));
+         pluggableQuorumConfiguration = new DistributedLockManagerConfiguration(FileBasedLockManager.class.getName(), Collections.singletonMap("locks-folder", newFolder(temporaryFolder, "manager").toString()));
       } catch (IOException ioException) {
          return null;
       }
@@ -72,7 +73,7 @@ public abstract class MultipleServerFailoverTestBase extends ActiveMQTestBase {
 
    // TODO: find a better solution for this
    // this is necessary because the cluster connection is using "jms" as its match; see org.apache.activemq.artemis.tests.util.ActiveMQTestBase.basicClusterConnectionConfig()
-   protected static final SimpleString ADDRESS = new SimpleString("jms.FailoverTestAddress");
+   protected static final SimpleString ADDRESS = SimpleString.of("jms.FailoverTestAddress");
 
 
    protected List<TestableServer> primaryServers = new ArrayList<>();
@@ -104,7 +105,7 @@ public abstract class MultipleServerFailoverTestBase extends ActiveMQTestBase {
    public abstract String getNodeGroupName();
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       primaryServers = new ArrayList<>();
@@ -156,7 +157,7 @@ public abstract class MultipleServerFailoverTestBase extends ActiveMQTestBase {
 
          String[] input = new String[connectors.size()];
          connectors.toArray(input);
-         configuration.addClusterConfiguration(basicClusterConnectionConfig(livetc.getName(), input));
+         configuration.addClusterConfiguration(basicClusterConnectionConfig(livetc.getName(),input));
          primaryConfigs.add(configuration);
          ActiveMQServer server = createServer(true, configuration);
          TestableServer activeMQServer = new SameProcessActiveMQServer(server);
@@ -282,5 +283,13 @@ public abstract class MultipleServerFailoverTestBase extends ActiveMQTestBase {
          return getMessageCount(q) >= messageCount;
       });
 
+   }
+
+   private static File newFolder(File root, String subFolder) throws IOException {
+      File result = new File(root, subFolder);
+      if (!result.mkdirs()) {
+         throw new IOException("Couldn't create folders " + root);
+      }
+      return result;
    }
 }

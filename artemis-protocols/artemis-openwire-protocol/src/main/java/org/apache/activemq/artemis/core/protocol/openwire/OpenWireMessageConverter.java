@@ -28,6 +28,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.invoke.MethodHandles;
+import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -98,7 +101,7 @@ public final class OpenWireMessageConverter {
 
       final String type = messageSend.getType();
       if (type != null) {
-         coreMessage.putStringProperty(OpenWireConstants.JMS_TYPE_PROPERTY, new SimpleString(type));
+         coreMessage.putStringProperty(OpenWireConstants.JMS_TYPE_PROPERTY, SimpleString.of(type));
       }
       coreMessage.setDurable(messageSend.isPersistent());
       coreMessage.setExpiration(messageSend.getExpiration());
@@ -159,7 +162,7 @@ public final class OpenWireMessageConverter {
       coreMessage.putIntProperty(OpenWireConstants.AMQ_MSG_COMMAND_ID, messageSend.getCommandId());
       final String corrId = messageSend.getCorrelationId();
       if (corrId != null) {
-         coreMessage.putStringProperty(OpenWireConstants.JMS_CORRELATION_ID_PROPERTY, new SimpleString(corrId));
+         coreMessage.setCorrelationID(corrId);
       }
       final DataStructure ds = messageSend.getDataStructure();
       if (ds != null) {
@@ -173,14 +176,14 @@ public final class OpenWireMessageConverter {
 
       final MessageId messageId = messageSend.getMessageId();
       if (messageId != null) {
-         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_MESSAGE_ID, SimpleString.toSimpleString(messageId.toString()));
+         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_MESSAGE_ID, SimpleString.of(messageId.toString()));
       }
 
       coreMessage.setUserID(UUIDGenerator.getInstance().generateUUID());
 
       final ProducerId producerId = messageSend.getProducerId();
       if (producerId != null) {
-         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_PRODUCER_ID, SimpleString.toSimpleString(producerId.toString()));
+         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_PRODUCER_ID, SimpleString.of(producerId.toString()));
       }
 
       putMsgProperties(messageSend, coreMessage);
@@ -203,7 +206,7 @@ public final class OpenWireMessageConverter {
 
       final String userId = messageSend.getUserID();
       if (userId != null) {
-         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_USER_ID, new SimpleString(userId));
+         coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_USER_ID, SimpleString.of(userId));
       }
       coreMessage.putBooleanProperty(OpenWireConstants.AMQ_MSG_DROPPABLE, messageSend.isDroppable());
 
@@ -232,7 +235,7 @@ public final class OpenWireMessageConverter {
       DataInputStream tdataIn = new DataInputStream(tis);
       String text = MarshallingSupport.readUTF8(tdataIn);
       tdataIn.close();
-      body.writeNullableSimpleString(new SimpleString(text));
+      body.writeNullableSimpleString(SimpleString.of(text));
    }
 
    private static void writeMapType(final ByteSequence contents,
@@ -406,7 +409,7 @@ public final class OpenWireMessageConverter {
             builder.append(','); //is this separator safe?
          }
       }
-      coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_BROKER_PATH, new SimpleString(builder.toString()));
+      coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_BROKER_PATH, SimpleString.of(builder.toString()));
    }
 
    private static void putMsgCluster(final BrokerId[] cluster, final CoreMessage coreMessage) {
@@ -417,7 +420,7 @@ public final class OpenWireMessageConverter {
             builder.append(','); //is this separator safe?
          }
       }
-      coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_CLUSTER, new SimpleString(builder.toString()));
+      coreMessage.putStringProperty(OpenWireConstants.AMQ_MSG_CLUSTER, SimpleString.of(builder.toString()));
    }
 
    private static void putMsgDataStructure(final DataStructure ds,
@@ -448,7 +451,7 @@ public final class OpenWireMessageConverter {
 
    private static void loadMapIntoProperties(TypedProperties props, Map<String, Object> map) {
       for (Entry<String, Object> entry : map.entrySet()) {
-         SimpleString key = new SimpleString(entry.getKey());
+         SimpleString key = SimpleString.of(entry.getKey());
          Object value = entry.getValue();
          if (value instanceof UTF8Buffer) {
             value = value.toString();
@@ -590,9 +593,15 @@ public final class OpenWireMessageConverter {
       }
       amqMsg.setCommandId(commandId);
 
-      final SimpleString corrId = getObjectProperty(coreMessage, SimpleString.class, OpenWireConstants.JMS_CORRELATION_ID_PROPERTY);
-      if (corrId != null) {
-         amqMsg.setCorrelationId(corrId.toString());
+      final Object correlationID = coreMessage.getCorrelationID();
+      if (correlationID instanceof String || correlationID instanceof SimpleString) {
+         amqMsg.setCorrelationId(correlationID.toString());
+      } else if (correlationID instanceof byte[]) {
+         try {
+            amqMsg.setCorrelationId(StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap((byte[]) correlationID)).toString());
+         } catch (MalformedInputException e) {
+            ActiveMQServerLogger.LOGGER.unableToDecodeCorrelationId(e.getMessage());
+         }
       }
 
       final byte[] dsBytes = getObjectProperty(coreMessage, byte[].class, OpenWireConstants.AMQ_MSG_DATASTRUCTURE);
@@ -943,6 +952,8 @@ public final class OpenWireMessageConverter {
             continue;
          }
          if (!coreMessage.containsProperty(ManagementHelper.HDR_NOTIFICATION_TYPE) && (keyStr.startsWith("_AMQ") || keyStr.startsWith("__HDR_"))) {
+            continue;
+         } else if (s.equals(OpenWireConstants.JMS_CORRELATION_ID_PROPERTY)) {
             continue;
          }
          final Object prop = coreMessage.getObjectProperty(s);

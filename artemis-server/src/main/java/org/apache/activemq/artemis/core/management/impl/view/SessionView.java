@@ -25,7 +25,7 @@ import org.apache.activemq.artemis.utils.JsonLoader;
 
 public class SessionView extends ActiveMQAbstractView<ServerSession> {
 
-   private static final String defaultSortColumn = SessionField.ID.getName();
+   private static final String defaultSortField = SessionField.ID.getName();
 
    public SessionView() {
       super();
@@ -46,7 +46,8 @@ public class SessionView extends ActiveMQAbstractView<ServerSession> {
          .add(SessionField.CREATION_TIME.getName(), new Date(session.getCreationTime()).toString())
          .add(SessionField.CONSUMER_COUNT.getName(), session.getConsumerCount())
          .add(SessionField.PRODUCER_COUNT.getName(), session.getProducerCount())
-         .add(SessionField.CONNECTION_ID.getName(), session.getConnectionID().toString());
+         .add(SessionField.CONNECTION_ID.getName(), session.getConnectionID().toString())
+         .add(SessionField.CLIENT_ID.getName(), session.getRemotingConnection().getClientID() != null ? session.getRemotingConnection().getClientID() : "");
       return obj;
    }
 
@@ -69,6 +70,8 @@ public class SessionView extends ActiveMQAbstractView<ServerSession> {
             return session.getProducerCount();
          case CONNECTION_ID:
             return session.getConnectionID();
+         case CLIENT_ID:
+            return session.getRemotingConnection().getClientID();
          default:
             throw new IllegalArgumentException("Unsupported field, " + fieldName);
       }
@@ -76,6 +79,6 @@ public class SessionView extends ActiveMQAbstractView<ServerSession> {
 
    @Override
    public String getDefaultOrderColumn() {
-      return defaultSortColumn;
+      return defaultSortField;
    }
 }

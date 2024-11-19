@@ -16,9 +16,20 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.distribution;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
@@ -26,23 +37,22 @@ import org.apache.activemq.artemis.api.core.client.ClientMessage;
 import org.apache.activemq.artemis.api.core.client.ClientProducer;
 import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
+import org.apache.activemq.artemis.core.config.DivertConfiguration;
+import org.apache.activemq.artemis.api.core.management.QueueControl;
 import org.apache.activemq.artemis.core.postoffice.Binding;
+import org.apache.activemq.artemis.core.server.ComponentConfigurationRoutingType;
 import org.apache.activemq.artemis.core.server.cluster.ClusterConnection;
 import org.apache.activemq.artemis.core.server.cluster.MessageFlowRecord;
 import org.apache.activemq.artemis.core.server.cluster.RemoteQueueBinding;
 import org.apache.activemq.artemis.core.server.cluster.impl.ClusterConnectionImpl;
 import org.apache.activemq.artemis.core.server.cluster.impl.MessageLoadBalancingType;
+import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
+import org.apache.activemq.artemis.tests.integration.management.ManagementControlHelper;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class SimpleSymmetricClusterTest extends ClusterTestBase {
 
@@ -242,9 +252,9 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
       clusterConnection1.stop();
       clusterConnection2.stop();
 
-      Assert.assertEquals(0, ((ClusterConnectionImpl)clusterConnection0).getRecords().size());
-      Assert.assertEquals(0, ((ClusterConnectionImpl)clusterConnection1).getRecords().size());
-      Assert.assertEquals(0, ((ClusterConnectionImpl)clusterConnection2).getRecords().size());
+      assertEquals(0, ((ClusterConnectionImpl)clusterConnection0).getRecords().size());
+      assertEquals(0, ((ClusterConnectionImpl)clusterConnection1).getRecords().size());
+      assertEquals(0, ((ClusterConnectionImpl)clusterConnection2).getRecords().size());
 
       Wait.assertTrue(() -> clusterConnectionRecords0.stream().noneMatch(messageFlowRecord -> messageFlowRecord.getBridge().isConnected()), 1000);
       Wait.assertTrue(() -> clusterConnectionRecords1.stream().noneMatch(messageFlowRecord -> messageFlowRecord.getBridge().isConnected()), 1000);
@@ -310,7 +320,7 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
       waitForBindings(1, ADDRESS, 1, 1, false);
 
       // there should be both a local and a remote binding
-      Collection<Binding> bindings = servers[0].getPostOffice().getDirectBindings(SimpleString.toSimpleString(ADDRESS));
+      Collection<Binding> bindings = servers[0].getPostOffice().getDirectBindings(SimpleString.of(ADDRESS));
       assertEquals(2, bindings.size());
 
       // the remote binding should point to the SnF queue
@@ -326,7 +336,7 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
       servers[0].getActiveMQServerControl().deleteAddress(ADDRESS, true);
 
       // no bindings should remain but the SnF queue should still be there
-      bindings = servers[0].getPostOffice().getDirectBindings(SimpleString.toSimpleString(ADDRESS));
+      bindings = servers[0].getPostOffice().getDirectBindings(SimpleString.of(ADDRESS));
       assertEquals(0, bindings.size());
       assertNotNull(servers[0].locateQueue(snf));
    }
@@ -355,6 +365,55 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
 
       waitForBindings(0, "queues.testaddress", 1, 1, false);
       waitForBindings(1, "queues.testaddress", 1, 1, false);
+
+      closeAllConsumers();
+
+   }
+
+   @Test
+   public void testSimpleSnFManagement() throws Exception {
+      final String address = "queues.testaddress";
+      final String queue = "queue0";
+
+      setupServer(0, false, isNetty());
+      setupServer(1, false, isNetty());
+
+      setupClusterConnection("cluster0", "queues", MessageLoadBalancingType.ON_DEMAND, 1, isNetty(), 0, 1);
+      setupClusterConnection("cluster1", "queues", MessageLoadBalancingType.ON_DEMAND, 1, isNetty(), 1, 0);
+
+      startServers(0, 1);
+
+      setupSessionFactory(0, isNetty());
+      setupSessionFactory(1, isNetty());
+
+      createQueue(0, address, queue, null, false);
+      createQueue(1, address, queue, null, false);
+
+      addConsumer(0, 0, queue, null);
+      addConsumer(1, 1, queue, null);
+
+      waitForBindings(0, address, 1, 1, true);
+      waitForBindings(1, address, 1, 1, true);
+
+      waitForBindings(0, address, 1, 1, false);
+      waitForBindings(1, address, 1, 1, false);
+
+      SimpleString SnFQueueName = SimpleString.of(
+         Arrays.stream(servers[0].getActiveMQServerControl().getQueueNames()).filter(
+            queueName -> queueName.contains(servers[0].getInternalNamingPrefix()))
+            .findFirst()
+            .orElse(null));
+
+      assertNotNull(SnFQueueName);
+
+      QueueControl queueControl = ManagementControlHelper.createQueueControl(SnFQueueName, SnFQueueName, RoutingType.MULTICAST, servers[0].getMBeanServer());
+
+      //check that internal queue can be managed
+      queueControl.pause();
+      assertTrue(queueControl.isPaused());
+
+      queueControl.resume();
+      assertFalse(queueControl.isPaused());
 
       closeAllConsumers();
 
@@ -482,7 +541,7 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
    }
 
    @Test
-   @Ignore("Test not implemented yet")
+   @Disabled("Test not implemented yet")
    public void testSimpleRoundRobbinNoFailure() throws Exception {
       //TODO make this test to crash a node
       setupServer(0, true, isNetty());
@@ -544,6 +603,52 @@ public class SimpleSymmetricClusterTest extends ClusterTestBase {
 
       verifyReceiveRoundRobin(100, -1, -1, 2);
 
+   }
+
+   @Test
+   public void testDivertRedistributedMessage() throws Exception {
+      final String queue = "queue0";
+      final String divertedQueueName = "divertedQueue";
+      final int messageCount = 10;
+
+      setupServer(0, true, isNetty());
+      setupServer(1, true, isNetty());
+      setupClusterConnection("cluster0", "", MessageLoadBalancingType.ON_DEMAND, 1, isNetty(), 0, 1);
+      setupClusterConnection("cluster0", "", MessageLoadBalancingType.ON_DEMAND, 1, isNetty(), 1, 0);
+
+      servers[0].getConfiguration().addAddressSetting("#", new AddressSettings().setRedistributionDelay(0));
+      servers[1].getConfiguration().addAddressSetting("#", new AddressSettings().setRedistributionDelay(0));
+
+      startServers(0, 1);
+
+      servers[0].deployDivert(new DivertConfiguration()
+                                 .setName("myDivert")
+                                 .setAddress(queue)
+                                 .setRoutingType(ComponentConfigurationRoutingType.ANYCAST)
+                                 .setForwardingAddress(divertedQueueName)
+                                 .setExclusive(true));
+
+      setupSessionFactory(0, isNetty());
+      setupSessionFactory(1, isNetty());
+
+      createQueue(0, queue, queue, null, true, RoutingType.ANYCAST);
+      createQueue(1, queue, queue, null, true, RoutingType.ANYCAST);
+      createQueue(0, divertedQueueName, divertedQueueName, null, true, RoutingType.ANYCAST);
+      createQueue(1, divertedQueueName, divertedQueueName, null, true, RoutingType.ANYCAST);
+
+      addConsumer(0, 0, queue, null);
+
+      waitForBindings(0, queue, 1, 1, true);
+      waitForBindings(1, queue, 1, 1, false);
+
+      send(1, queue, messageCount, true, null);
+
+      Wait.assertEquals((long) messageCount, () -> servers[0].locateQueue(divertedQueueName).getMessageCount(), 2000, 100);
+
+      addConsumer(1, 1, divertedQueueName, null);
+
+      verifyReceiveAll(messageCount, 1);
+      closeAllConsumers();
    }
 
 }

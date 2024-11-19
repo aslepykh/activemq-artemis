@@ -71,7 +71,7 @@ import org.apache.activemq.artemis.core.config.federation.FederationStreamConfig
 import org.apache.activemq.artemis.core.config.federation.FederationTransformerConfiguration;
 import org.apache.activemq.artemis.core.config.federation.FederationUpstreamConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ColocatedPolicyConfiguration;
-import org.apache.activemq.artemis.core.config.ha.DistributedPrimitiveManagerConfiguration;
+import org.apache.activemq.artemis.core.config.ha.DistributedLockManagerConfiguration;
 import org.apache.activemq.artemis.core.config.ha.PrimaryOnlyPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicaPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicatedPolicyConfiguration;
@@ -141,6 +141,7 @@ import static org.apache.activemq.artemis.core.config.impl.Validators.PAGE_FULL_
 import static org.apache.activemq.artemis.core.config.impl.Validators.PERCENTAGE;
 import static org.apache.activemq.artemis.core.config.impl.Validators.PERCENTAGE_OR_MINUS_ONE;
 import static org.apache.activemq.artemis.core.config.impl.Validators.POSITIVE_INT;
+import static org.apache.activemq.artemis.core.config.impl.Validators.POSITIVE_POWER_OF_TWO;
 import static org.apache.activemq.artemis.core.config.impl.Validators.ROUTING_TYPE;
 import static org.apache.activemq.artemis.core.config.impl.Validators.SLOW_CONSUMER_POLICY_TYPE;
 import static org.apache.activemq.artemis.core.config.impl.Validators.SLOW_CONSUMER_THRESHOLD_MEASUREMENT_UNIT;
@@ -203,6 +204,10 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
    private static final String CREATEADDRESS_NAME = "createAddress";
 
    private static final String DELETEADDRESS_NAME = "deleteAddress";
+
+   private static final String VIEW_NAME = "view";
+
+   private static final String EDIT_NAME = "edit";
 
    // Address parsing
 
@@ -376,6 +381,17 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
    private static final String ID_CACHE_SIZE = "id-cache-size";
 
+   private static final String MIRROR_ACK_MANAGER_QUEUE_ATTEMPTS = "mirror-ack-manager-queue-attempts";
+
+   private static final String MIRROR_ACK_MANAGER_PAGE_ATTEMPTS = "mirror-ack-manager-page-attempts";
+
+   private static final String MIRROR_ACK_MANAGER_RETRY_DELAY = "mirror-ack-manager-retry-delay";
+   private static final String MIRROR_ACK_MANAGER_WARN_UNACKED = "mirror-ack-manager-warn-unacked";
+
+   private static final String MIRROR_PAGE_TRANSACTION = "mirror-page-transaction";
+
+   private static final String INITIAL_QUEUE_BUFFER_SIZE = "initial-queue-buffer-size";
+
    private boolean validateAIO = false;
 
    private boolean printPageMaxSizeUsed = false;
@@ -471,9 +487,9 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
       config.setPersistIDCache(getBoolean(e, "persist-id-cache", config.isPersistIDCache()));
 
-      config.setManagementAddress(new SimpleString(getString(e, "management-address", config.getManagementAddress().toString(), NOT_NULL_OR_EMPTY)));
+      config.setManagementAddress(SimpleString.of(getString(e, "management-address", config.getManagementAddress().toString(), NOT_NULL_OR_EMPTY)));
 
-      config.setManagementNotificationAddress(new SimpleString(getString(e, "management-notification-address", config.getManagementNotificationAddress().toString(), NOT_NULL_OR_EMPTY)));
+      config.setManagementNotificationAddress(SimpleString.of(getString(e, "management-notification-address", config.getManagementNotificationAddress().toString(), NOT_NULL_OR_EMPTY)));
 
       config.setMaskPassword(getBoolean(e, "mask-password", null));
 
@@ -839,6 +855,22 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
       config.setLargeMessageSync(getBoolean(e, "large-message-sync", config.isLargeMessageSync()));
 
+      config.setViewPermissionMethodMatchPattern(getString(e, "view-permission-method-match-pattern", config.getViewPermissionMethodMatchPattern(), NO_CHECK));
+
+      config.setManagementMessageRbac(getBoolean(e, "management-message-rbac", config.isManagementMessageRbac()));
+
+      config.setManagementRbacPrefix(getString(e, "management-rbac-prefix", config.getManagementRbacPrefix(), NO_CHECK));
+
+      config.setMirrorPageTransaction(getBoolean(e, MIRROR_PAGE_TRANSACTION, config.isMirrorPageTransaction()));
+
+      config.setMirrorAckManagerPageAttempts(getInteger(e, MIRROR_ACK_MANAGER_PAGE_ATTEMPTS, config.getMirrorAckManagerPageAttempts(), GT_ZERO));
+
+      config.setMirrorAckManagerQueueAttempts(getInteger(e, MIRROR_ACK_MANAGER_QUEUE_ATTEMPTS, config.getMirrorAckManagerQueueAttempts(), GT_ZERO));
+
+      config.setMirrorAckManagerRetryDelay(getInteger(e, MIRROR_ACK_MANAGER_RETRY_DELAY, config.getMirrorAckManagerRetryDelay(), GT_ZERO));
+
+      config.setMirrorAckManagerWarnUnacked(getBoolean(e, MIRROR_ACK_MANAGER_WARN_UNACKED, config.isMirrorAckManagerWarnUnacked()));
+
       parseAddressSettings(e, config);
 
       parseResourceLimits(e, config);
@@ -958,12 +990,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
       Map<String, String> properties = getMapOfChildPropertyElements(item);
 
-      ActiveMQServerPlugin serverPlugin = AccessController.doPrivileged(new PrivilegedAction<ActiveMQServerPlugin>() {
-         @Override
-         public ActiveMQServerPlugin run() {
-            return (ActiveMQServerPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz);
-         }
-      });
+      ActiveMQServerPlugin serverPlugin = AccessController.doPrivileged((PrivilegedAction<ActiveMQServerPlugin>) () -> (ActiveMQServerPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz, ActiveMQServerPlugin.class));
 
       serverPlugin.init(properties);
 
@@ -1012,6 +1039,10 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
                metricsConfiguration.setProcessor(XMLUtil.parseBoolean(child));
             } else if (child.getNodeName().equals("uptime")) {
                metricsConfiguration.setUptime(XMLUtil.parseBoolean(child));
+            } else if (child.getNodeName().equals("logging")) {
+               metricsConfiguration.setLogging(XMLUtil.parseBoolean(child));
+            } else if (child.getNodeName().equals("security-caches")) {
+               metricsConfiguration.setSecurityCaches(XMLUtil.parseBoolean(child));
             } else if (child.getNodeName().equals("plugin")) {
                metricsConfiguration.setPlugin(parseMetricsPlugin(child, config));
             }
@@ -1035,12 +1066,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
       Map<String, String> properties = getMapOfChildPropertyElements(item);
 
-      ActiveMQMetricsPlugin metricsPlugin = AccessController.doPrivileged(new PrivilegedAction<ActiveMQMetricsPlugin>() {
-         @Override
-         public ActiveMQMetricsPlugin run() {
-            return (ActiveMQMetricsPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz);
-         }
-      });
+      ActiveMQMetricsPlugin metricsPlugin = AccessController.doPrivileged((PrivilegedAction<ActiveMQMetricsPlugin>) () -> (ActiveMQMetricsPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz, ActiveMQMetricsPlugin.class));
 
       ActiveMQServerLogger.LOGGER.initializingMetricsPlugin(clazz, properties.toString());
 
@@ -1149,6 +1175,8 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       ArrayList<String> browseRoles = new ArrayList<>();
       ArrayList<String> createAddressRoles = new ArrayList<>();
       ArrayList<String> deleteAddressRoles = new ArrayList<>();
+      ArrayList<String> viewRoles = new ArrayList<>();
+      ArrayList<String> editRoles = new ArrayList<>();
       ArrayList<String> allRoles = new ArrayList<>();
       NodeList children = node.getChildNodes();
       for (int i = 0; i < children.getLength(); i++) {
@@ -1185,6 +1213,10 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
                   createAddressRoles.add(role.trim());
                } else if (DELETEADDRESS_NAME.equals(type)) {
                   deleteAddressRoles.add(role.trim());
+               } else if (VIEW_NAME.equals(type)) {
+                  viewRoles.add(role.trim());
+               } else if (EDIT_NAME.equals(type)) {
+                  editRoles.add(role.trim());
                } else {
                   ActiveMQServerLogger.LOGGER.rolePermissionConfigurationError(type);
                }
@@ -1196,7 +1228,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       }
 
       for (String role : allRoles) {
-         securityRoles.add(new Role(role, send.contains(role), consume.contains(role), createDurableQueue.contains(role), deleteDurableQueue.contains(role), createNonDurableQueue.contains(role), deleteNonDurableQueue.contains(role), manageRoles.contains(role), browseRoles.contains(role), createAddressRoles.contains(role), deleteAddressRoles.contains(role)));
+         securityRoles.add(new Role(role, send.contains(role), consume.contains(role), createDurableQueue.contains(role), deleteDurableQueue.contains(role), createNonDurableQueue.contains(role), deleteNonDurableQueue.contains(role), manageRoles.contains(role), browseRoles.contains(role), createAddressRoles.contains(role), deleteAddressRoles.contains(role), viewRoles.contains(role), editRoles.contains(role)));
       }
 
       return securityMatch;
@@ -1236,12 +1268,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          }
       }
 
-      SecuritySettingPlugin securitySettingPlugin = AccessController.doPrivileged(new PrivilegedAction<SecuritySettingPlugin>() {
-         @Override
-         public SecuritySettingPlugin run() {
-            return (SecuritySettingPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz);
-         }
-      });
+      SecuritySettingPlugin securitySettingPlugin = AccessController.doPrivileged((PrivilegedAction<SecuritySettingPlugin>) () -> (SecuritySettingPlugin) ClassloadingUtil.newInstanceFromClassLoader(FileConfigurationParser.class, clazz, SecuritySettingPlugin.class));
 
       return new Pair<>(securitySettingPlugin, settings);
    }
@@ -1295,9 +1322,9 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          final Node child = children.item(i);
          final String name = child.getNodeName();
          if (DEAD_LETTER_ADDRESS_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setDeadLetterAddress(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setDeadLetterAddress(SimpleString.of(getTrimmedTextContent(child)));
          } else if (EXPIRY_ADDRESS_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setExpiryAddress(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setExpiryAddress(SimpleString.of(getTrimmedTextContent(child)));
          } else if (EXPIRY_DELAY_NODE_NAME.equalsIgnoreCase(name)) {
             addressSettings.setExpiryDelay(XMLUtil.parseLong(child));
          } else if (MIN_EXPIRY_DELAY_NODE_NAME.equalsIgnoreCase(name)) {
@@ -1350,7 +1377,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          } else if (LVQ_NODE_NAME.equalsIgnoreCase(name) || DEFAULT_LVQ_NODE_NAME.equalsIgnoreCase(name)) {
             addressSettings.setDefaultLastValueQueue(XMLUtil.parseBoolean(child));
          } else if (DEFAULT_LVQ_KEY_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setDefaultLastValueKey(SimpleString.toSimpleString(getTrimmedTextContent(child)));
+            addressSettings.setDefaultLastValueKey(SimpleString.of(getTrimmedTextContent(child)));
          } else if (DEFAULT_NON_DESTRUCTIVE_NODE_NAME.equalsIgnoreCase(name)) {
             addressSettings.setDefaultNonDestructive(XMLUtil.parseBoolean(child));
          } else if (DEFAULT_EXCLUSIVE_NODE_NAME.equalsIgnoreCase(name)) {
@@ -1362,7 +1389,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          } else if (DEFAULT_GROUP_BUCKETS.equalsIgnoreCase(name)) {
             addressSettings.setDefaultGroupBuckets(XMLUtil.parseInt(child));
          } else if (DEFAULT_GROUP_FIRST_KEY.equalsIgnoreCase(name)) {
-            addressSettings.setDefaultGroupFirstKey(SimpleString.toSimpleString(getTrimmedTextContent(child)));
+            addressSettings.setDefaultGroupFirstKey(SimpleString.of(getTrimmedTextContent(child)));
          } else if (MAX_DELIVERY_ATTEMPTS.equalsIgnoreCase(name)) {
             addressSettings.setMaxDeliveryAttempts(XMLUtil.parseInt(child));
          } else if (REDISTRIBUTION_DELAY_NODE_NAME.equalsIgnoreCase(name)) {
@@ -1436,21 +1463,23 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          } else if (AUTO_CREATE_DEAD_LETTER_RESOURCES_NODE_NAME.equalsIgnoreCase(name)) {
             addressSettings.setAutoCreateDeadLetterResources(XMLUtil.parseBoolean(child));
          } else if (DEAD_LETTER_QUEUE_PREFIX_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setDeadLetterQueuePrefix(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setDeadLetterQueuePrefix(SimpleString.of(getTrimmedTextContent(child)));
          } else if (DEAD_LETTER_QUEUE_SUFFIX_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setDeadLetterQueueSuffix(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setDeadLetterQueueSuffix(SimpleString.of(getTrimmedTextContent(child)));
          } else if (AUTO_CREATE_EXPIRY_RESOURCES_NODE_NAME.equalsIgnoreCase(name)) {
             addressSettings.setAutoCreateExpiryResources(XMLUtil.parseBoolean(child));
          } else if (EXPIRY_QUEUE_PREFIX_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setExpiryQueuePrefix(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setExpiryQueuePrefix(SimpleString.of(getTrimmedTextContent(child)));
          } else if (EXPIRY_QUEUE_SUFFIX_NODE_NAME.equalsIgnoreCase(name)) {
-            addressSettings.setExpiryQueueSuffix(new SimpleString(getTrimmedTextContent(child)));
+            addressSettings.setExpiryQueueSuffix(SimpleString.of(getTrimmedTextContent(child)));
          } else if (ENABLE_METRICS.equalsIgnoreCase(name)) {
             addressSettings.setEnableMetrics(XMLUtil.parseBoolean(child));
          } else if (ENABLE_INGRESS_TIMESTAMP.equalsIgnoreCase(name)) {
             addressSettings.setEnableIngressTimestamp(XMLUtil.parseBoolean(child));
          } else if (ID_CACHE_SIZE.equalsIgnoreCase(name)) {
             addressSettings.setIDCacheSize(GE_ZERO.validate(ID_CACHE_SIZE, XMLUtil.parseInt(child)).intValue());
+         } else if (INITIAL_QUEUE_BUFFER_SIZE.equalsIgnoreCase(name)) {
+            addressSettings.setInitialQueueBufferSize(POSITIVE_POWER_OF_TWO.validate(INITIAL_QUEUE_BUFFER_SIZE, XMLUtil.parseInt(child)).intValue());
          }
       }
       return setting;
@@ -1463,7 +1492,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
    protected ResourceLimitSettings parseResourceLimitSettings(final Node node) {
       ResourceLimitSettings resourceLimitSettings = new ResourceLimitSettings();
 
-      resourceLimitSettings.setMatch(SimpleString.toSimpleString(getAttributeValue(node, "match")));
+      resourceLimitSettings.setMatch(SimpleString.of(getAttributeValue(node, "match")));
 
       NodeList children = node.getChildNodes();
 
@@ -1549,7 +1578,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          }
       }
 
-      return new QueueConfiguration(name)
+      return QueueConfiguration.of(name)
               .setAddress(address)
               .setFilterString(filterString)
               .setDurable(durable)
@@ -1821,7 +1850,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       configuration.setClusterName(getString(policyNode, "cluster-name", configuration.getClusterName(), NO_CHECK));
       configuration.setInitialReplicationSyncTimeout(getLong(policyNode, "initial-replication-sync-timeout", configuration.getInitialReplicationSyncTimeout(), GT_ZERO));
       configuration.setRetryReplicationWait(getLong(policyNode, "retry-replication-wait", configuration.getRetryReplicationWait(), GT_ZERO));
-      configuration.setDistributedManagerConfiguration(createDistributedPrimitiveManagerConfiguration(policyNode));
+      configuration.setDistributedManagerConfiguration(createDistributedLockManagerConfiguration(policyNode));
       configuration.setCoordinationId(getString(policyNode, "coordination-id", configuration.getCoordinationId(), NOT_NULL_OR_EMPTY));
       configuration.setMaxSavedReplicatedJournalsSize(getInteger(policyNode, "max-saved-replicated-journals-size", configuration.getMaxSavedReplicatedJournalsSize(), MINUS_ONE_OR_GE_ZERO));
       return configuration;
@@ -1835,14 +1864,14 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       configuration.setClusterName(getString(policyNode, "cluster-name", configuration.getClusterName(), NO_CHECK));
       configuration.setMaxSavedReplicatedJournalsSize(getInteger(policyNode, "max-saved-replicated-journals-size", configuration.getMaxSavedReplicatedJournalsSize(), MINUS_ONE_OR_GE_ZERO));
       configuration.setRetryReplicationWait(getLong(policyNode, "retry-replication-wait", configuration.getRetryReplicationWait(), GT_ZERO));
-      configuration.setDistributedManagerConfiguration(createDistributedPrimitiveManagerConfiguration(policyNode));
+      configuration.setDistributedManagerConfiguration(createDistributedLockManagerConfiguration(policyNode));
       return configuration;
    }
 
-   private DistributedPrimitiveManagerConfiguration createDistributedPrimitiveManagerConfiguration(Element policyNode) {
+   private DistributedLockManagerConfiguration createDistributedLockManagerConfiguration(Element policyNode) {
       final Element managerNode = (Element) policyNode.getElementsByTagName("manager").item(0);
       final String className = getString(managerNode, "class-name",
-                                         ActiveMQDefaultConfiguration.getDefaultDistributedPrimitiveManagerClassName(),
+                                         ActiveMQDefaultConfiguration.getDefaultDistributedLockManagerClassName(),
                                          NO_CHECK);
       final Map<String, String> properties;
       if (parameterExists(managerNode, "properties")) {
@@ -1858,7 +1887,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       } else {
          properties = new HashMap<>(1);
       }
-      return new DistributedPrimitiveManagerConfiguration(className, properties);
+      return new DistributedLockManagerConfiguration(className, properties);
    }
 
    private SharedStorePrimaryPolicyConfiguration createSharedStorePrimaryHaPolicy(Element policyNode) {
@@ -2208,8 +2237,8 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
                String match = getAttributeValue(e2, "address-match");
                String queue = getAttributeValue(e2, "queue-name");
                connectionElement = new AMQPBrokerConnectionElement();
-               connectionElement.setMatchAddress(SimpleString.toSimpleString(match)).setType(nodeType);
-               connectionElement.setQueueName(SimpleString.toSimpleString(queue));
+               connectionElement.setMatchAddress(SimpleString.of(match)).setType(nodeType);
+               connectionElement.setQueueName(SimpleString.of(queue));
             }
 
             config.addElement(connectionElement);
@@ -2359,8 +2388,6 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
       int clusterNotificationAttempts = getInteger(e, "notification-attempts", ActiveMQDefaultConfiguration.getDefaultClusterNotificationAttempts(), GT_ZERO);
 
-      String scaleDownConnector = e.getAttribute("scale-down-connector");
-
       String discoveryGroupName = null;
 
       List<String> staticConnectorNames = new ArrayList<>();
@@ -2383,7 +2410,9 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          }
       }
 
-      ClusterConnectionConfiguration config = new ClusterConnectionConfiguration().setName(name).setAddress(address).setConnectorName(connectorName).setMinLargeMessageSize(minLargeMessageSize).setClientFailureCheckPeriod(clientFailureCheckPeriod).setConnectionTTL(connectionTTL).setRetryInterval(retryInterval).setRetryIntervalMultiplier(retryIntervalMultiplier).setMaxRetryInterval(maxRetryInterval).setInitialConnectAttempts(initialConnectAttempts).setReconnectAttempts(reconnectAttempts).setCallTimeout(callTimeout).setCallFailoverTimeout(callFailoverTimeout).setDuplicateDetection(duplicateDetection).setMessageLoadBalancingType(messageLoadBalancingType).setMaxHops(maxHops).setConfirmationWindowSize(confirmationWindowSize).setProducerWindowSize(producerWindowSize).setAllowDirectConnectionsOnly(allowDirectConnectionsOnly).setClusterNotificationInterval(clusterNotificationInterval).setClusterNotificationAttempts(clusterNotificationAttempts);
+      String clientId = getString(e, "client-id", null, NO_CHECK);
+
+      ClusterConnectionConfiguration config = new ClusterConnectionConfiguration().setName(name).setAddress(address).setConnectorName(connectorName).setMinLargeMessageSize(minLargeMessageSize).setClientFailureCheckPeriod(clientFailureCheckPeriod).setConnectionTTL(connectionTTL).setRetryInterval(retryInterval).setRetryIntervalMultiplier(retryIntervalMultiplier).setMaxRetryInterval(maxRetryInterval).setInitialConnectAttempts(initialConnectAttempts).setReconnectAttempts(reconnectAttempts).setCallTimeout(callTimeout).setCallFailoverTimeout(callFailoverTimeout).setDuplicateDetection(duplicateDetection).setMessageLoadBalancingType(messageLoadBalancingType).setMaxHops(maxHops).setConfirmationWindowSize(confirmationWindowSize).setProducerWindowSize(producerWindowSize).setAllowDirectConnectionsOnly(allowDirectConnectionsOnly).setClusterNotificationInterval(clusterNotificationInterval).setClusterNotificationAttempts(clusterNotificationAttempts).setClientId(clientId);
 
       if (discoveryGroupName == null) {
          config.setStaticConnectors(staticConnectorNames);
@@ -2401,7 +2430,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       Integer timeout = getInteger(node, "timeout", ActiveMQDefaultConfiguration.getDefaultGroupingHandlerTimeout(), GT_ZERO);
       Long groupTimeout = getLong(node, "group-timeout", ActiveMQDefaultConfiguration.getDefaultGroupingHandlerGroupTimeout(), MINUS_ONE_OR_GT_ZERO);
       Long reaperPeriod = getLong(node, "reaper-period", ActiveMQDefaultConfiguration.getDefaultGroupingHandlerReaperPeriod(), GT_ZERO);
-      mainConfiguration.setGroupingHandlerConfiguration(new GroupingHandlerConfiguration().setName(new SimpleString(name)).setType(type.equals(GroupingHandlerConfiguration.TYPE.LOCAL.getType()) ? GroupingHandlerConfiguration.TYPE.LOCAL : GroupingHandlerConfiguration.TYPE.REMOTE).setAddress(new SimpleString(address)).setTimeout(timeout).setGroupTimeout(groupTimeout).setReaperPeriod(reaperPeriod));
+      mainConfiguration.setGroupingHandlerConfiguration(new GroupingHandlerConfiguration().setName(SimpleString.of(name)).setType(type.equals(GroupingHandlerConfiguration.TYPE.LOCAL.getType()) ? GroupingHandlerConfiguration.TYPE.LOCAL : GroupingHandlerConfiguration.TYPE.REMOTE).setAddress(SimpleString.of(address)).setTimeout(timeout).setGroupTimeout(groupTimeout).setReaperPeriod(reaperPeriod));
    }
 
    private TransformerConfiguration getTransformerConfiguration(final Node node) {
@@ -2455,6 +2484,10 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
       ComponentConfigurationRoutingType routingType = ComponentConfigurationRoutingType.valueOf(getString(brNode, "routing-type", ActiveMQDefaultConfiguration.getDefaultBridgeRoutingType(), COMPONENT_ROUTING_TYPE));
 
       int concurrency = getInteger(brNode, "concurrency", ActiveMQDefaultConfiguration.getDefaultBridgeConcurrency(), GT_ZERO);
+
+      long pendingAckTimeout = getLong(brNode, "pending-ack-timeout", ActiveMQDefaultConfiguration.getDefaultBridgePendingAckTimeout(), GT_ZERO);
+
+      String clientId = getString(brNode, "client-id", null, NO_CHECK);
 
       NodeList clusterPassNodes = brNode.getElementsByTagName("password");
       String password = null;
@@ -2522,7 +2555,9 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
          .setUser(user)
          .setPassword(password)
          .setRoutingType(routingType)
-         .setConcurrency(concurrency);
+         .setConcurrency(concurrency)
+         .setPendingAckTimeout(pendingAckTimeout)
+         .setClientId(clientId);
 
       if (!staticConnectorNames.isEmpty()) {
          config.setStaticConnectors(staticConnectorNames);
@@ -2614,7 +2649,7 @@ public final class FileConfigurationParser extends XMLConfigurationUtil {
 
    private FederationQueuePolicyConfiguration.Matcher getQueueMatcher(Element child) {
       FederationQueuePolicyConfiguration.Matcher matcher = new FederationQueuePolicyConfiguration.Matcher();
-      matcher.setAddressMatch(child.getAttribute("queue-match"));
+      matcher.setQueueMatch(child.getAttribute("queue-match"));
       matcher.setAddressMatch(child.getAttribute("address-match"));
       return matcher;
    }

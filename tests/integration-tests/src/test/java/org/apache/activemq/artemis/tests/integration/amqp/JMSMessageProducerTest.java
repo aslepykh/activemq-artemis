@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.amqp;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.Random;
 import java.util.UUID;
 
@@ -31,12 +36,13 @@ import javax.jms.TextMessage;
 import javax.jms.Topic;
 
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class JMSMessageProducerTest extends JMSClientTestSupport {
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testAnonymousProducerWithQueueAutoCreation() throws Exception {
       Connection connection = createConnection();
 
@@ -65,7 +71,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testAnonymousProducer() throws Exception {
       Connection connection = createConnection();
 
@@ -99,7 +106,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testAnonymousProducerWithTopicAutoCreation() throws Exception {
       Connection connection = createConnection();
 
@@ -133,7 +141,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testDuplicateDetection() throws Exception {
       final int MSG_COUNT = 10;
       Connection connection = createConnection();
@@ -156,7 +165,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testAnonymousProducerAcrossManyDestinations() throws Exception {
       Connection connection = createConnection();
 
@@ -174,7 +184,7 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
 
          MessageConsumer messageConsumer = session.createConsumer(session.createQueue(getQueueName()));
          Message m = messageConsumer.receive(200);
-         Assert.assertNull(m);
+         assertNull(m);
 
          for (int i = 0; i < getPrecreatedQueueSize(); i++) {
             javax.jms.Queue target = session.createQueue(getQueueName(i));
@@ -189,7 +199,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSendingBigMessage() throws Exception {
       Connection connection = createConnection();
 
@@ -213,7 +224,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSendWithTimeToLiveExpiresToDLQ() throws Exception {
       Connection connection = createConnection();
 
@@ -244,7 +256,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReplyToUsingQueue() throws Throwable {
       Connection connection = createConnection();
 
@@ -271,7 +284,8 @@ public class JMSMessageProducerTest extends JMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReplyToUsingTempQueue() throws Throwable {
       Connection connection = createConnection();
 

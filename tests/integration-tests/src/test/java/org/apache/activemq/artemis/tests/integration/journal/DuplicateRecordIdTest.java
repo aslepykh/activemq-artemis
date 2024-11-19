@@ -26,18 +26,18 @@ import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.core.settings.impl.SlowConsumerPolicy;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class DuplicateRecordIdTest extends ActiveMQTestBase {
 
    protected ActiveMQServer server;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
-      server = createServer(false, createDefaultInVMConfig().addAddressSetting("#", new AddressSettings().setDeadLetterAddress(new SimpleString("dlq")).setExpiryAddress(new SimpleString("dlq")).setSlowConsumerPolicy(SlowConsumerPolicy.NOTIFY).setAddressFullMessagePolicy(AddressFullMessagePolicy.BLOCK)));
+      server = createServer(false, createDefaultInVMConfig().addAddressSetting("#", new AddressSettings().setDeadLetterAddress(SimpleString.of("dlq")).setExpiryAddress(SimpleString.of("dlq")).setSlowConsumerPolicy(SlowConsumerPolicy.NOTIFY).setAddressFullMessagePolicy(AddressFullMessagePolicy.BLOCK)));
       server.getConfiguration().setPersistenceEnabled(true);
    }
 
@@ -49,7 +49,7 @@ public class DuplicateRecordIdTest extends ActiveMQTestBase {
          serverControl.removeAddressSettings("q");
          AddressSettingsInfo defaultSettings = AddressSettingsInfo.fromJSON(serverControl.getAddressSettingsAsJSON("#"));
          AddressSettings settings = new AddressSettings();
-         settings.setExpiryAddress(SimpleString.toSimpleString(defaultSettings.getExpiryAddress())).setExpiryDelay(defaultSettings.getExpiryDelay()).setMaxDeliveryAttempts(1)
+         settings.setExpiryAddress(SimpleString.of(defaultSettings.getExpiryAddress())).setExpiryDelay(defaultSettings.getExpiryDelay()).setMaxDeliveryAttempts(1)
                  .setMaxSizeBytes(defaultSettings.getMaxSizeBytes()).setPageSizeBytes(defaultSettings.getPageSizeBytes())
                  .setPageCacheMaxSize(defaultSettings.getPageCacheMaxSize()).setRedeliveryDelay(defaultSettings.getRedeliveryDelay())
                  .setMaxExpiryDelay(defaultSettings.getMaxRedeliveryDelay()).setRedistributionDelay(defaultSettings.getRedistributionDelay())

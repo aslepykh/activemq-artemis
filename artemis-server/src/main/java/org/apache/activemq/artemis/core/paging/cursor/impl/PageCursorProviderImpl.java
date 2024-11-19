@@ -87,7 +87,7 @@ public class PageCursorProviderImpl implements PageCursorProvider {
    @Override
    public synchronized PageSubscription createSubscription(long cursorID, Filter filter, boolean persistent) {
       if (logger.isTraceEnabled()) {
-         logger.trace("{} creating subscription {} {} with filter {}", this.pagingStore.getAddress(), cursorID, filter);
+         logger.trace("{} creating subscription {} {} with filter {}", this, this.pagingStore.getAddress(), cursorID, filter);
       }
 
       if (activeCursors.containsKey(cursorID)) {
@@ -194,19 +194,16 @@ public class PageCursorProviderImpl implements PageCursorProvider {
 
       scheduledCleanup.incrementAndGet();
 
-      pagingStore.execute(new Runnable() {
-         @Override
-         public void run() {
-            storageManager.setContext(storageManager.newSingleThreadContext());
-            try {
-               if (cleanupEnabled) {
-                  cleanup();
-               }
-            } finally {
-               storageManager.clearContext();
-               scheduledCleanup.decrementAndGet();
-               future.set(true);
+      pagingStore.execute(() -> {
+         storageManager.setContext(storageManager.newSingleThreadContext());
+         try {
+            if (cleanupEnabled) {
+               cleanup();
             }
+         } finally {
+            storageManager.clearContext();
+            scheduledCleanup.decrementAndGet();
+            future.set(true);
          }
       });
 
@@ -250,7 +247,7 @@ public class PageCursorProviderImpl implements PageCursorProvider {
       scheduleCleanup();
    }
 
-   private long getNumberOfMessagesOnSubscriptions() {
+   protected long getNumberOfMessagesOnSubscriptions() {
       AtomicLong largerCounter = new AtomicLong();
       activeCursors.forEach((id, sub) -> {
          long value = sub.getCounter().getValue();
@@ -262,7 +259,8 @@ public class PageCursorProviderImpl implements PageCursorProvider {
       return largerCounter.get();
    }
 
-   void checkClearPageLimit() {
+   @Override
+   public void checkClearPageLimit() {
       pagingStore.checkPageLimit(getNumberOfMessagesOnSubscriptions());
    }
 
@@ -488,7 +486,6 @@ public class PageCursorProviderImpl implements PageCursorProvider {
          }
       } catch (Exception ex) {
          ActiveMQServerLogger.LOGGER.problemCleaningPageAddress(pagingStore.getAddress(), ex);
-         return;
       }
 
    }

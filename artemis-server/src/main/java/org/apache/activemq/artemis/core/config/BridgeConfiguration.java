@@ -66,6 +66,8 @@ public final class BridgeConfiguration implements Serializable {
    public static String ROUTING_TYPE = "routing-type";
    public static String CONCURRENCY = "concurrency";
    public static String CONFIGURATION_MANAGED = "configuration-managed";
+   public static String PENDING_ACK_TIMEOUT = "pending-ack-timeout";
+   public static String CLIENT_ID = "client-id";
 
    private String name = null;
 
@@ -120,9 +122,13 @@ public final class BridgeConfiguration implements Serializable {
 
    private int concurrency = ActiveMQDefaultConfiguration.getDefaultBridgeConcurrency();
 
+   private long pendingAckTimeout = ActiveMQDefaultConfiguration.getDefaultBridgePendingAckTimeout();
+
    private String parentName = null;
 
    private boolean configurationManaged = true;
+
+   private String clientId = null;
 
    public BridgeConfiguration() {
    }
@@ -155,6 +161,8 @@ public final class BridgeConfiguration implements Serializable {
       routingType = other.routingType;
       concurrency = other.concurrency;
       configurationManaged = other.configurationManaged;
+      pendingAckTimeout = other.pendingAckTimeout;
+      clientId = other.clientId;
    }
 
    public BridgeConfiguration(String name) {
@@ -190,6 +198,7 @@ public final class BridgeConfiguration implements Serializable {
     * <li>call-timeout: {@link #CALL_TIMEOUT}
     * <li>routing-type: {@link #ROUTING_TYPE}
     * <li>concurrency: {@link #CONCURRENCY}
+    * <li>client-id: {@link #CLIENT_ID}
     * </ul><p>
     * The {@code String}-based values will be converted to the proper value types based on the underlying property. For
     * example, if you pass the value "TRUE" for the key "auto-created" the {@code String} "TRUE" will be converted to
@@ -261,6 +270,10 @@ public final class BridgeConfiguration implements Serializable {
             setRoutingType(ComponentConfigurationRoutingType.valueOf(value));
          } else if (key.equals(CONCURRENCY)) {
             setConcurrency(Integer.parseInt(value));
+         } else if (key.equals(PENDING_ACK_TIMEOUT)) {
+            setPendingAckTimeout(Long.parseLong(value));
+         } else if (key.equals(CLIENT_ID)) {
+            setClientId(value);
          }
       }
       return this;
@@ -571,6 +584,36 @@ public final class BridgeConfiguration implements Serializable {
    }
 
    /**
+    * @return the bridge pending ack timeout
+    */
+   public long getPendingAckTimeout() {
+      return pendingAckTimeout;
+   }
+
+   /**
+    * @param pendingAckTimeout the bridge pending ack timeout to set
+    */
+   public BridgeConfiguration setPendingAckTimeout(long pendingAckTimeout) {
+      this.pendingAckTimeout = pendingAckTimeout;
+      return this;
+   }
+
+   /**
+    * @return the bridge client ID
+    */
+   public String getClientId() {
+      return clientId;
+   }
+
+   /**
+    * @param clientId the bridge clientId to set
+    */
+   public BridgeConfiguration setClientId(String clientId) {
+      this.clientId = clientId;
+      return this;
+   }
+
+   /**
     * At this point this is only changed on testcases
     * The bridge shouldn't be sending blocking anyways
     *
@@ -631,6 +674,10 @@ public final class BridgeConfiguration implements Serializable {
       builder.add(CALL_TIMEOUT, getCallTimeout());
       builder.add(CONCURRENCY, getConcurrency());
       builder.add(CONFIGURATION_MANAGED, isConfigurationManaged());
+      builder.add(PENDING_ACK_TIMEOUT, getPendingAckTimeout());
+      if (getClientId() != null) {
+         builder.add(CLIENT_ID, getClientId());
+      }
 
       // complex fields (only serialize if value is not null)
 
@@ -647,13 +694,7 @@ public final class BridgeConfiguration implements Serializable {
 
       TransformerConfiguration tc = getTransformerConfiguration();
       if (tc != null) {
-         JsonObjectBuilder tcBuilder = JsonLoader.createObjectBuilder().add(TransformerConfiguration.CLASS_NAME, tc.getClassName());
-         if (tc.getProperties() != null && tc.getProperties().size() > 0) {
-            JsonObjectBuilder propBuilder = JsonLoader.createObjectBuilder();
-            tc.getProperties().forEach(propBuilder::add);
-            tcBuilder.add(TransformerConfiguration.PROPERTIES, propBuilder);
-         }
-         builder.add(TRANSFORMER_CONFIGURATION, tcBuilder);
+         builder.add(TRANSFORMER_CONFIGURATION, tc.createJsonObjectBuilder());
       }
 
       return builder.build().toString();
@@ -725,7 +766,9 @@ public final class BridgeConfiguration implements Serializable {
       result = prime * result + (useDuplicateDetection ? 1231 : 1237);
       result = prime * result + ((user == null) ? 0 : user.hashCode());
       result = prime * result + concurrency;
+      result = prime * result + (int) (pendingAckTimeout ^ (pendingAckTimeout >>> 32));
       result = prime * result + (configurationManaged ? 1231 : 1237);
+      result = prime * result + ((clientId == null) ? 0 : clientId.hashCode());
       return result;
    }
 
@@ -811,25 +854,32 @@ public final class BridgeConfiguration implements Serializable {
          return false;
       if (concurrency != other.concurrency)
          return false;
+      if (pendingAckTimeout != other.pendingAckTimeout)
+         return false;
       if (configurationManaged != other.configurationManaged)
+         return false;
+      if (clientId == null) {
+         if (other.clientId != null)
+            return false;
+      } else if (!clientId.equals(other.clientId))
          return false;
       return true;
    }
 
    public int getEncodeSize() {
-      int transformerSize = 0;
+      int transformerSize;
       if (transformerConfiguration != null) {
-         transformerSize += BufferHelper.sizeOfNullableString(transformerConfiguration.getClassName());
-         transformerSize += DataConstants.INT;
-         Map<String, String> properties = transformerConfiguration.getProperties();
-         for (Map.Entry<String, String> entry : properties.entrySet()) {
+         transformerSize = BufferHelper.sizeOfNullableString(transformerConfiguration.getClassName());
+         transformerSize += DataConstants.SIZE_INT;
+         for (Map.Entry<String, String> entry : transformerConfiguration.getProperties().entrySet()) {
             transformerSize += BufferHelper.sizeOfNullableString(entry.getKey());
             transformerSize += BufferHelper.sizeOfNullableString(entry.getValue());
          }
+      } else {
+         transformerSize = DataConstants.SIZE_NULL;
       }
-      int staticConnectorSize = 0;
+      int staticConnectorSize = DataConstants.SIZE_INT;
       if (staticConnectors != null) {
-         staticConnectorSize += BufferHelper.sizeOfNullableInteger(staticConnectors.size());
          for (String connector : staticConnectors) {
             staticConnectorSize += BufferHelper.sizeOfNullableString(connector);
          }
@@ -858,9 +908,11 @@ public final class BridgeConfiguration implements Serializable {
          BufferHelper.sizeOfNullableLong(callTimeout) +
          BufferHelper.sizeOfNullableInteger(concurrency) +
          BufferHelper.sizeOfNullableBoolean(configurationManaged) +
-         DataConstants.SIZE_BYTE +
+         DataConstants.SIZE_BYTE + // routingType
          transformerSize +
-         staticConnectorSize;
+         staticConnectorSize +
+         BufferHelper.sizeOfNullableLong(pendingAckTimeout) +
+         BufferHelper.sizeOfNullableString(clientId);
       return size;
    }
 
@@ -891,7 +943,7 @@ public final class BridgeConfiguration implements Serializable {
       buffer.writeNullableBoolean(configurationManaged);
       buffer.writeByte(routingType != null ? routingType.getType() : ComponentConfigurationRoutingType.valueOf(ActiveMQDefaultConfiguration.getDefaultDivertRoutingType()).getType());
       if (transformerConfiguration != null) {
-         buffer.writeString(transformerConfiguration.getClassName());
+         buffer.writeNullableString(transformerConfiguration.getClassName());
          Map<String, String> properties = transformerConfiguration.getProperties();
          buffer.writeInt(properties.size());
          for (Map.Entry<String, String> entry : properties.entrySet()) {
@@ -909,6 +961,8 @@ public final class BridgeConfiguration implements Serializable {
       } else {
          buffer.writeInt(0);
       }
+      buffer.writeNullableLong(pendingAckTimeout);
+      buffer.writeNullableString(clientId);
    }
 
    public void decode(ActiveMQBuffer buffer) {
@@ -952,6 +1006,11 @@ public final class BridgeConfiguration implements Serializable {
             staticConnectors.add(buffer.readNullableString());
          }
       }
+      if (buffer.readable()) {
+         pendingAckTimeout = buffer.readNullableLong();
+      }
+      if (buffer.readable()) {
+         clientId = buffer.readNullableString();
+      }
    }
-
 }

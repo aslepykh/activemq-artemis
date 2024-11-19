@@ -17,10 +17,15 @@
 
 package org.apache.activemq.artemis.tests.integration.security;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import org.apache.activemq.artemis.api.core.ActiveMQBuffer;
 import org.apache.activemq.artemis.api.core.ActiveMQBuffers;
+import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.persistence.config.PersistedSecuritySetting;
-import org.junit.Test;
+import org.apache.activemq.artemis.tests.util.RandomUtil;
+import org.junit.jupiter.api.Test;
 
 public class PersistedSecuritySettingTest {
 
@@ -40,5 +45,34 @@ public class PersistedSecuritySettingTest {
       persistedSecuritySetting.getDeleteNonDurableQueueRoles();
       persistedSecuritySetting.getManageRoles();
       persistedSecuritySetting.getSendRoles();
+      persistedSecuritySetting.getViewRoles();
+      persistedSecuritySetting.getEditRoles();
+   }
+
+   @Test
+   public void testUpgradeAfterARTEMIS_4582() {
+      // this buffer simulates a PersistedSecuritySetting journal entry from *before* ARTEMIS-4582
+      SimpleString match = RandomUtil.randomSimpleString();
+      ActiveMQBuffer buffer = ActiveMQBuffers.fixedBuffer((SimpleString.sizeofNullableString(match)) + 10);
+      buffer.writeSimpleString(match);
+      for (int i = 0; i < 10; i++) {
+         buffer.writeNullableSimpleString(null);
+      }
+
+      PersistedSecuritySetting persistedSecuritySetting = new PersistedSecuritySetting();
+      persistedSecuritySetting.decode(buffer);
+      assertEquals(match, persistedSecuritySetting.getAddressMatch());
+      assertNull(persistedSecuritySetting.getBrowseRoles());
+      assertNull(persistedSecuritySetting.getConsumeRoles());
+      assertNull(persistedSecuritySetting.getCreateAddressRoles());
+      assertNull(persistedSecuritySetting.getCreateDurableQueueRoles());
+      assertNull(persistedSecuritySetting.getCreateNonDurableQueueRoles());
+      assertNull(persistedSecuritySetting.getDeleteAddressRoles());
+      assertNull(persistedSecuritySetting.getDeleteDurableQueueRoles());
+      assertNull(persistedSecuritySetting.getDeleteNonDurableQueueRoles());
+      assertNull(persistedSecuritySetting.getManageRoles());
+      assertNull(persistedSecuritySetting.getSendRoles());
+      assertNull(persistedSecuritySetting.getViewRoles());
+      assertNull(persistedSecuritySetting.getEditRoles());
    }
 }

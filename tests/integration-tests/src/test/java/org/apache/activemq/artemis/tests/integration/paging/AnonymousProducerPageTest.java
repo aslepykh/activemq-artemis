@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.paging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.DeliveryMode;
@@ -34,20 +37,21 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.logs.AssertionLoggerHandler;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class AnonymousProducerPageTest extends ActiveMQTestBase {
 
    protected final String protocol;
 
-   @Parameterized.Parameters(name = "protocol={0}")
+   @Parameters(name = "protocol={0}")
    public static Collection getParams() {
       return Arrays.asList(new Object[][]{
          {"AMQP"}, {"CORE"}, {"OPENWIRE"}});
@@ -61,7 +65,7 @@ public class AnonymousProducerPageTest extends ActiveMQTestBase {
 
    ActiveMQServer server;
 
-   @Before
+   @BeforeEach
    public void createServer() throws Exception {
 
       int port = 5672;
@@ -105,7 +109,8 @@ public class AnonymousProducerPageTest extends ActiveMQTestBase {
       return "AMQP,OPENWIRE,CORE";
    }
 
-   @Test(timeout = 60_000)
+   @TestTemplate
+   @Timeout(60)
    public void testNotBlockOnGlobalMaxSizeWithAnonymousProduce() throws Exception {
       final int MSG_SIZE = 1000;
       final StringBuilder builder = new StringBuilder();
@@ -144,11 +149,11 @@ public class AnonymousProducerPageTest extends ActiveMQTestBase {
       try (AssertionLoggerHandler loggerHandler = new AssertionLoggerHandler()) {
          producer.send(session.createQueue("blockedQueue"), session.createMessage());
          session.commit();
-         Assert.assertTrue(loggerHandler.findText("AMQ111004"));
+         assertTrue(loggerHandler.findText("AMQ111004"));
 
          producer.send(session.createQueue(getName()), session.createMessage());
          session.commit();
-         Assert.assertEquals("The warning should be printed only once", 1, loggerHandler.countText("AMQ111004"));
+         assertEquals(1, loggerHandler.countText("AMQ111004"), "The warning should be printed only once");
       }
    }
 

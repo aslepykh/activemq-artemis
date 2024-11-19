@@ -21,14 +21,17 @@ import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPF
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.IGNORE_QUEUE_CONSUMER_PRIORITIES;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.LARGE_MESSAGE_THRESHOLD;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.LINK_ATTACH_TIMEOUT;
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.PULL_RECEIVER_BATCH_SIZE;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.RECEIVER_CREDITS;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.RECEIVER_CREDITS_LOW;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport;
+import org.apache.qpid.proton.engine.Receiver;
 
 /**
  * Configuration options applied to a consumer created from federation policies
@@ -39,11 +42,13 @@ import org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport;
 public final class AMQPFederationConsumerConfiguration {
 
    private final Map<String, Object> properties;
-   private final AMQPFederation federation;
+   private final AMQPFederationConfiguration configuration;
 
    @SuppressWarnings("unchecked")
-   public AMQPFederationConsumerConfiguration(AMQPFederation federation, Map<String, ?> properties) {
-      this.federation = federation;
+   public AMQPFederationConsumerConfiguration(AMQPFederationConfiguration configuration, Map<String, ?> properties) {
+      Objects.requireNonNull(configuration, "Federation configuration cannot be null");
+
+      this.configuration = configuration;
 
       if (properties == null || properties.isEmpty()) {
          this.properties = Collections.EMPTY_MAP;
@@ -59,7 +64,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Integer.parseInt((String) property);
       } else {
-         return federation.getReceiverCredits();
+         return configuration.getReceiverCredits();
       }
    }
 
@@ -70,7 +75,21 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Integer.parseInt((String) property);
       } else {
-         return federation.getReceiverCreditsLow();
+         return configuration.getReceiverCreditsLow();
+      }
+   }
+
+   /**
+    * @return the credit batch size offered to a {@link Receiver} link that is in pull mode.
+    */
+   public int getPullReceiverBatchSize() {
+      final Object property = properties.get(PULL_RECEIVER_BATCH_SIZE);
+      if (property instanceof Number) {
+         return ((Number) property).intValue();
+      } else if (property instanceof String) {
+         return Integer.parseInt((String) property);
+      } else {
+         return configuration.getPullReceiverBatchSize();
       }
    }
 
@@ -81,7 +100,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Integer.parseInt((String) property);
       } else {
-         return federation.getLargeMessageThreshold();
+         return configuration.getLargeMessageThreshold();
       }
    }
 
@@ -92,7 +111,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Integer.parseInt((String) property);
       } else {
-         return federation.getLinkAttachTimeout();
+         return configuration.getLinkAttachTimeout();
       }
    }
 
@@ -103,7 +122,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Boolean.parseBoolean((String) property);
       } else {
-         return federation.isCoreMessageTunnelingEnabled();
+         return configuration.isCoreMessageTunnelingEnabled();
       }
    }
 
@@ -114,7 +133,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Boolean.parseBoolean((String) property);
       } else {
-         return federation.isIgnoreQueueConsumerFilters();
+         return configuration.isIgnoreSubscriptionFilters();
       }
    }
 
@@ -125,7 +144,7 @@ public final class AMQPFederationConsumerConfiguration {
       } else if (property instanceof String) {
          return Boolean.parseBoolean((String) property);
       } else {
-         return federation.isIgnoreQueueConsumerPriorities();
+         return configuration.isIgnoreSubscriptionPriorities();
       }
    }
 }

@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.management.MBeanServer;
 import java.lang.invoke.MethodHandles;
 import java.lang.management.ManagementFactory;
@@ -75,9 +79,8 @@ import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.artemis.utils.ExecutorFactory;
 import org.apache.activemq.artemis.utils.ReusableLatch;
 import org.apache.activemq.artemis.utils.actors.ArtemisExecutor;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,14 +95,14 @@ public class HangConsumerTest extends ActiveMQTestBase {
 
    private ActiveMQServer server;
 
-   private final SimpleString QUEUE = new SimpleString("ConsumerTestQueue");
+   private final SimpleString QUEUE = SimpleString.of("ConsumerTestQueue");
 
    private Queue queue;
 
    private ServerLocator locator;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -116,7 +119,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
 
    @Test
    public void testHangOnDelivery() throws Exception {
-      queue = server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST));
+      queue = server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));
       try {
 
          ClientSessionFactory factory = locator.createSessionFactory();
@@ -162,11 +165,11 @@ public class HangConsumerTest extends ActiveMQTestBase {
          Wait.assertEquals(2, queue::getMessagesAdded);
 
          ClientMessage msg = consumer.receive(5000);
-         Assert.assertNotNull(msg);
+         assertNotNull(msg);
          msg.acknowledge();
 
          msg = consumer.receive(5000);
-         Assert.assertNotNull(msg);
+         assertNotNull(msg);
          msg.acknowledge();
 
          sessionProducer.commit();
@@ -221,6 +224,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
           * @param executor
           */
          MyQueueWithBlocking(final QueueConfiguration queueConfiguration,
+                             final Filter filter,
                              final PagingStore pagingStore,
                              final PageSubscription pageSubscription,
                              final ScheduledExecutorService scheduledExecutor,
@@ -229,6 +233,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
                              final HierarchicalRepository<AddressSettings> addressSettingsRepository,
                              final ArtemisExecutor executor, final ActiveMQServer server) {
             super(queueConfiguration,
+                  filter,
                   pagingStore,
                   pageSubscription,
                   scheduledExecutor,
@@ -268,9 +273,9 @@ public class HangConsumerTest extends ActiveMQTestBase {
          }
 
          @Override
-         public Queue createQueueWith(final QueueConfiguration config, PagingManager pagingManager) {
-            PageSubscription pageSubscription = getPageSubscription(config, pagingManager);
-            queue = new MyQueueWithBlocking(config, pageSubscription != null ? pageSubscription.getPagingStore() : null, pageSubscription, scheduledExecutor,
+         public Queue createQueueWith(final QueueConfiguration config, PagingManager pagingManager, Filter filter) {
+            PageSubscription pageSubscription = getPageSubscription(config, pagingManager, filter);
+            queue = new MyQueueWithBlocking(config, filter, pageSubscription != null ? pageSubscription.getPagingStore() : null, pageSubscription, scheduledExecutor,
                                             postOffice, storageManager, addressSettingsRepository,
                                             executorFactory.getExecutor(), server);
             return queue;
@@ -283,7 +288,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
 
       ((ActiveMQServerImpl) server).replaceQueueFactory(queueFactory);
 
-      queue = server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST));
+      queue = server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));
 
       blocked.acquire();
 
@@ -295,23 +300,20 @@ public class HangConsumerTest extends ActiveMQTestBase {
       producer.send(session.createMessage(true));
       session.commit();
 
-      Thread tDelete = new Thread() {
-         @Override
-         public void run() {
-            try {
-               server.destroyQueue(QUEUE);
-            } catch (Exception e) {
-               e.printStackTrace();
-            }
+      Thread tDelete = new Thread(() -> {
+         try {
+            server.destroyQueue(QUEUE);
+         } catch (Exception e) {
+            e.printStackTrace();
          }
-      };
+      });
 
       tDelete.start();
 
-      Assert.assertTrue(latchDelete.await(10, TimeUnit.SECONDS));
+      assertTrue(latchDelete.await(10, TimeUnit.SECONDS));
 
       try {
-         server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST));
+         server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));
       } catch (Exception expected) {
       }
 
@@ -339,7 +341,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
     */
    @Test
    public void testForceDuplicationOnBindings() throws Exception {
-      queue = server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST));
+      queue = server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));
 
       ClientSessionFactory factory = locator.createSessionFactory();
       ClientSession session = factory.createSession(false, false, false);
@@ -373,7 +375,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
    // An exception during delivery shouldn't make the message disappear
    @Test
    public void testExceptionWhileDelivering() throws Exception {
-      queue = server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST));
+      queue = server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));
 
       HangInterceptor hangInt = new HangInterceptor();
       try {
@@ -393,7 +395,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
 
          session.start();
 
-         Assert.assertTrue(hangInt.reusableLatch.await(10, TimeUnit.SECONDS));
+         assertTrue(hangInt.reusableLatch.await(10, TimeUnit.SECONDS));
 
          hangInt.pendingException = new ActiveMQException();
 
@@ -407,7 +409,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
          consumer = session.createConsumer(QUEUE);
 
          ClientMessage msg = consumer.receive(5000);
-         Assert.assertNotNull(msg);
+         assertNotNull(msg);
          msg.acknowledge();
 
          session.commit();
@@ -426,8 +428,8 @@ public class HangConsumerTest extends ActiveMQTestBase {
    public void testDuplicateDestinationsOnTopic() throws Exception {
       try {
          for (int i = 0; i < 5; i++) {
-            if (server.locateQueue(SimpleString.toSimpleString("tt")) == null) {
-               server.createQueue(new QueueConfiguration("tt").setRoutingType(RoutingType.ANYCAST).setFilterString(Filter.GENERIC_IGNORED_FILTER));
+            if (server.locateQueue(SimpleString.of("tt")) == null) {
+               server.createQueue(QueueConfiguration.of("tt").setRoutingType(RoutingType.ANYCAST).setFilterString(Filter.GENERIC_IGNORED_FILTER));
             }
 
             server.stop();
@@ -594,7 +596,7 @@ public class HangConsumerTest extends ActiveMQTestBase {
                                                         Map<SimpleString, RoutingType> prefixes,
                                                         String securityDomain,
                                                         boolean isLegacyProducer) throws Exception {
-         return new ServerSessionImpl(name, username, password, validatedUser, minLargeMessageSize, autoCommitSends, autoCommitAcks, preAcknowledge, getConfiguration().isPersistDeliveryCountBeforeDelivery(), xa, connection, getStorageManager(), getPostOffice(), getResourceManager(), getSecurityStore(), getManagementService(), this, getConfiguration().getManagementAddress(), defaultAddress == null ? null : new SimpleString(defaultAddress), new MyCallback(callback), context, getPagingManager(), prefixes, securityDomain, isLegacyProducer);
+         return new ServerSessionImpl(name, username, password, validatedUser, minLargeMessageSize, autoCommitSends, autoCommitAcks, preAcknowledge, getConfiguration().isPersistDeliveryCountBeforeDelivery(), xa, connection, getStorageManager(), getPostOffice(), getResourceManager(), getSecurityStore(), getManagementService(), this, getConfiguration().getManagementAddress(), defaultAddress == null ? null : SimpleString.of(defaultAddress), new MyCallback(callback), context, getPagingManager(), prefixes, securityDomain, isLegacyProducer);
       }
    }
 

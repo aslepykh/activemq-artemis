@@ -16,7 +16,9 @@
  */
 package org.apache.activemq.artemis.core.paging.impl;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -178,7 +180,7 @@ public final class Page  {
 
    public synchronized void write(final PagedMessage message) throws Exception {
       writeDirect(message);
-      storageManager.pageWrite(message, pageId);
+      storageManager.pageWrite(storeName, message, pageId);
    }
 
    /** This write will not interact back with the storage manager.
@@ -194,6 +196,20 @@ public final class Page  {
 
    public void sync() throws Exception {
       file.sync();
+   }
+
+   public void trySync() throws IOException {
+      try {
+         if (file.isOpen()) {
+            file.sync();
+         }
+      } catch (IOException e) {
+         if (e instanceof ClosedChannelException) {
+            logger.debug("file.sync on file {} thrown a ClosedChannelException that will just be ignored", file.getFileName());
+         } else {
+            throw e;
+         }
+      }
    }
 
    public boolean isOpen() {
@@ -215,21 +231,21 @@ public final class Page  {
       return isOpen;
    }
 
-   public void close(boolean sendEvent) throws Exception {
-      close(sendEvent, true);
+   public void close(boolean sendReplicaClose) throws Exception {
+      close(sendReplicaClose, true);
    }
 
    /**
     * sendEvent means it's a close happening from a major event such moveNext.
     * While reading the cache we don't need (and shouldn't inform the backup
     */
-   public synchronized void close(boolean sendEvent, boolean waitSync) throws Exception {
+   public synchronized void close(boolean sendReplicaClose, boolean waitSync) throws Exception {
       if (readFileBuffer != null) {
          fileFactory.releaseDirectBuffer(readFileBuffer);
          readFileBuffer = null;
       }
 
-      if (sendEvent && storageManager != null) {
+      if (sendReplicaClose && storageManager != null) {
          storageManager.pageClosed(storeName, pageId);
       }
       file.close(waitSync, waitSync);

@@ -16,7 +16,12 @@
  */
 package org.apache.activemq.artemis.tests.integration.cli;
 
+import static org.apache.activemq.artemis.lockmanager.DistributedLockManager.newInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
@@ -26,42 +31,42 @@ import org.apache.activemq.artemis.cli.commands.activation.ActivationSequenceSet
 import org.apache.activemq.artemis.core.config.ClusterConnectionConfiguration;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.HAPolicyConfiguration;
-import org.apache.activemq.artemis.core.config.ha.DistributedPrimitiveManagerConfiguration;
+import org.apache.activemq.artemis.core.config.ha.DistributedLockManagerConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicationBackupPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.ReplicationPrimaryPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.server.JournalType;
-import org.apache.activemq.artemis.quorum.DistributedLock;
-import org.apache.activemq.artemis.quorum.DistributedPrimitiveManager;
-import org.apache.activemq.artemis.quorum.MutableLong;
-import org.apache.activemq.artemis.quorum.file.FileBasedPrimitiveManager;
+import org.apache.activemq.artemis.lockmanager.DistributedLock;
+import org.apache.activemq.artemis.lockmanager.DistributedLockManager;
+import org.apache.activemq.artemis.lockmanager.MutableLong;
+import org.apache.activemq.artemis.lockmanager.file.FileBasedLockManager;
+import org.apache.activemq.artemis.tests.extensions.TargetTempDirFactory;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
 
-   @Rule
-   public TemporaryFolder brokersFolder = new TemporaryFolder();
+   // Temp folder at ./target/tmp/<TestClassName>/<generated>
+   @TempDir(factory = TargetTempDirFactory.class)
+   public File brokersFolder;
 
-   protected DistributedPrimitiveManagerConfiguration managerConfiguration;
+   protected DistributedLockManagerConfiguration managerConfiguration;
 
-   @Before
+   @BeforeEach
    @Override
    public void setUp() throws Exception {
       super.setUp();
-      managerConfiguration = new DistributedPrimitiveManagerConfiguration(FileBasedPrimitiveManager.class.getName(),
-                                                                          Collections.singletonMap("locks-folder", temporaryFolder.newFolder("manager").toString()));
+      managerConfiguration = new DistributedLockManagerConfiguration(FileBasedLockManager.class.getName(),
+                                                                     Collections.singletonMap("locks-folder", newFolder(temporaryFolder, "manager").toString()));
    }
 
-   @After
+   @AfterEach
    @Override
    public void tearDown() throws Exception {
       super.tearDown();
@@ -71,7 +76,7 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
       Configuration conf = new ConfigurationImpl();
       conf.setName("localhost::primary");
 
-      File primaryDir = brokersFolder.newFolder("primary");
+      File primaryDir = newFolder(brokersFolder, "primary");
       conf.setBrokerInstance(primaryDir);
 
       conf.addAcceptorConfiguration("primary", "tcp://localhost:61616");
@@ -98,7 +103,7 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
       Configuration conf = new ConfigurationImpl();
       conf.setName("localhost::backup");
 
-      File backupDir = brokersFolder.newFolder("backup");
+      File backupDir = newFolder(brokersFolder, "backup");
       conf.setBrokerInstance(backupDir);
 
       conf.setHAPolicyConfiguration(createReplicationBackupConfiguration());
@@ -159,7 +164,7 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
       primaryInstance.start();
 
       // primary initially UN REPLICATED
-      Assert.assertEquals(1L, primaryInstance.getNodeManager().getNodeActivationSequence());
+      assertEquals(1L, primaryInstance.getNodeManager().getNodeActivationSequence());
 
       // start backup
       Configuration backupConfiguration = createBackupConfiguration();
@@ -174,8 +179,8 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
       org.apache.activemq.artemis.utils.Wait.assertTrue(() -> backupServer.isReplicaSync(), timeout);
 
       // primary REPLICATED, backup matches (has replicated) activation sequence
-      Assert.assertEquals(1L, primaryInstance.getNodeManager().getNodeActivationSequence());
-      Assert.assertEquals(1L, backupServer.getNodeManager().getNodeActivationSequence());
+      assertEquals(1L, primaryInstance.getNodeManager().getNodeActivationSequence());
+      assertEquals(1L, backupServer.getNodeManager().getNodeActivationSequence());
 
       primaryInstance.stop();
 
@@ -207,20 +212,19 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
                                            final long expectedStartCoordinatedSequence) throws Exception {
       final ActivationSequenceList sequenceList = new ActivationSequenceList();
       ActivationSequenceList.ListResult list = ActivationSequenceList.execute(sequenceList, primaryConfiguration, null);
-      Assert.assertEquals(expectedStartCoordinatedSequence, list.coordinatedActivationSequence.longValue());
-      Assert.assertEquals(expectedStartCoordinatedSequence, list.localActivationSequence.longValue());
-      try (DistributedPrimitiveManager distributedPrimitiveManager = DistributedPrimitiveManager
-         .newInstanceOf(managerConfiguration.getClassName(), managerConfiguration.getProperties())) {
-         distributedPrimitiveManager.start();
-         try (DistributedLock lock = distributedPrimitiveManager.getDistributedLock(nodeID);
-              MutableLong coordinatedActivationSequence = distributedPrimitiveManager.getMutableLong(nodeID)) {
-            Assert.assertTrue(lock.tryLock());
+      assertEquals(expectedStartCoordinatedSequence, list.coordinatedActivationSequence.longValue());
+      assertEquals(expectedStartCoordinatedSequence, list.localActivationSequence.longValue());
+      try (DistributedLockManager DistributedLockManager = newInstanceOf(managerConfiguration.getClassName(), managerConfiguration.getProperties())) {
+         DistributedLockManager.start();
+         try (DistributedLock lock = DistributedLockManager.getDistributedLock(nodeID);
+              MutableLong coordinatedActivationSequence = DistributedLockManager.getMutableLong(nodeID)) {
+            assertTrue(lock.tryLock());
             final long activationSequence = coordinatedActivationSequence.get();
-            Assert.assertEquals(expectedStartCoordinatedSequence, activationSequence);
+            assertEquals(expectedStartCoordinatedSequence, activationSequence);
             coordinatedActivationSequence.set(0);
          }
          sequenceList.remote = true;
-         Assert.assertEquals(0, ActivationSequenceList.execute(sequenceList, primaryConfiguration, null)
+         assertEquals(0, ActivationSequenceList.execute(sequenceList, primaryConfiguration, null)
             .coordinatedActivationSequence.longValue());
          final ActivationSequenceSet sequenceSet = new ActivationSequenceSet();
          sequenceSet.remote = true;
@@ -228,9 +232,17 @@ public class ActivationSequenceCommandsTest extends ActiveMQTestBase {
          ActivationSequenceSet.execute(sequenceSet, primaryConfiguration, null);
          liveServer.start();
          Wait.waitFor(liveServer::isStarted);
-         Assert.assertTrue(liveServer.isActive());
-         Assert.assertEquals(expectedStartCoordinatedSequence + 1, liveServer.getNodeManager().getNodeActivationSequence());
+         assertTrue(liveServer.isActive());
+         assertEquals(expectedStartCoordinatedSequence + 1, liveServer.getNodeManager().getNodeActivationSequence());
          liveServer.stop();
       }
+   }
+
+   private static File newFolder(File root, String subFolder) throws IOException {
+      File result = new File(root, subFolder);
+      if (!result.mkdirs()) {
+         throw new IOException("Couldn't create folders " + root);
+      }
+      return result;
    }
 }

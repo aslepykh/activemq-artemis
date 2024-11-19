@@ -17,17 +17,12 @@
 package org.apache.activemq.artemis.tests.integration.persistence;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.StoreConfiguration;
-import org.apache.activemq.artemis.core.persistence.AddressBindingInfo;
-import org.apache.activemq.artemis.core.persistence.GroupingInfo;
-import org.apache.activemq.artemis.core.persistence.QueueBindingInfo;
 import org.apache.activemq.artemis.core.persistence.StorageManager;
 import org.apache.activemq.artemis.core.persistence.impl.journal.JDBCJournalStorageManager;
 import org.apache.activemq.artemis.core.persistence.impl.journal.JournalStorageManager;
@@ -36,12 +31,9 @@ import org.apache.activemq.artemis.tests.unit.core.server.impl.fakes.FakePostOff
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.ExecutorFactory;
 import org.apache.activemq.artemis.utils.critical.EmptyCriticalAnalyzer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
-@RunWith(Parameterized.class)
 public abstract class StorageManagerTestBase extends ActiveMQTestBase {
 
    protected ExecutorService executor;
@@ -58,25 +50,20 @@ public abstract class StorageManagerTestBase extends ActiveMQTestBase {
       this.storeType = storeType;
    }
 
-   @Parameterized.Parameters(name = "storeType={0}")
-   public static Collection<Object[]> data() {
-      Object[][] params = new Object[][]{{StoreConfiguration.StoreType.FILE}, {StoreConfiguration.StoreType.DATABASE}};
-      return Arrays.asList(params);
-   }
-
    @Override
-   @Before
-   @SuppressWarnings("unused")
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
       execFactory = getOrderedExecutor();
 
       scheduledExecutorService = new ScheduledThreadPoolExecutor(5);
+
+      createStorage();
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       Exception exception = null;
 
@@ -110,9 +97,19 @@ public abstract class StorageManagerTestBase extends ActiveMQTestBase {
 
       journal.start();
 
-      journal.loadBindingJournal(new ArrayList<QueueBindingInfo>(), new ArrayList<GroupingInfo>(), new ArrayList<AddressBindingInfo>());
+      journal.loadBindingJournal(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
 
       journal.loadMessageJournal(new FakePostOffice(), null, null, null, null, null, null, null, new FakeJournalLoader());
+   }
+
+   /**
+    * This forces a reload of the journal from disk
+    *
+    * @throws Exception
+    */
+   protected void rebootStorage() throws Exception {
+      journal.stop();
+      createStorage();
    }
 
    /**
@@ -132,5 +129,4 @@ public abstract class StorageManagerTestBase extends ActiveMQTestBase {
       addActiveMQComponent(jsm);
       return jsm;
    }
-
 }

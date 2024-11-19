@@ -16,6 +16,13 @@
  */
 package org.apache.activemq.artemis.core.config.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -25,6 +32,7 @@ import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.FileDeploymentManager;
 import org.apache.activemq.artemis.core.config.HAPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.StoreConfiguration;
+import org.apache.activemq.artemis.core.config.ha.LiveOnlyPolicyConfiguration;
 import org.apache.activemq.artemis.core.server.cluster.ha.ColocatedPolicy;
 import org.apache.activemq.artemis.core.server.cluster.ha.HAPolicy;
 import org.apache.activemq.artemis.core.server.cluster.ha.PrimaryOnlyPolicy;
@@ -46,18 +54,18 @@ import org.apache.activemq.artemis.core.server.impl.SharedNothingBackupActivatio
 import org.apache.activemq.artemis.core.server.impl.SharedNothingPrimaryActivation;
 import org.apache.activemq.artemis.core.server.impl.SharedStoreBackupActivation;
 import org.apache.activemq.artemis.core.server.impl.SharedStorePrimaryActivation;
-import org.apache.activemq.artemis.quorum.DistributedLock;
-import org.apache.activemq.artemis.quorum.DistributedPrimitiveManager;
-import org.apache.activemq.artemis.quorum.MutableLong;
-import org.apache.activemq.artemis.quorum.UnavailableStateException;
+import org.apache.activemq.artemis.lockmanager.DistributedLock;
+import org.apache.activemq.artemis.lockmanager.DistributedLockManager;
+import org.apache.activemq.artemis.lockmanager.MutableLong;
+import org.apache.activemq.artemis.lockmanager.UnavailableStateException;
 import org.apache.activemq.artemis.tests.util.ServerTestBase;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 public class HAPolicyConfigurationTest extends ServerTestBase {
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       super.tearDown();
 
@@ -72,7 +80,7 @@ public class HAPolicyConfigurationTest extends ServerTestBase {
       assertEquals(HAPolicyConfiguration.TYPE.PRIMARY_ONLY, server.getConfiguration().getHAPolicyConfiguration().getType());
       try {
          server.start();
-         assertTrue(server.getNodeManager() + " is not an instance of FileLockNodeManager", server.getNodeManager() instanceof FileLockNodeManager);
+         assertTrue(server.getNodeManager() instanceof FileLockNodeManager, server.getNodeManager() + " is not an instance of FileLockNodeManager");
       } finally {
          server.stop();
       }
@@ -142,13 +150,28 @@ public class HAPolicyConfigurationTest extends ServerTestBase {
       primaryOnlyTest("primary-only-hapolicy-config5.xml");
    }
 
-   public static class FakeDistributedPrimitiveManager implements DistributedPrimitiveManager {
+   @Test
+   public void liveOnlyTest() throws Exception {
+      ActiveMQServerImpl server = new ActiveMQServerImpl(createDefaultConfig(0, true));
+      server.getConfiguration().setHAPolicyConfiguration(new LiveOnlyPolicyConfiguration());
+      try {
+         server.start();
+         Activation activation = server.getActivation();
+         assertTrue(activation instanceof PrimaryOnlyActivation);
+         HAPolicy haPolicy = server.getHAPolicy();
+         assertTrue(haPolicy instanceof PrimaryOnlyPolicy);
+      } finally {
+         server.stop();
+      }
+   }
+
+   public static class FakeDistributedLockManager implements DistributedLockManager {
 
       private final Map<String, String> config;
       private boolean started;
       private DistributedLock lock;
 
-      public FakeDistributedPrimitiveManager(Map<String, String> config) {
+      public FakeDistributedLockManager(Map<String, String> config) {
          this.config = config;
          this.started = false;
       }
@@ -333,11 +356,11 @@ public class HAPolicyConfigurationTest extends ServerTestBase {
          assertNull(failbackPolicy.getScaleDownClustername());
          assertNull(failbackPolicy.getScaleDownGroupName());
          // validate manager
-         DistributedPrimitiveManager manager = ((ReplicationPrimaryActivation) activation).getDistributedManager();
+         DistributedLockManager manager = ((ReplicationPrimaryActivation) activation).getDistributedManager();
          assertNotNull(manager);
-         assertEquals(FakeDistributedPrimitiveManager.class.getName(), manager.getClass().getName());
-         assertTrue(manager + " is not an instance of FakeDistributedPrimitiveManager", manager instanceof FakeDistributedPrimitiveManager);
-         FakeDistributedPrimitiveManager forwardingManager = (FakeDistributedPrimitiveManager) manager;
+         assertEquals(FakeDistributedLockManager.class.getName(), manager.getClass().getName());
+         assertTrue(manager instanceof FakeDistributedLockManager, manager + " is not an instance of FakeDistributedLockManager");
+         FakeDistributedLockManager forwardingManager = (FakeDistributedLockManager) manager;
          // validate manager config
          validateManagerConfig(forwardingManager.getConfig());
       } finally {
@@ -389,11 +412,11 @@ public class HAPolicyConfigurationTest extends ServerTestBase {
          assertNull(failoverPrimaryPolicy.getScaleDownClustername());
          assertNull(failoverPrimaryPolicy.getScaleDownGroupName());
          // validate manager
-         DistributedPrimitiveManager manager = ((ReplicationBackupActivation) activation).getDistributedManager();
+         DistributedLockManager manager = ((ReplicationBackupActivation) activation).getDistributedManager();
          assertNotNull(manager);
-         assertEquals(FakeDistributedPrimitiveManager.class.getName(), manager.getClass().getName());
-         assertTrue(manager instanceof FakeDistributedPrimitiveManager);
-         FakeDistributedPrimitiveManager forwardingManager = (FakeDistributedPrimitiveManager) manager;
+         assertEquals(FakeDistributedLockManager.class.getName(), manager.getClass().getName());
+         assertTrue(manager instanceof FakeDistributedLockManager);
+         FakeDistributedLockManager forwardingManager = (FakeDistributedLockManager) manager;
          // validate manager config
          validateManagerConfig(forwardingManager.getConfig());
       } finally {

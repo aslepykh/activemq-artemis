@@ -710,12 +710,6 @@ public class FakeQueue extends CriticalComponentImpl implements Queue {
    }
 
    @Override
-   public MessageReference getReference(final long id1) {
-      // no-op
-      return null;
-   }
-
-   @Override
    public int getScheduledCount() {
       // no-op
       return 0;
@@ -1029,4 +1023,8 @@ public class FakeQueue extends CriticalComponentImpl implements Queue {
       return 0;
    }
 
+   @Override
+   public int getInitialQueueBufferSize() {
+      return 0;
+   }
 }

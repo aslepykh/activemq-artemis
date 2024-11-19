@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.http;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.HashMap;
 import java.util.Random;
 
@@ -35,19 +37,18 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.jms.client.ActiveMQTextMessage;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CoreClientOverHttpTest extends ActiveMQTestBase {
 
-   private static final SimpleString QUEUE = new SimpleString("CoreClientOverHttpTestQueue");
+   private static final SimpleString QUEUE = SimpleString.of("CoreClientOverHttpTestQueue");
    private Configuration conf;
    private ActiveMQServer server;
    private ServerLocator locator;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       HashMap<String, Object> params = new HashMap<>();
@@ -65,7 +66,7 @@ public class CoreClientOverHttpTest extends ActiveMQTestBase {
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(QUEUE).setDurable(false));
+      session.createQueue(QueueConfiguration.of(QUEUE).setDurable(false));
 
       ClientProducer producer = session.createProducer(QUEUE);
 
@@ -84,7 +85,7 @@ public class CoreClientOverHttpTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message2 = consumer.receive();
 
-         Assert.assertEquals("CoreClientOverHttpTest", message2.getBodyBuffer().readString());
+         assertEquals("CoreClientOverHttpTest", message2.getBodyBuffer().readString());
 
          message2.acknowledge();
       }
@@ -99,7 +100,7 @@ public class CoreClientOverHttpTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(QUEUE).setDurable(false));
+      session.createQueue(QueueConfiguration.of(QUEUE).setDurable(false));
 
       ClientProducer producer = session.createProducer(QUEUE);
 
@@ -114,7 +115,7 @@ public class CoreClientOverHttpTest extends ActiveMQTestBase {
       ClientSessionFactory sf = createSessionFactory(locator);
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(QUEUE).setDurable(false));
+      session.createQueue(QueueConfiguration.of(QUEUE).setDurable(false));
 
       ClientProducer producer = session.createProducer(QUEUE);
 
@@ -136,7 +137,7 @@ public class CoreClientOverHttpTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message2 = consumer.receive();
 
-         Assert.assertEquals(content[i], message2.getBodyBuffer().readString());
+         assertEquals(content[i], message2.getBodyBuffer().readString());
 
          message2.acknowledge();
       }

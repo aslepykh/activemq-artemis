@@ -121,14 +121,14 @@ public class ActiveMQMessageHandler implements MessageHandler, FailoverEventList
       String selector = spec.getMessageSelector();
 
       // Create the message consumer
-      SimpleString selectorString = selector == null || selector.trim().equals("") ? null : new SimpleString(selector);
+      SimpleString selectorString = selector == null || selector.trim().equals("") ? null : SimpleString.of(selector);
       if (activation.isTopic() && spec.isSubscriptionDurable()) {
          SimpleString queueName = ActiveMQDestination.createQueueNameForSubscription(true, spec.getClientID(), spec.getSubscriptionName());
 
          QueueQuery subResponse = session.queueQuery(queueName);
 
          if (!subResponse.isExists()) {
-            session.createQueue(new QueueConfiguration(queueName).setAddress(activation.getAddress()).setFilterString(selectorString));
+            session.createQueue(QueueConfiguration.of(queueName).setAddress(activation.getAddress()).setFilterString(selectorString));
          } else {
             // The check for already exists should be done only at the first session
             // As a deployed MDB could set up multiple instances in order to process messages in parallel.
@@ -145,7 +145,7 @@ public class ActiveMQMessageHandler implements MessageHandler, FailoverEventList
 
             boolean selectorChanged = selector == null && oldFilterString != null || oldFilterString == null && selector != null || (oldFilterString != null && selector != null && !oldFilterString.toString().equals(selector));
 
-            SimpleString oldTopicName = (enable1XPrefix && !subResponse.getAddress().startsWith(PacketImpl.OLD_TOPIC_PREFIX) ? PacketImpl.OLD_TOPIC_PREFIX : SimpleString.toSimpleString("")).concat(subResponse.getAddress());
+            SimpleString oldTopicName = (enable1XPrefix && !subResponse.getAddress().startsWith(PacketImpl.OLD_TOPIC_PREFIX) ? PacketImpl.OLD_TOPIC_PREFIX : SimpleString.of("")).concat(subResponse.getAddress());
 
             boolean topicChanged = !oldTopicName.equals(activation.getAddress());
 
@@ -154,7 +154,7 @@ public class ActiveMQMessageHandler implements MessageHandler, FailoverEventList
                session.deleteQueue(queueName);
 
                // Create the new one
-               session.createQueue(new QueueConfiguration(queueName).setAddress(activation.getAddress()).setFilterString(selectorString));
+               session.createQueue(QueueConfiguration.of(queueName).setAddress(activation.getAddress()).setFilterString(selectorString));
             }
          }
          consumer = (ClientConsumerInternal) session.createConsumer(queueName, null, false);
@@ -162,8 +162,8 @@ public class ActiveMQMessageHandler implements MessageHandler, FailoverEventList
          SimpleString tempQueueName;
          if (activation.isTopic()) {
             if (activation.getTopicTemporaryQueue() == null) {
-               tempQueueName = new SimpleString(UUID.randomUUID().toString());
-               session.createQueue(new QueueConfiguration(tempQueueName).setAddress(activation.getAddress()).setFilterString(selectorString).setDurable(false).setTemporary(true));
+               tempQueueName = SimpleString.of(UUID.randomUUID().toString());
+               session.createQueue(QueueConfiguration.of(tempQueueName).setAddress(activation.getAddress()).setFilterString(selectorString).setDurable(false).setTemporary(true));
                activation.setTopicTemporaryQueue(tempQueueName);
             } else {
                tempQueueName = activation.getTopicTemporaryQueue();
@@ -171,7 +171,7 @@ public class ActiveMQMessageHandler implements MessageHandler, FailoverEventList
                if (!queueQuery.isExists()) {
                   // this is because we could be using remote servers (in cluster maybe)
                   // and the queue wasn't created on that node yet.
-                  session.createQueue(new QueueConfiguration(tempQueueName).setAddress(activation.getAddress()).setFilterString(selectorString).setDurable(false).setTemporary(true));
+                  session.createQueue(QueueConfiguration.of(tempQueueName).setAddress(activation.getAddress()).setFilterString(selectorString).setDurable(false).setTemporary(true));
                }
             }
          } else {

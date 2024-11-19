@@ -16,6 +16,12 @@
  */
 package org.apache.activemq.artemis.tests.integration.amqp;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.DeliveryMode;
@@ -45,8 +51,8 @@ import org.apache.qpid.proton.amqp.transaction.TransactionalState;
 import org.apache.qpid.proton.amqp.transport.DeliveryState;
 import org.apache.qpid.proton.engine.Delivery;
 import org.apache.qpid.proton.engine.Sender;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
@@ -58,7 +64,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testBeginAndCommitTransaction() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -72,7 +79,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testCoordinatorReplenishesCredit() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -88,7 +96,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testSentTransactionalMessageIsSettleWithTransactionalDisposition() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -127,7 +136,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testBeginAndRollbackTransaction() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -143,7 +153,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       System.err.println("Closed");
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSendMessageToQueueWithCommit() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -168,7 +179,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSendMessageToQueueWithRollback() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -193,7 +205,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReceiveMessageWithCommit() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -225,7 +238,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReceiveAfterConnectionClose() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -269,7 +283,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReceiveMessageWithRollback() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -301,7 +316,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testMultipleSessionReceiversInSingleTXNWithCommit() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -358,7 +374,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       Wait.assertEquals(0, queue::getMessageCount);
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testMultipleSessionReceiversInSingleTXNWithRollback() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -415,7 +432,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       Wait.assertEquals(3, queue::getMessageCount);
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testMultipleSessionSendersInSingleTXNWithCommit() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -455,7 +473,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       Wait.assertEquals(3, queue::getMessageCount);
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testMultipleSessionSendersInSingleTXNWithRollback() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -497,7 +516,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
 
    //----- Tests Ported from AmqpNetLite client -----------------------------//
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSendersCommitAndRollbackWithMultipleSessionsInSingleTX() throws Exception {
       final int NUM_MESSAGES = 5;
 
@@ -550,7 +570,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReceiversCommitAndRollbackWithMultipleSessionsInSingleTX() throws Exception {
       final int NUM_MESSAGES = 10;
 
@@ -618,7 +639,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testCommitAndRollbackWithMultipleSessionsInSingleTX() throws Exception {
       final int NUM_MESSAGES = 10;
 
@@ -687,7 +709,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testReceiversCommitAndRollbackWithMultipleSessionsInSingleTXNoSettlement() throws Exception {
       final int NUM_MESSAGES = 10;
 
@@ -776,7 +799,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testCommitAndRollbackWithMultipleSessionsInSingleTXNoSettlement() throws Exception {
       final int NUM_MESSAGES = 10;
 
@@ -839,7 +863,7 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       receiver.flow(10);
       for (int i = 1; i <= NUM_MESSAGES; ++i) {
          AmqpMessage message = receiver.receive(5, TimeUnit.SECONDS);
-         assertNotNull("Expected a message for: " + i, message);
+         assertNotNull(message, "Expected a message for: " + i);
          logger.debug("Accepting message: {}", message.getApplicationProperty("msgId"));
          assertEquals(i, message.getApplicationProperty("msgId"));
          message.accept();
@@ -852,47 +876,45 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 120000)
+   @Test
+   @Timeout(120)
    public void testSendPersistentTX() throws Exception {
       int MESSAGE_COUNT = 2000;
       AtomicInteger errors = new AtomicInteger(0);
-      server.createQueue(new QueueConfiguration("q1").setRoutingType(RoutingType.ANYCAST).setMaxConsumers(1));
+      server.createQueue(QueueConfiguration.of("q1").setRoutingType(RoutingType.ANYCAST).setMaxConsumers(1));
       ConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + AMQP_PORT);
       Connection sendConnection = factory.createConnection();
       Connection consumerConnection = factory.createConnection();
       try {
 
-         Thread receiverThread = new Thread() {
-            @Override
-            public void run() {
-               try {
-                  consumerConnection.start();
-                  Session consumerSession = consumerConnection.createSession(true, Session.SESSION_TRANSACTED);
-                  javax.jms.Queue q1 = consumerSession.createQueue("q1");
+         Thread receiverThread = new Thread(() -> {
+            try {
+               consumerConnection.start();
+               Session consumerSession = consumerConnection.createSession(true, Session.SESSION_TRANSACTED);
+               javax.jms.Queue q1 = consumerSession.createQueue("q1");
 
-                  MessageConsumer consumer = consumerSession.createConsumer(q1);
+               MessageConsumer consumer = consumerSession.createConsumer(q1);
 
-                  for (int i = 1; i <= MESSAGE_COUNT; i++) {
-                     Message message = consumer.receive(5000);
-                     if (message == null) {
-                        throw new IOException("No message read in time.");
-                     }
-
-                     if (i % 100 == 0) {
-                        if (i % 1000 == 0) logger.debug("Read message {}", i);
-                        consumerSession.commit();
-                     }
+               for (int i = 1; i <= MESSAGE_COUNT; i++) {
+                  Message message = consumer.receive(5000);
+                  if (message == null) {
+                     throw new IOException("No message read in time.");
                   }
 
-                  // Assure that all messages are consumed
-                  consumerSession.commit();
-               } catch (Exception e) {
-                  e.printStackTrace();
-                  errors.incrementAndGet();
+                  if (i % 100 == 0) {
+                     if (i % 1000 == 0) logger.debug("Read message {}", i);
+                     consumerSession.commit();
+                  }
                }
 
+               // Assure that all messages are consumed
+               consumerSession.commit();
+            } catch (Exception e) {
+               e.printStackTrace();
+               errors.incrementAndGet();
             }
-         };
+
+         });
 
          receiverThread.start();
 
@@ -912,9 +934,9 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
          sendingSession.commit();
 
          receiverThread.join(50000);
-         Assert.assertFalse(receiverThread.isAlive());
+         assertFalse(receiverThread.isAlive());
 
-         Assert.assertEquals(0, errors.get());
+         assertEquals(0, errors.get());
 
       } catch (Exception e) {
          e.printStackTrace();
@@ -924,7 +946,8 @@ public class AmqpTransactionTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testUnsettledTXMessageGetTransactedDispostion() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());

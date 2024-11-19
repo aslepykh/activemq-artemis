@@ -34,7 +34,6 @@ import org.apache.activemq.artemis.api.core.client.ClientMessage;
 import org.apache.activemq.artemis.api.core.client.ClientProducer;
 import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
-import org.apache.activemq.artemis.api.core.client.MessageHandler;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.api.core.management.CoreNotificationType;
 import org.apache.activemq.artemis.api.core.management.ManagementHelper;
@@ -48,15 +47,19 @@ import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.artemis.utils.RandomUtil;
 import org.apache.activemq.artemis.utils.collections.ConcurrentHashSet;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.activemq.artemis.core.settings.impl.SlowConsumerThresholdMeasurementUnit.MESSAGES_PER_DAY;
 import static org.apache.activemq.artemis.core.settings.impl.SlowConsumerThresholdMeasurementUnit.MESSAGES_PER_MINUTE;
 import static org.apache.activemq.artemis.core.settings.impl.SlowConsumerThresholdMeasurementUnit.MESSAGES_PER_SECOND;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class SlowConsumerTest extends ActiveMQTestBase {
 
@@ -68,11 +71,11 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
    private ActiveMQServer server;
 
-   private final SimpleString QUEUE = new SimpleString("ConsumerTestQueue");
+   private final SimpleString QUEUE = SimpleString.of("ConsumerTestQueue");
 
    private ServerLocator locator;
 
-   @Before
+   @BeforeEach
    @Override
    public void setUp() throws Exception {
       super.setUp();
@@ -93,7 +96,7 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
       server.getAddressSettingsRepository().addMatch(QUEUE.toString(), addressSettings);
 
-      server.createQueue(new QueueConfiguration(QUEUE).setRoutingType(RoutingType.ANYCAST)).getPageSubscription().getPagingStore().startPaging();
+      server.createQueue(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST)).getPageSubscription().getPagingStore().startPaging();
 
       locator = createFactory(isNetty);
    }
@@ -102,7 +105,7 @@ public class SlowConsumerTest extends ActiveMQTestBase {
    public void testSlowConsumerWithSmallThreadPool() throws Exception {
       final int MESSAGE_COUNT = 2;
       CountDownLatch latch = new CountDownLatch(MESSAGE_COUNT);
-      server.createQueue(new QueueConfiguration(getName()).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(getName()).setRoutingType(RoutingType.ANYCAST));
       /*
        * Even though the threadPoolMaxSize is 1 the client shouldn't stall on flow control due to the independent flow
        * control thread pool.
@@ -130,7 +133,7 @@ public class SlowConsumerTest extends ActiveMQTestBase {
             }
          });
          session.start();
-         assertTrue("All messages should be received within the timeout", latch.await(1, TimeUnit.SECONDS));
+         assertTrue(latch.await(1, TimeUnit.SECONDS), "All messages should be received within the timeout");
       }
       assertEquals(0, server.locateQueue(getName()).getMessageCount());
    }
@@ -210,6 +213,9 @@ public class SlowConsumerTest extends ActiveMQTestBase {
       ClientConsumer consumer = addClientConsumer(session.createConsumer(QUEUE));
       session.start();
 
+      Queue queue = server.locateQueue(QUEUE);
+      Wait.assertTrue(() -> queue.getDeliveringCount() >= 3 * threshold);
+
       for (int i = 0; i < 3 * threshold; i++) {
          consumer.receiveImmediate().individualAcknowledge();
       }
@@ -245,33 +251,30 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
       SimpleString notifQueue = RandomUtil.randomSimpleString();
 
-      session.createQueue(new QueueConfiguration(notifQueue).setAddress(ActiveMQDefaultConfiguration.getDefaultManagementNotificationAddress()).setDurable(false));
+      session.createQueue(QueueConfiguration.of(notifQueue).setAddress(ActiveMQDefaultConfiguration.getDefaultManagementNotificationAddress()).setDurable(false));
 
       ClientConsumer notifConsumer = session.createConsumer(notifQueue.toString(), ManagementHelper.HDR_NOTIFICATION_TYPE + "='" + CoreNotificationType.CONSUMER_SLOW + "'");
 
       final CountDownLatch notifLatch = new CountDownLatch(1);
 
-      notifConsumer.setMessageHandler(new MessageHandler() {
-         @Override
-         public void onMessage(ClientMessage message) {
-            assertEquals(CoreNotificationType.CONSUMER_SLOW.toString(), message.getObjectProperty(ManagementHelper.HDR_NOTIFICATION_TYPE).toString());
-            assertEquals(QUEUE.toString(), message.getObjectProperty(ManagementHelper.HDR_ADDRESS).toString());
-            assertEquals(Integer.valueOf(1), message.getIntProperty(ManagementHelper.HDR_CONSUMER_COUNT));
-            if (isNetty) {
-               assertTrue(message.getSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS).toString().startsWith("/127.0.0.1"));
-            } else {
-               assertEquals(SimpleString.toSimpleString("invm:0"), message.getSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS));
-            }
-            assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME));
-            assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_CONSUMER_NAME));
-            assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME));
-            try {
-               message.acknowledge();
-            } catch (ActiveMQException e) {
-               e.printStackTrace();
-            }
-            notifLatch.countDown();
+      notifConsumer.setMessageHandler(message -> {
+         assertEquals(CoreNotificationType.CONSUMER_SLOW.toString(), message.getObjectProperty(ManagementHelper.HDR_NOTIFICATION_TYPE).toString());
+         assertEquals(QUEUE.toString(), message.getObjectProperty(ManagementHelper.HDR_ADDRESS).toString());
+         assertEquals(Integer.valueOf(1), message.getIntProperty(ManagementHelper.HDR_CONSUMER_COUNT));
+         if (isNetty) {
+            assertTrue(message.getSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS).toString().startsWith("127.0.0.1"));
+         } else {
+            assertEquals(SimpleString.of("invm:0"), message.getSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS));
          }
+         assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME));
+         assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_CONSUMER_NAME));
+         assertNotNull(message.getSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME));
+         try {
+            message.acknowledge();
+         } catch (ActiveMQException e) {
+            e.printStackTrace();
+         }
+         notifLatch.countDown();
       });
 
       ClientConsumer consumer = addClientConsumer(session.createConsumer(QUEUE));
@@ -318,35 +321,32 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
       final AtomicLong messagesProduced = new AtomicLong(0);
 
-      Thread t = new Thread(new Runnable() {
-         @Override
-         public void run() {
-            long start = System.currentTimeMillis();
-            ClientMessage m = createTextMessage(producerSession, "m", true);
+      Thread t = new Thread(() -> {
+         long start = System.currentTimeMillis();
+         ClientMessage m = createTextMessage(producerSession, "m", true);
 
-            // send messages as fast as possible for 3 seconds
-            while (System.currentTimeMillis() < (start + 3000)) {
-               try {
-                  producer.send(m);
-                  messagesProduced.incrementAndGet();
-               } catch (ActiveMQException e) {
-                  e.printStackTrace();
-                  return;
-               }
+         // send messages as fast as possible for 3 seconds
+         while (System.currentTimeMillis() < (start + 3000)) {
+            try {
+               producer.send(m);
+               messagesProduced.incrementAndGet();
+            } catch (ActiveMQException e) {
+               e.printStackTrace();
+               return;
             }
+         }
 
-            start = System.currentTimeMillis();
+         start = System.currentTimeMillis();
 
-            // send 1 msg/second for 10 seconds
-            while (System.currentTimeMillis() < (start + 10000)) {
-               try {
-                  producer.send(m);
-                  messagesProduced.incrementAndGet();
-                  Thread.sleep(1000);
-               } catch (Exception e) {
-                  e.printStackTrace();
-                  return;
-               }
+         // send 1 msg/second for 10 seconds
+         while (System.currentTimeMillis() < (start + 10000)) {
+            try {
+               producer.send(m);
+               messagesProduced.incrementAndGet();
+               Thread.sleep(1000);
+            } catch (Exception e) {
+               e.printStackTrace();
+               return;
             }
          }
       });
@@ -373,12 +373,12 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
    @Test
    public void testSlowWildcardConsumer() throws Exception {
-      SimpleString addressAB = new SimpleString("a.b");
-      SimpleString addressAC = new SimpleString("a.c");
-      SimpleString address = new SimpleString("a.*");
-      SimpleString queueName1 = new SimpleString("Q1");
-      SimpleString queueName2 = new SimpleString("Q2");
-      SimpleString queueName = new SimpleString("Q");
+      SimpleString addressAB = SimpleString.of("a.b");
+      SimpleString addressAC = SimpleString.of("a.c");
+      SimpleString address = SimpleString.of("a.*");
+      SimpleString queueName1 = SimpleString.of("Q1");
+      SimpleString queueName2 = SimpleString.of("Q2");
+      SimpleString queueName = SimpleString.of("Q");
 
       AddressSettings addressSettings = new AddressSettings();
       addressSettings.setSlowConsumerCheckPeriod(2);
@@ -390,9 +390,9 @@ public class SlowConsumerTest extends ActiveMQTestBase {
       ClientSessionFactory sf = createSessionFactory(locator);
 
       ClientSession session = addClientSession(sf.createSession(false, true, true, false));
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(addressAB).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(addressAC).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName).setAddress(address).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(addressAB).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(addressAC).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName).setAddress(address).setDurable(false));
       ClientProducer producer = session.createProducer(addressAB);
       ClientProducer producer2 = session.createProducer(addressAC);
 
@@ -540,7 +540,7 @@ public class SlowConsumerTest extends ActiveMQTestBase {
       queue.getPagingStore().startPaging();
 
 
-      Assert.assertTrue(queue.getPagingStore().isPaging());
+      assertTrue(queue.getPagingStore().isPaging());
 
       for (int i = 0; i < messages; i++) {
          producer.send(session.createMessage(true));
@@ -642,7 +642,7 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
       try {
          Wait.assertEquals(messages, queue::getMessagesAcknowledged);
-         Assert.assertEquals(1, queue.getConsumerCount());
+         assertEquals(1, queue.getConsumerCount());
          Wait.assertEquals(messages, () -> receivedMessages.size());
       } finally {
          consumer.stopRunning();
@@ -726,16 +726,16 @@ public class SlowConsumerTest extends ActiveMQTestBase {
 
          producer.join(10000);
 
-         Assert.assertEquals(3, queue.getConsumerCount());
+         assertEquals(3, queue.getConsumerCount());
          Wait.assertEquals(messages, receivedMessages::size);
 
 
       } finally {
          producer.stopRunning();
-         Assert.assertFalse(producer.failed);
+         assertFalse(producer.failed);
          for (FixedRateConsumer consumer : consumers) {
             consumer.stopRunning();
-            Assert.assertFalse(consumer.failed);
+            assertFalse(consumer.failed);
          }
          logger.debug("***report messages received: {}", receivedMessages.size());
          logger.debug("***consumers left: {}", consumers.size());

@@ -17,9 +17,18 @@
 
 package org.apache.activemq.artemis.tests.leak;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import io.github.checkleak.core.CheckLeak;
+import io.github.checkleak.core.InventoryDataPoint;
 import org.apache.activemq.artemis.core.protocol.core.impl.RemotingConnectionImpl;
 import org.apache.activemq.artemis.core.protocol.openwire.OpenWireConnection;
 import org.apache.activemq.artemis.core.server.impl.MessageReferenceImpl;
@@ -31,7 +40,6 @@ import org.apache.activemq.artemis.protocol.amqp.proton.AMQPSessionContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.ProtonServerReceiverContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.ProtonServerSenderContext;
 import org.apache.activemq.artemis.utils.Wait;
-import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,7 +71,7 @@ public class MemoryAssertions {
    }
 
    public static void assertMemory(CheckLeak checkLeak, int maxExpected, String clazz) throws Exception {
-      assertMemory(checkLeak, maxExpected, 10, 10, clazz);
+      assertMemory(checkLeak, maxExpected, 5, 10, clazz);
    }
 
    public static void assertMemory(CheckLeak checkLeak, int maxExpected, int maxLevel, int maxObjects, String clazz) throws Exception {
@@ -77,8 +85,46 @@ public class MemoryAssertions {
          String report = checkLeak.exploreObjectReferences(maxLevel, maxObjects, true, objects);
          logger.info(report);
 
-         Assert.fail("Class " + clazz + " has leaked " + objects.length + " objects\n" + report);
+         fail("Class " + clazz + " has leaked " + objects.length + " objects\n" + report);
       }
+   }
+
+
+   public static void assertNoInnerInstances(Class clazz, CheckLeak checkLeak) throws Exception {
+      checkLeak.forceGC();
+      List<String> classList = getClassList(clazz);
+
+      Map<Class<?>, InventoryDataPoint> inventoryDataPointMap = checkLeak.produceInventory();
+
+      StringWriter stringWriter = new StringWriter();
+      PrintWriter printWriter = new PrintWriter(stringWriter);
+      boolean failed = false;
+
+      for (Map.Entry<Class<?>, InventoryDataPoint> entry : inventoryDataPointMap.entrySet()) {
+         for (String classElement : classList) {
+            if (entry.getKey().getName().startsWith(classElement) && entry.getValue().getInstances() > 0) {
+               failed = true;
+               printWriter.println(entry.getKey() + " contains " + entry.getValue().getInstances() + " instances");
+               logger.warn("references: towards {}: {}", entry.getKey().getName(), checkLeak.exploreObjectReferences(entry.getKey().getName(), 10, 20, true));
+            }
+         }
+      }
+
+      assertFalse(failed, stringWriter.toString());
+   }
+
+   private static List<String> getClassList(Class clazz) {
+      List<String> classList = new ArrayList<>();
+      classList.add(clazz.getName());
+
+      Class<?> superclass = clazz.getSuperclass();
+      while (superclass != null) {
+         if (superclass != Object.class) {
+            classList.add(superclass.getName());
+         }
+         superclass = superclass.getSuperclass();
+      }
+      return classList;
    }
 
 }

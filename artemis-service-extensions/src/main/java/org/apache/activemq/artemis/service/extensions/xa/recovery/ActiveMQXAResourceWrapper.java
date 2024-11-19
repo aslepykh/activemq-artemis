@@ -309,8 +309,6 @@ public class ActiveMQXAResourceWrapper implements XAResource, SessionFailureList
             logger.debug(e.getMessage(), e);
 
             try {
-               if (cs != null)
-                  cs.close();
                if (serverLocator != null)
                   serverLocator.close();
             } catch (Throwable ignored) {
@@ -399,9 +397,10 @@ public class ActiveMQXAResourceWrapper implements XAResource, SessionFailureList
     */
    protected XAException check(final XAException e) throws XAException {
       ActiveMQXARecoveryLogger.LOGGER.xaRecoveryError(e);
-
-      // If any exception happened, we close the connection so we may start fresh
-      close();
+      if (e.errorCode != XAException.XAER_NOTA) {
+         // If any exception happened, we close the connection so we may start fresh
+         close();
+      }
       throw e;
    }
 

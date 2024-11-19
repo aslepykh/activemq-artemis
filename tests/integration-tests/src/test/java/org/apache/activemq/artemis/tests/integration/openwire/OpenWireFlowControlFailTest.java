@@ -16,6 +16,12 @@
  */
 package org.apache.activemq.artemis.tests.integration.openwire;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
@@ -32,8 +38,8 @@ import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class OpenWireFlowControlFailTest extends OpenWireTestBase {
 
@@ -45,15 +51,16 @@ public class OpenWireFlowControlFailTest extends OpenWireTestBase {
    @Override
    protected void configureAddressSettings(Map<String, AddressSettings> addressSettingsMap) {
       addressSettingsMap.put("#", new AddressSettings().setAutoCreateQueues(false).setAutoCreateAddresses(false).
-         setDeadLetterAddress(new SimpleString("ActiveMQ.DLQ")).setAddressFullMessagePolicy(AddressFullMessagePolicy.FAIL).setMaxSizeBytes(10000));
+         setDeadLetterAddress(SimpleString.of("ActiveMQ.DLQ")).setAddressFullMessagePolicy(AddressFullMessagePolicy.FAIL).setMaxSizeBytes(10000));
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testMessagesNotSent() throws Exception {
 
-      AddressInfo addressInfo = new AddressInfo(SimpleString.toSimpleString("Test"), RoutingType.ANYCAST);
+      AddressInfo addressInfo = new AddressInfo(SimpleString.of("Test"), RoutingType.ANYCAST);
       server.addAddressInfo(addressInfo);
-      server.createQueue(new QueueConfiguration(addressInfo.getName()).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(addressInfo.getName()).setRoutingType(RoutingType.ANYCAST));
 
       StringBuffer textBody = new StringBuffer();
       for (int i = 0; i < 10; i++) {
@@ -79,13 +86,13 @@ public class OpenWireFlowControlFailTest extends OpenWireTestBase {
             failed = true;
             try {
                producer.send(session.createTextMessage(textBody.toString()));
-               Assert.fail("Exception expected");
+               fail("Exception expected");
             } catch (JMSException expected) {
                expected.printStackTrace();
 
             }
          }
-         Assert.assertTrue(failed);
+         assertTrue(failed);
       }
 
       factory = new ActiveMQConnectionFactory(urlString);
@@ -97,12 +104,12 @@ public class OpenWireFlowControlFailTest extends OpenWireTestBase {
          connection2.start();
          for (int i = 0; i < numberOfMessage; i++) {
             TextMessage message = (TextMessage) consumer.receive(5000);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(textBody.toString(), message.getText());
+            assertNotNull(message);
+            assertEquals(textBody.toString(), message.getText());
          }
 
          TextMessage msg = (TextMessage)consumer.receive(500);
-         Assert.assertNull(msg);
+         assertNull(msg);
       }
    }
 }

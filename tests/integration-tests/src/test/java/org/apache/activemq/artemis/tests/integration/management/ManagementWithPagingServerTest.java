@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.management;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import org.apache.activemq.artemis.json.JsonArray;
 import org.apache.activemq.artemis.json.JsonNumber;
 import org.apache.activemq.artemis.json.JsonObject;
@@ -41,9 +45,8 @@ import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * This class contains tests for core management
@@ -62,7 +65,7 @@ public class ManagementWithPagingServerTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session1.createQueue(new QueueConfiguration(queue).setAddress(address));
+      session1.createQueue(QueueConfiguration.of(queue).setAddress(address));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
@@ -110,13 +113,13 @@ public class ManagementWithPagingServerTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session1.createQueue(new QueueConfiguration(queue).setAddress(address));
+      session1.createQueue(QueueConfiguration.of(queue).setAddress(address));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
       int num = 1000;
 
-      SimpleString key = new SimpleString("key");
+      SimpleString key = SimpleString.of("key");
       long matchingValue = RandomUtil.randomLong();
       long unmatchingValue = matchingValue + 1;
       String filter = key + " =" + matchingValue;
@@ -139,12 +142,12 @@ public class ManagementWithPagingServerTest extends ManagementTestBase {
       }
 
       String jsonString = queueControl.listMessagesAsJSON(filter);
-      Assert.assertNotNull(jsonString);
+      assertNotNull(jsonString);
       JsonArray array = JsonUtil.readJsonArray(jsonString);
-      Assert.assertEquals(num / 2, array.size());
+      assertEquals(num / 2, array.size());
 
       long l = Long.parseLong(array.getJsonObject(0).get("key").toString().replaceAll("\"", ""));
-      Assert.assertEquals(matchingValue, l);
+      assertEquals(matchingValue, l);
 
       long n = queueControl.countMessages(filter);
       assertEquals(num / 2, n);
@@ -164,7 +167,7 @@ public class ManagementWithPagingServerTest extends ManagementTestBase {
       SimpleString address = RandomUtil.randomSimpleString();
       SimpleString queue = RandomUtil.randomSimpleString();
 
-      session1.createQueue(new QueueConfiguration(queue).setAddress(address));
+      session1.createQueue(QueueConfiguration.of(queue).setAddress(address));
 
       QueueControl queueControl = createManagementControl(address, queue);
 
@@ -198,7 +201,7 @@ public class ManagementWithPagingServerTest extends ManagementTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 

@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.scheduling;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
 import java.util.ArrayList;
@@ -40,15 +45,14 @@ import org.apache.activemq.artemis.jms.client.ActiveMQTextMessage;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.utils.UUIDGenerator;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ScheduledMessageTest extends ActiveMQTestBase {
 
-   private final SimpleString atestq = new SimpleString("ascheduledtestq");
+   private final SimpleString atestq = SimpleString.of("ascheduledtestq");
 
-   private final SimpleString atestq2 = new SimpleString("ascheduledtestq2");
+   private final SimpleString atestq2 = SimpleString.of("ascheduledtestq2");
 
    private Configuration configuration;
 
@@ -57,7 +61,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
    private ServerLocator locator;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       startServer();
@@ -128,7 +132,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       // then we create a client as normal
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage message = createDurableMessage(session, "m1");
       long time = System.currentTimeMillis();
@@ -143,15 +147,15 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start();
 
       ClientMessage message2 = consumer.receive(10250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message2.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message2.getBodyBuffer().readString());
 
       message2.acknowledge();
 
       // Make sure no more messages
       consumer.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -163,8 +167,8 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       // then we create a client as normal
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
-      session.createQueue(new QueueConfiguration(atestq2).setAddress(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
+      session.createQueue(QueueConfiguration.of(atestq2).setAddress(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage message = createDurableMessage(session, "m1");
       producer.send(message);
@@ -179,8 +183,8 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       message3.acknowledge();
       ClientMessage message2 = consumer2.receive(1000);
       message2.acknowledge();
-      Assert.assertEquals("m1", message3.getBodyBuffer().readString());
-      Assert.assertEquals("m1", message2.getBodyBuffer().readString());
+      assertEquals("m1", message3.getBodyBuffer().readString());
+      assertEquals("m1", message2.getBodyBuffer().readString());
       long time = System.currentTimeMillis();
       // force redelivery
       consumer.close();
@@ -192,9 +196,9 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       message3 = consumer.receive(5250);
       message2 = consumer2.receive(1000);
       time += 5000;
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message3.getBodyBuffer().readString());
-      Assert.assertEquals("m1", message2.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message3.getBodyBuffer().readString());
+      assertEquals("m1", message2.getBodyBuffer().readString());
       message2.acknowledge();
       message3.acknowledge();
 
@@ -202,7 +206,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       consumer.close();
       consumer2.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -215,8 +219,8 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       // then we create a client as normal
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
-      session.createQueue(new QueueConfiguration(atestq2).setAddress(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
+      session.createQueue(QueueConfiguration.of(atestq2).setAddress(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage message = createDurableMessage(session, "m1");
       producer.send(message);
@@ -228,13 +232,13 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       session.start();
       ClientMessage message3 = consumer.receive(1000);
-      Assert.assertNotNull(message3);
+      assertNotNull(message3);
       message3.acknowledge();
       ClientMessage message2 = consumer2.receive(1000);
-      Assert.assertNotNull(message2);
+      assertNotNull(message2);
       message2.acknowledge();
-      Assert.assertEquals("m1", message3.getBodyBuffer().readString());
-      Assert.assertEquals("m1", message2.getBodyBuffer().readString());
+      assertEquals("m1", message3.getBodyBuffer().readString());
+      assertEquals("m1", message2.getBodyBuffer().readString());
       long time = System.currentTimeMillis();
       // force redelivery
       consumer.close();
@@ -252,13 +256,13 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       consumer2 = session.createConsumer(atestq2);
       session.start();
       message3 = consumer.receive(5250);
-      Assert.assertNotNull(message3);
+      assertNotNull(message3);
       message2 = consumer2.receive(1000);
-      Assert.assertNotNull(message2);
+      assertNotNull(message2);
       time += 5000;
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message3.getBodyBuffer().readString());
-      Assert.assertEquals("m1", message2.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message3.getBodyBuffer().readString());
+      assertEquals("m1", message2.getBodyBuffer().readString());
       message2.acknowledge();
       message3.acknowledge();
 
@@ -266,7 +270,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       consumer.close();
       consumer2.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -276,7 +280,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       // then we create a client as normal
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
       message.getBodyBuffer().writeString("testINVMCoreClient");
@@ -301,15 +305,15 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start();
 
       ClientMessage message2 = consumer.receive(11000);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("testINVMCoreClient", message2.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("testINVMCoreClient", message2.getBodyBuffer().readString());
 
       message2.acknowledge();
 
       // Make sure no more messages
       consumer.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -318,7 +322,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage m1 = createDurableMessage(session, "m1");
       ClientMessage m2 = createDurableMessage(session, "m2");
@@ -360,34 +364,34 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start();
 
       ClientMessage message = consumer.receive(11000);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m2", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m2", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m3", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m3", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m4", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m4", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m5", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m5", message.getBodyBuffer().readString());
       message.acknowledge();
 
       // Make sure no more messages
       consumer.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -396,7 +400,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage m1 = createDurableMessage(session, "m1");
       ClientMessage m2 = createDurableMessage(session, "m2");
@@ -439,34 +443,34 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start();
 
       ClientMessage message = consumer.receive(10250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m3", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m3", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m5", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m5", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m2", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m2", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m4", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m4", message.getBodyBuffer().readString());
       message.acknowledge();
 
       // Make sure no more messages
       consumer.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -476,7 +480,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       long time = System.currentTimeMillis();
       time += 1000;
@@ -503,7 +507,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       session.commit();
 
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -513,7 +517,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       long time = System.currentTimeMillis();
       time += 999_999_999;
@@ -538,9 +542,29 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       session.commit();
 
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
+   }
+
+   @Test
+   public void testManagementDeleteById() throws Exception {
+      try (ClientSessionFactory sessionFactory = createSessionFactory(locator)) {
+         ClientSession session = sessionFactory.createSession(false, false, false);
+         session.createQueue(QueueConfiguration.of(atestq));
+         ClientProducer producer = session.createProducer(atestq);
+         ClientMessage messageToSend = session.createMessage(true);
+         messageToSend.putLongProperty(Message.HDR_SCHEDULED_DELIVERY_TIME, System.currentTimeMillis() + 999_999_999);
+         producer.send(messageToSend);
+         session.commit();
+      }
+
+      QueueControl queueControl = (QueueControl) server.getManagementService().getResource(ResourceNames.QUEUE + atestq);
+      assertEquals(1, queueControl.getMessageCount());
+      assertEquals(1, queueControl.getScheduledCount());
+      assertTrue(queueControl.removeMessage((long) queueControl.listScheduledMessages()[0].get("messageID")));
+      assertEquals(0, queueControl.getMessageCount());
+      assertEquals(0, queueControl.getScheduledCount());
    }
 
    @Test
@@ -549,7 +573,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       final String propertyName = "X" + RandomUtil.randomString().replace("-","");
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       long time = System.currentTimeMillis();
       time += 999_999_999;
@@ -584,7 +608,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       session.commit();
 
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -593,7 +617,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, true, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage m1 = createDurableMessage(session, "m1");
       ClientMessage m2 = createDurableMessage(session, "m2");
@@ -631,30 +655,30 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start();
 
       ClientMessage message = consumer.receive(1000);
-      Assert.assertEquals("m2", message.getBodyBuffer().readString());
+      assertEquals("m2", message.getBodyBuffer().readString());
       message.acknowledge();
       message = consumer.receive(1000);
-      Assert.assertEquals("m4", message.getBodyBuffer().readString());
+      assertEquals("m4", message.getBodyBuffer().readString());
       message.acknowledge();
       message = consumer.receive(10250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m1", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m1", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m3", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m3", message.getBodyBuffer().readString());
       message.acknowledge();
       time += 1000;
       message = consumer.receive(1250);
-      Assert.assertTrue(System.currentTimeMillis() >= time);
-      Assert.assertEquals("m5", message.getBodyBuffer().readString());
+      assertTrue(System.currentTimeMillis() >= time);
+      assertEquals("m5", message.getBodyBuffer().readString());
       message.acknowledge();
 
       // Make sure no more messages
       consumer.close();
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       session.close();
    }
@@ -665,7 +689,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(true, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       session.start(xid, XAResource.TMNOFLAGS);
       ClientProducer producer = session.createProducer(atestq);
       ClientMessage message = createDurableMessage(session, "testINVMCoreClient");
@@ -693,9 +717,9 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       session.start(xid2, XAResource.TMNOFLAGS);
       ClientMessage message2 = consumer.receive(11000);
       long end = System.currentTimeMillis();
-      Assert.assertTrue(end >= time);
-      Assert.assertNotNull(message2);
-      Assert.assertEquals("testINVMCoreClient", message2.getBodyBuffer().readString());
+      assertTrue(end >= time);
+      assertNotNull(message2);
+      assertEquals("testINVMCoreClient", message2.getBodyBuffer().readString());
 
       message2.acknowledge();
       session.end(xid2, XAResource.TMSUCCESS);
@@ -704,7 +728,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       consumer.close();
       // Make sure no more messages
       consumer = session.createConsumer(atestq);
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
       session.close();
    }
 
@@ -715,7 +739,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(true, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
 
       ClientProducer producer = session.createProducer(atestq);
 
@@ -791,7 +815,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(false, false, false);
 
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
 
       ClientProducer producer = session.createProducer(atestq);
       for (int i = 0; i < 100; i++) {
@@ -836,29 +860,26 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       locator = createInVMNonHALocator();
 
       final AtomicInteger count = new AtomicInteger(0);
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               ClientSessionFactory sf = createSessionFactory(locator);
-               ClientSession session = sf.createSession(false, false);
-               session.start();
-               ClientConsumer cons = session.createConsumer(atestq);
-               for (int i = 0; i < 100; i++) {
-                  ClientMessage msg = cons.receive(100000);
-                  assertNotNull(msg);
-                  count.incrementAndGet();
-                  msg.acknowledge();
-                  session.commit();
-               }
-               session.close();
-               sf.close();
-            } catch (Throwable e) {
-               e.printStackTrace();
-               count.set(-1);
+      Thread t = new Thread(() -> {
+         try {
+            ClientSessionFactory sf = createSessionFactory(locator);
+            ClientSession session1 = sf.createSession(false, false);
+            session1.start();
+            ClientConsumer cons = session1.createConsumer(atestq);
+            for (int i = 0; i < 100; i++) {
+               ClientMessage msg = cons.receive(100000);
+               assertNotNull(msg);
+               count.incrementAndGet();
+               msg.acknowledge();
+               session1.commit();
             }
+            session1.close();
+            sf.close();
+         } catch (Throwable e) {
+            e.printStackTrace();
+            count.set(-1);
          }
-      };
+      });
 
       t.start();
 
@@ -887,7 +908,7 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
 
       ClientSessionFactory sessionFactory = createSessionFactory(locator);
       ClientSession session = sessionFactory.createSession(tx, false, false);
-      session.createQueue(new QueueConfiguration(atestq));
+      session.createQueue(QueueConfiguration.of(atestq));
       ClientProducer producer = session.createProducer(atestq);
       ClientConsumer consumer = session.createConsumer(atestq);
 
@@ -953,62 +974,62 @@ public class ScheduledMessageTest extends ActiveMQTestBase {
       }
 
       ClientMessage rm1 = consumer.receive(250);
-      Assert.assertNotNull(rm1);
-      Assert.assertEquals("testScheduled2", rm1.getBodyBuffer().readString());
+      assertNotNull(rm1);
+      assertEquals("testScheduled2", rm1.getBodyBuffer().readString());
 
       ClientMessage rm2 = consumer.receive(250);
-      Assert.assertNotNull(rm2);
-      Assert.assertEquals("testScheduled3", rm2.getBodyBuffer().readString());
+      assertNotNull(rm2);
+      assertEquals("testScheduled3", rm2.getBodyBuffer().readString());
 
       ClientMessage rm3 = consumer.receive(250);
-      Assert.assertNotNull(rm3);
-      Assert.assertEquals("testScheduled4", rm3.getBodyBuffer().readString());
+      assertNotNull(rm3);
+      assertEquals("testScheduled4", rm3.getBodyBuffer().readString());
 
       // Now the one with a scheduled with a -ve number
       ClientMessage rm5 = consumer.receive(250);
-      Assert.assertNotNull(rm5);
-      Assert.assertEquals("testScheduled9", rm5.getBodyBuffer().readString());
+      assertNotNull(rm5);
+      assertEquals("testScheduled9", rm5.getBodyBuffer().readString());
 
       // Now the scheduled
       ClientMessage rm6 = consumer.receive(3250);
-      Assert.assertNotNull(rm6);
-      Assert.assertEquals("testScheduled7", rm6.getBodyBuffer().readString());
+      assertNotNull(rm6);
+      assertEquals("testScheduled7", rm6.getBodyBuffer().readString());
 
       long now2 = System.currentTimeMillis();
 
-      Assert.assertTrue(now2 - now >= 3000);
+      assertTrue(now2 - now >= 3000);
 
       ClientMessage rm7 = consumer.receive(1250);
-      Assert.assertNotNull(rm7);
-      Assert.assertEquals("testScheduled6", rm7.getBodyBuffer().readString());
+      assertNotNull(rm7);
+      assertEquals("testScheduled6", rm7.getBodyBuffer().readString());
 
       now2 = System.currentTimeMillis();
 
-      Assert.assertTrue(now2 - now >= 4000);
+      assertTrue(now2 - now >= 4000);
 
       ClientMessage rm8 = consumer.receive(1250);
-      Assert.assertNotNull(rm8);
-      Assert.assertEquals("testScheduled5", rm8.getBodyBuffer().readString());
+      assertNotNull(rm8);
+      assertEquals("testScheduled5", rm8.getBodyBuffer().readString());
 
       now2 = System.currentTimeMillis();
 
-      Assert.assertTrue(now2 - now >= 5000);
+      assertTrue(now2 - now >= 5000);
 
       ClientMessage rm9 = consumer.receive(1250);
-      Assert.assertNotNull(rm9);
-      Assert.assertEquals("testScheduled8", rm9.getBodyBuffer().readString());
+      assertNotNull(rm9);
+      assertEquals("testScheduled8", rm9.getBodyBuffer().readString());
 
       now2 = System.currentTimeMillis();
 
-      Assert.assertTrue(now2 - now >= 6000);
+      assertTrue(now2 - now >= 6000);
 
       ClientMessage rm10 = consumer.receive(1250);
-      Assert.assertNotNull(rm10);
-      Assert.assertEquals("testScheduled1", rm10.getBodyBuffer().readString());
+      assertNotNull(rm10);
+      assertEquals("testScheduled1", rm10.getBodyBuffer().readString());
 
       now2 = System.currentTimeMillis();
 
-      Assert.assertTrue(now2 - now >= 7000);
+      assertTrue(now2 - now >= 7000);
 
       if (tx) {
          session.end(xid, XAResource.TMSUCCESS);

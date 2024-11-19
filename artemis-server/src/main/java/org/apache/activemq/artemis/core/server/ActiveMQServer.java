@@ -679,7 +679,7 @@ public interface ActiveMQServer extends ServiceComponent {
    Queue locateQueue(SimpleString queueName);
 
    default Queue locateQueue(String queueName) {
-      return locateQueue(SimpleString.toSimpleString(queueName));
+      return locateQueue(SimpleString.of(queueName));
    }
 
    default BindingQueryResult bindingQuery(SimpleString address) throws Exception {
@@ -989,7 +989,7 @@ public interface ActiveMQServer extends ServiceComponent {
     */
    void autoRemoveAddressInfo(SimpleString address, SecurityAuth auth) throws Exception;
 
-   void registerQueueOnManagement(Queue queue, boolean registerInternal) throws Exception;
+   void registerQueueOnManagement(Queue queue) throws Exception;
 
    /**
     * Remove an {@code AddressInfo} from the broker.

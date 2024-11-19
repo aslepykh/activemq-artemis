@@ -45,7 +45,7 @@ public final class LargeServerMessageInSync implements ReplicatedLargeMessage {
     * @param storageManager
     */
    public LargeServerMessageInSync(StorageManager storageManager) {
-      mainLM = storageManager.createLargeMessage();
+      mainLM = storageManager.createCoreLargeMessage();
       this.storageManager = storageManager;
    }
 
@@ -92,6 +92,11 @@ public final class LargeServerMessageInSync implements ReplicatedLargeMessage {
    @Override
    public synchronized Message setMessageID(long id) {
       mainLM.setMessageID(id);
+      return mainLM.toMessage();
+   }
+
+   @Override
+   public Message getMessage() {
       return mainLM.toMessage();
    }
 

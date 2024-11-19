@@ -46,6 +46,7 @@ import org.apache.activemq.artemis.api.core.Pair;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.management.CoreNotificationType;
 import org.apache.activemq.artemis.api.core.management.ManagementHelper;
 import org.apache.activemq.artemis.core.exception.ActiveMQXAException;
@@ -494,13 +495,13 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
       }
       final TypedProperties props = new TypedProperties();
       if (this.getConnectionID() != null) {
-         props.putSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME, SimpleString.toSimpleString(this.getConnectionID().toString()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_CONNECTION_NAME, SimpleString.of(this.getConnectionID().toString()));
       }
-      props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.toSimpleString(this.getUsername()));
-      props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.toSimpleString(this.getName()));
+      props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.of(this.getUsername()));
+      props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.of(this.getName()));
 
-      props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.toSimpleString(this.remotingConnection.getClientID()));
-      props.putSimpleStringProperty(ManagementHelper.HDR_PROTOCOL_NAME, SimpleString.toSimpleString(this.remotingConnection.getProtocolName()));
+      props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.of(this.remotingConnection.getClientID()));
+      props.putSimpleStringProperty(ManagementHelper.HDR_PROTOCOL_NAME, SimpleString.of(this.remotingConnection.getProtocolName()));
       props.putSimpleStringProperty(ManagementHelper.HDR_ADDRESS, managementService.getManagementNotificationAddress());
       props.putIntProperty(ManagementHelper.HDR_DISTANCE, 0);
       managementService.sendNotification(new Notification(null, type, props));
@@ -608,9 +609,9 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
          props.putIntProperty(ManagementHelper.HDR_CONSUMER_COUNT, theQueue.getConsumerCount());
 
          // HORNETQ-946
-         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.toSimpleString(username));
+         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.of(username));
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_VALIDATED_USER, SimpleString.toSimpleString(validatedUser));
+         props.putSimpleStringProperty(ManagementHelper.HDR_VALIDATED_USER, SimpleString.of(validatedUser));
 
          String certSubjectDN = "unavailable";
          X509Certificate[] certs = CertificateUtil.getCertsFromConnection(this.remotingConnection);
@@ -618,18 +619,18 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
             certSubjectDN = certs[0].getSubjectDN().getName();
          }
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_CERT_SUBJECT_DN, SimpleString.toSimpleString(certSubjectDN));
+         props.putSimpleStringProperty(ManagementHelper.HDR_CERT_SUBJECT_DN, SimpleString.of(certSubjectDN));
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.toSimpleString(this.remotingConnection.getRemoteAddress()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.of(this.remotingConnection.getRemoteAddress()));
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.toSimpleString(name));
+         props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.of(name));
 
          if (filter != null) {
             props.putSimpleStringProperty(ManagementHelper.HDR_FILTERSTRING, filter.getFilterString());
          }
 
          if (remotingConnection.getClientID() != null) {
-            props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.toSimpleString(remotingConnection.getClientID()));
+            props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.of(remotingConnection.getClientID()));
          }
 
          props.putLongProperty(ManagementHelper.HDR_CONSUMER_NAME, consumer.getID());
@@ -711,7 +712,7 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
                             final long autoDeleteMessageCount,
                             final boolean autoCreated,
                             final long ringSize) throws Exception {
-      return createQueue(new QueueConfiguration(name)
+      return createQueue(QueueConfiguration.of(name)
                             .setAddress(addressInfo.getName())
                             .setRoutingType(addressInfo.getRoutingType())
                             .setFilterString(filterString)
@@ -1040,7 +1041,7 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
                                  Boolean autoDelete,
                                  Long autoDeleteDelay,
                                  Long autoDeleteMessageCount) throws Exception {
-      createSharedQueue(new QueueConfiguration(name)
+      createSharedQueue(QueueConfiguration.of(name)
                                   .setAddress(address)
                                   .setFilterString(filterString)
                                   .setUser(getUsername())
@@ -1854,7 +1855,7 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
             } else if (addressSettings.isAutoCreateQueues() || queueConfig.isTemporary()) {
                // Try to create the queue.
                try {
-                  createQueue(new QueueConfiguration(queueConfig).setAutoCreated(true));
+                  createQueue(QueueConfiguration.of(queueConfig).setAutoCreated(true));
                } catch (ActiveMQQueueExistsException e) {
                   // The queue may have been created by another thread in the mean-time. Catch and do nothing.
                }
@@ -2059,6 +2060,9 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
          return false;
       } else {
          addMetaData(key, data);
+         if (key.equals(ClientSession.JMS_SESSION_CLIENT_ID_PROPERTY)) {
+            remotingConnection.setClientID(data);
+         }
          return true;
       }
    }
@@ -2214,16 +2218,16 @@ public class ServerSessionImpl implements ServerSession, FailureListener {
          throw e;
       }
 
-      Message reply = managementService.handleMessage(message);
+      Message reply = managementService.handleMessage(this, message);
 
       SimpleString replyTo = message.getReplyTo();
 
       if (replyTo != null) {
          // TODO: move this check somewhere else? this is a JMS-specific bit of logic in the core impl
          if (replyTo.toString().startsWith("queue://") || replyTo.toString().startsWith("topic://")) {
-            replyTo = SimpleString.toSimpleString(replyTo.toString().substring(8));
+            replyTo = SimpleString.of(replyTo.toString().substring(8));
          } else if (replyTo.toString().startsWith("temp-queue://") || replyTo.toString().startsWith("temp-topic://")) {
-            replyTo = SimpleString.toSimpleString(replyTo.toString().substring(13));
+            replyTo = SimpleString.of(replyTo.toString().substring(13));
          }
          reply.setAddress(replyTo);
 

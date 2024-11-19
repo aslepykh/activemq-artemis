@@ -29,10 +29,16 @@ import org.apache.activemq.artemis.tests.integration.stomp.util.ClientStompFrame
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnection;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnectionFactory;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StompWithRejectingInterceptorTest extends StompTestBase {
+
+   public StompWithRejectingInterceptorTest() {
+      super("tcp+v10.stomp");
+   }
 
    @Override
    public List<String> getIncomingInterceptors() {
@@ -63,10 +69,10 @@ public class StompWithRejectingInterceptorTest extends StompTestBase {
       incomingCommands.add("DISCONNECT");
 
       for (int i = 0; i < IncomingStompFrameRejectInterceptor.interceptedFrames.size(); i++) {
-         Assert.assertEquals(incomingCommands.get(i), IncomingStompFrameRejectInterceptor.interceptedFrames.get(i).getCommand());
+         assertEquals(incomingCommands.get(i), IncomingStompFrameRejectInterceptor.interceptedFrames.get(i).getCommand());
       }
 
-      Wait.assertFalse(() -> server.locateQueue(SimpleString.toSimpleString(getQueuePrefix() + getQueueName())).getMessageCount() > 0, 1000, 100);
+      Wait.assertFalse(() -> server.locateQueue(SimpleString.of(getQueuePrefix() + getQueueName())).getMessageCount() > 0, 1000, 100);
    }
 
    public static class IncomingStompFrameRejectInterceptor implements StompFrameInterceptor {

@@ -17,6 +17,10 @@
 
 package org.apache.activemq.artemis.protocol.amqp.connect.federation;
 
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.FEDERATION_CONTROL_LINK_PREFIX;
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.FEDERATION_BASE_VALIDATION_ADDRESS;
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.FEDERATION_EVENTS_LINK_PREFIX;
+
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.Objects;
@@ -36,7 +40,6 @@ import org.apache.activemq.artemis.protocol.amqp.federation.internal.FederationQ
 import org.apache.activemq.artemis.protocol.amqp.proton.AMQPConnectionContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.AMQPSessionContext;
 import org.apache.qpid.proton.engine.Link;
-import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -132,39 +135,9 @@ public abstract class AMQPFederation implements FederationInternal {
    public abstract AMQPSessionContext getSessionContext();
 
    /**
-    * @return the timeout before signaling an error when creating remote link (0 mean disable).
+    * @return the federation configuration that is in effect.
     */
-   public abstract int getLinkAttachTimeout();
-
-   /**
-    * @return the configured {@link Receiver} link credit batch size.
-    */
-   public abstract int getReceiverCredits();
-
-   /**
-    * @return the configured {@link Receiver} link credit low value.
-    */
-   public abstract int getReceiverCreditsLow();
-
-   /**
-    * @return the size in bytes before a message is considered large.
-    */
-   public abstract int getLargeMessageThreshold();
-
-   /**
-    * @return the true if the federation should ignore filters on queue consumers.
-    */
-   public abstract boolean isIgnoreQueueConsumerFilters();
-
-   /**
-    * @return the true if the federation should ignore priorities on queue consumers.
-    */
-   public abstract boolean isIgnoreQueueConsumerPriorities();
-
-   /**
-    * @return the true if the federation should support core message tunneling.
-    */
-   public abstract boolean isCoreMessageTunnelingEnabled();
+   public abstract AMQPFederationConfiguration getConfiguration();
 
    @Override
    public final synchronized void start() throws ActiveMQException {
@@ -199,6 +172,50 @@ public abstract class AMQPFederation implements FederationInternal {
             eventProcessor = null;
          }
       }
+   }
+
+   /**
+    * Performs the prefixing for federation events queues that places the events queues into
+    * the name-space of federation related internal queues.
+    *
+    * @param suffix
+    *    A suffix to append to the federation events link (normally the AMQP link name).
+    *
+    * @return the full internal queue name to use for the given suffix.
+    */
+   String prefixEventsLinkQueueName(String suffix) {
+      final StringBuilder builder = new StringBuilder();
+      final char delimiter = getWildcardConfiguration().getDelimiter();
+
+      builder.append(FEDERATION_BASE_VALIDATION_ADDRESS)
+             .append(delimiter)
+             .append(FEDERATION_EVENTS_LINK_PREFIX)
+             .append(delimiter)
+             .append(suffix);
+
+      return builder.toString();
+   }
+
+   /**
+    * Performs the prefixing for federation control queue name that places the queues
+    * into the name-space of federation related internal queues.
+    *
+    * @param suffix
+    *    A suffix to append to the federation control link (normally the AMQP link name).
+    *
+    * @return the full internal queue name to use for the given suffix.
+    */
+   String prefixControlLinkQueueName(String suffix) {
+      final StringBuilder builder = new StringBuilder();
+      final char delimiter = getWildcardConfiguration().getDelimiter();
+
+      builder.append(FEDERATION_BASE_VALIDATION_ADDRESS)
+             .append(delimiter)
+             .append(FEDERATION_CONTROL_LINK_PREFIX)
+             .append(delimiter)
+             .append(suffix);
+
+      return builder.toString();
    }
 
    /**

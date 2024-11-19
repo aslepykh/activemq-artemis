@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.failover;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
@@ -28,22 +32,22 @@ import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
 import org.apache.activemq.artemis.core.client.impl.ClientSessionFactoryInternal;
 import org.apache.activemq.artemis.core.client.impl.ServerLocatorInternal;
-import org.apache.activemq.artemis.core.config.ha.SharedStorePrimaryPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.SharedStoreBackupPolicyConfiguration;
+import org.apache.activemq.artemis.core.config.ha.SharedStorePrimaryPolicyConfiguration;
 import org.apache.activemq.artemis.core.server.impl.InVMNodeManager;
 import org.apache.activemq.artemis.jms.client.ActiveMQTextMessage;
 import org.apache.activemq.artemis.tests.integration.cluster.util.TestableServer;
 import org.apache.activemq.artemis.tests.util.CountDownSessionFailureListener;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class FailBackManualTest extends FailoverTestBase {
 
    private ServerLocatorInternal locator;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       locator = getServerLocator();
@@ -129,7 +133,7 @@ public class FailBackManualTest extends FailoverTestBase {
       ClientSession session = sf.createSession(false, true, true);
 
       if (createQueue) {
-         session.createQueue(new QueueConfiguration(ADDRESS).setDurable(false));
+         session.createQueue(QueueConfiguration.of(ADDRESS).setDurable(false));
       }
 
       ClientProducer producer = session.createProducer(ADDRESS);
@@ -138,7 +142,7 @@ public class FailBackManualTest extends FailoverTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -152,7 +156,7 @@ public class FailBackManualTest extends FailoverTestBase {
 
          assertEquals("aardvarks", message2.getBodyBuffer().readString());
 
-         assertEquals(i, message2.getObjectProperty(new SimpleString("count")));
+         assertEquals(i, message2.getObjectProperty(SimpleString.of("count")));
 
          message2.acknowledge();
       }

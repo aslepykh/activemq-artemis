@@ -20,12 +20,12 @@
    <parent>
       <groupId>org.apache.activemq.tests</groupId>
       <artifactId>artemis-tests-pom</artifactId>
-      <version>2.33.0-SNAPSHOT</version>
+      <version>2.39.0-SNAPSHOT</version>
    </parent>
 
    <artifactId>activemq5-unit-tests</artifactId>
    <packaging>jar</packaging>
-   <name>ActiveMQ5.x unit tests</name>
+   <name>ActiveMQ Classic unit tests</name>
 
    <properties>
       <activemq.basedir>${project.basedir}/../..</activemq.basedir>
@@ -95,12 +95,6 @@
          <groupId>junit</groupId>
          <artifactId>junit</artifactId>
          <scope>compile</scope>
-      </dependency>
-
-      <dependency>
-        <groupId>org.osgi</groupId>
-        <artifactId>org.osgi.core</artifactId>
-        <version>4.3.1</version>
       </dependency>
 
       <dependency>
@@ -222,19 +216,6 @@
                   </goals>
                </execution>
             </executions>
-         </plugin>
-
-         <plugin>
-            <groupId>org.apache.felix</groupId>
-            <artifactId>maven-bundle-plugin</artifactId>
-            <version>2.5.3</version>
-            <inherited>true</inherited>
-            <extensions>true</extensions>
-            <configuration>
-               <instructions>
-                  <Bundle-Activator>org.apache.activemq.util.osgi.Activator</Bundle-Activator>
-               </instructions>
-            </configuration>
          </plugin>
 
          <plugin>

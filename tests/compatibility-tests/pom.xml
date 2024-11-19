@@ -20,7 +20,7 @@
    <parent>
       <groupId>org.apache.activemq.tests</groupId>
       <artifactId>artemis-tests-pom</artifactId>
-      <version>2.33.0-SNAPSHOT</version>
+      <version>2.39.0-SNAPSHOT</version>
    </parent>
 
    <artifactId>compatibility-tests</artifactId>
@@ -106,6 +106,12 @@
          <version>${project.version}</version>
       </dependency>
       <dependency>
+         <groupId>org.apache.activemq.tests</groupId>
+         <artifactId>artemis-test-support</artifactId>
+         <version>${project.version}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
          <groupId>org.apache.activemq</groupId>
          <artifactId>artemis-features</artifactId>
          <classifier>features</classifier>
@@ -119,7 +125,7 @@
          <exclusions>
             <exclusion>
                <groupId>org.apache.groovy</groupId>
-               <artifactId>groovy-test-junit5</artifactId>
+               <artifactId>groovy-test</artifactId>
             </exclusion>
          </exclusions>
       </dependency>
@@ -184,8 +190,12 @@
          <artifactId>netty-transport</artifactId>
       </dependency>
       <dependency>
-         <groupId>junit</groupId>
-         <artifactId>junit</artifactId>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-api</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-engine</artifactId>
       </dependency>
       <dependency>
          <groupId>org.apache.qpid</groupId>
@@ -208,7 +218,7 @@
       <dependency>
          <groupId>org.jboss.marshalling</groupId>
          <artifactId>jboss-marshalling-river</artifactId>
-         <version>2.0.9.Final</version>
+         <version>2.2.1.Final</version>
       </dependency>
 
       <!-- The johnzon-core and json-api contents are repackaged in -commons,
@@ -238,7 +248,7 @@
          <plugin>
             <groupId>org.apache.servicemix.tooling</groupId>
             <artifactId>depends-maven-plugin</artifactId>
-            <version>1.2</version>
+            <version>1.5.0</version>
             <executions>
                <execution>
                   <id>generate-depends-file</id>
@@ -261,6 +271,59 @@
       </plugins>
    </build>
    <profiles>
+      <profile>
+         <id>compatibility-tests-distribution</id>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-dependency-plugin</artifactId>
+                  <executions>
+                     <execution>
+                        <id>unpack-2.30.0</id>
+                        <phase>compile</phase>
+                        <goals>
+                           <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                           <artifactItems>
+                              <artifactItem>
+                                 <groupId>org.apache.activemq</groupId>
+                                 <artifactId>apache-artemis</artifactId>
+                                 <version>2.30.0</version>
+                                 <classifier>bin</classifier>
+                                 <type>zip</type>
+                                 <outputDirectory>${basedir}/target/old-releases</outputDirectory>
+                              </artifactItem>
+                           </artifactItems>
+                        </configuration>
+                     </execution>
+                     <!-- TODO: Switch this to 2.37.0 as soon as we release it.
+                          It will be important to test the switch at the current and previous version. -->
+                     <execution>
+                        <id>unpack-2.36.0</id>
+                        <phase>compile</phase>
+                        <goals>
+                           <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                           <artifactItems>
+                              <artifactItem>
+                                 <groupId>org.apache.activemq</groupId>
+                                 <artifactId>apache-artemis</artifactId>
+                                 <version>2.36.0</version>
+                                 <classifier>bin</classifier>
+                                 <type>zip</type>
+                                 <outputDirectory>${basedir}/target/old-releases</outputDirectory>
+                              </artifactItem>
+                           </artifactItems>
+                        </configuration>
+                     </execution>
+                  </executions>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
       <profile>
          <id>compatibility-tests</id>
          <properties>
@@ -445,6 +508,28 @@
                         </configuration>
                      </execution>
                      <execution>
+                        <phase>compile</phase>
+                        <goals>
+                           <goal>dependency-scan</goal>
+                        </goals>
+                        <id>2_33_0-check</id>
+                        <configuration>
+                           <optional>true</optional>
+                           <libListWithDeps>
+                              <arg>org.apache.activemq:artemis-jms-server:2.33.0</arg>
+                              <arg>org.apache.activemq:artemis-cli:2.33.0</arg>
+                              <arg>org.apache.activemq:artemis-jms-client:2.33.0</arg>
+                              <arg>org.apache.activemq:artemis-hornetq-protocol:2.33.0</arg>
+                              <arg>org.apache.activemq:artemis-amqp-protocol:2.33.0</arg>
+                              <arg>org.apache.groovy:groovy-all:pom:${groovy.version}</arg>
+                           </libListWithDeps>
+                           <libList>
+                              <arg>org.apache.activemq.tests:compatibility-tests:${project.version}</arg>
+                           </libList>
+                           <file>${basedir}/target/ARTEMIS-2_33_0.cp</file>
+                        </configuration>
+                     </execution>
+                      <execution>
                         <phase>compile</phase>
                         <goals>
                            <goal>dependency-scan</goal>
@@ -677,17 +762,4 @@
          </build>
       </profile>
    </profiles>
-   <distributionManagement>
-      <repository>
-         <id>jboss-releases-repository</id>
-         <name>JBoss Releases Repository</name>
-         <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
-      </repository>
-      <snapshotRepository>
-         <id>jboss-snapshots-repository</id>
-         <name>JBoss Snapshots Repository</name>
-         <url>https://repository.jboss.org/nexus/content/repositories/snapshots/</url>
-      </snapshotRepository>
-   </distributionManagement>
-
 </project>

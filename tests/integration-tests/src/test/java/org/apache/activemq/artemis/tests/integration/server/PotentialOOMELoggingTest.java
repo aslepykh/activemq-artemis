@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.server;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.UUID;
 
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
@@ -23,8 +25,7 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.logs.AssertionLoggerHandler;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PotentialOOMELoggingTest extends ActiveMQTestBase {
 
@@ -37,7 +38,7 @@ public class PotentialOOMELoggingTest extends ActiveMQTestBase {
    public void testBlockLogging() throws Exception {
       ActiveMQServer server = createServer(false, createDefaultInVMConfig());
       for (int i = 0; i < 200; i++) {
-         server.getConfiguration().addQueueConfiguration(new QueueConfiguration(UUID.randomUUID().toString()));
+         server.getConfiguration().addQueueConfiguration(QueueConfiguration.of(UUID.randomUUID().toString()));
       }
       server.getConfiguration().setGlobalMaxSize(-1);
       server.getConfiguration().getAddressSettings().put("#", new AddressSettings().setMaxSizeBytes(10485760 * 10));
@@ -46,7 +47,7 @@ public class PotentialOOMELoggingTest extends ActiveMQTestBase {
          server.start();
 
          // Using the code only so the test doesn't fail just because someone edits the log text
-         Assert.assertTrue("Expected to find 222205", loggerHandler.findText("AMQ222205"));
+         assertTrue(loggerHandler.findText("AMQ222205"), "Expected to find 222205");
       }
    }
 }

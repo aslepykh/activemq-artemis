@@ -50,6 +50,8 @@ public interface LargeServerMessage extends ReplicatedLargeMessage {
    @Override
    void releaseResources(boolean sync, boolean sendEvent);
 
+   boolean isOpen();
+
    @Override
    void deleteFile() throws Exception;
 
@@ -65,6 +67,4 @@ public interface LargeServerMessage extends ReplicatedLargeMessage {
    LargeBody getLargeBody();
 
    void setStorageManager(StorageManager storageManager);
-
-   void validateFile() throws ActiveMQException;
 }

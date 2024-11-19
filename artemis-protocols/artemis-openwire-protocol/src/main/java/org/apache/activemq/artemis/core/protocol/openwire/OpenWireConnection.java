@@ -283,13 +283,6 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       LAST_SENT_UPDATER.lazySet(this, System.currentTimeMillis());
    }
 
-   /**
-    * Log packaged into a separate method for performance reasons.
-    */
-   private static void traceBufferReceived(Object connectionID, Command command) {
-      logger.trace("connectionID: {} RECEIVED: {}", connectionID, (command == null ? "NULL" : command));
-   }
-
    @Override
    public void bufferReceived(Object connectionID, ActiveMQBuffer buffer) {
       super.bufferReceived(connectionID, buffer);
@@ -297,10 +290,7 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       try {
          Command command = (Command) inWireFormat.unmarshal(buffer);
 
-         // log the openwire command
-         if (logger.isTraceEnabled()) {
-            traceBufferReceived(connectionID, command);
-         }
+         logCommand(command, true);
 
          final ThresholdActor<Command> localVisibleActor = openWireActor;
          if (localVisibleActor != null) {
@@ -485,6 +475,11 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       checkInactivity();
    }
 
+   @Override
+   public void close() {
+      destroy();
+   }
+
    private void checkInactivity() {
       if (!this.useKeepAlive) {
          return;
@@ -521,21 +516,12 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       return state;
    }
 
-   /**
-    * Log packaged into a separate method for performance reasons.
-    */
-   private static void tracePhysicalSend(Connection transportConnection, Command command) {
-      logger.trace("connectionID: {} SENDING: {}", (transportConnection == null ? "" : transportConnection.getID()), (command == null ? "NULL" : command));
-   }
-
    public void physicalSend(Command command) throws IOException {
       if (this.protocolManager.invokeOutgoing(command, this) != null) {
          return;
       }
 
-      if (logger.isTraceEnabled()) {
-         tracePhysicalSend(transportConnection, command);
-      }
+      logCommand(command, false);
 
       try {
          final ByteSequence bytes = outWireFormat.marshal(command);
@@ -774,39 +760,47 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
 
       recoverOperationContext();
 
-      if (me != null) {
-         //filter it like the other protocols
-         if (!(me instanceof ActiveMQRemoteDisconnectException)) {
-            ActiveMQClientLogger.LOGGER.connectionFailureDetected(this.transportConnection.getRemoteAddress(), me.getMessage(), me.getType());
-         }
-      }
       try {
-         if (this.getConnectionInfo() != null) {
-            protocolManager.removeConnection(getClientID(), this);
+         if (me != null) {
+            //filter it like the other protocols
+            if (!(me instanceof ActiveMQRemoteDisconnectException)) {
+               ActiveMQClientLogger.LOGGER.connectionFailureDetected(this.transportConnection.getProtocolConnection().getProtocolName(), this.transportConnection.getRemoteAddress(), me.getMessage(), me.getType());
+            }
          }
+         try {
+            if (this.getConnectionInfo() != null) {
+               protocolManager.removeConnection(getClientID(), this);
+            }
+         } finally {
+            try {
+               disconnect(false);
+            } catch (Throwable e) {
+               // it should never happen, but never say never
+               logger.debug("OpenWireConnection::disconnect failure", e);
+            }
+
+            // there may be some transactions not associated with sessions
+            // deal with them after sessions are removed via connection removal
+            operationContext.executeOnCompletion(new IOCallback() {
+               @Override
+               public void done() {
+                  rollbackInProgressLocalTransactions();
+               }
+
+               @Override
+               public void onError(int errorCode, String errorMessage) {
+                  rollbackInProgressLocalTransactions();
+               }
+            });
+         }
+         shutdown(true);
       } finally {
          try {
-            disconnect(false);
-         } catch (Throwable e) {
-            // it should never happen, but never say never
-            logger.debug("OpenWireConnection::disconnect failure", e);
+            transportConnection.close();
+         } catch (Throwable e2) {
+            logger.warn(e2.getMessage(), e2);
          }
-
-         // there may be some transactions not associated with sessions
-         // deal with them after sessions are removed via connection removal
-         operationContext.executeOnCompletion(new IOCallback() {
-            @Override
-            public void done() {
-               rollbackInProgressLocalTransactions();
-            }
-
-            @Override
-            public void onError(int errorCode, String errorMessage) {
-               rollbackInProgressLocalTransactions();
-            }
-         });
       }
-      shutdown(true);
    }
 
    private void delayedStop(final int waitTimeMillis, final String reason, Throwable cause) {
@@ -909,9 +903,9 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
          return;
       }
 
-      SimpleString qName = SimpleString.toSimpleString(dest.getPhysicalName());
+      SimpleString qName = SimpleString.of(dest.getPhysicalName());
 
-      AutoCreateResult autoCreateResult = internalSession.checkAutoCreate(new QueueConfiguration(qName)
+      AutoCreateResult autoCreateResult = internalSession.checkAutoCreate(QueueConfiguration.of(qName)
                                                                              .setRoutingType(dest.isQueue() ? RoutingType.ANYCAST : RoutingType.MULTICAST)
                                                                              .setDurable(!dest.isTemporary())
                                                                              .setTemporary(dest.isTemporary()));
@@ -1018,12 +1012,9 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       this.maxInactivityDuration = inactivityDuration;
 
       if (this.useKeepAlive) {
-         ttlCheck = protocolManager.getScheduledPool().schedule(new Runnable() {
-            @Override
-            public void run() {
-               if (inactivityDuration >= 0) {
-                  connectionEntry.ttl = inactivityDuration;
-               }
+         ttlCheck = protocolManager.getScheduledPool().schedule(() -> {
+            if (inactivityDuration >= 0) {
+               connectionEntry.ttl = inactivityDuration;
             }
          }, inactivityDurationInitialDelay, TimeUnit.MILLISECONDS);
          checkInactivity();
@@ -1150,7 +1141,7 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
             logger.warn("OpenWire client sending a queue remove towards {}", dest.getPhysicalName());
          }
          try {
-            server.destroyQueue(new SimpleString(dest.getPhysicalName()), getRemotingConnection());
+            server.destroyQueue(SimpleString.of(dest.getPhysicalName()), getRemotingConnection());
          } catch (ActiveMQNonExistentQueueException neq) {
             //this is ok, ActiveMQ 5 allows this and will actually do it quite often
             logger.debug("queue never existed");
@@ -1246,18 +1237,21 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
 
          // Avoid replaying dup commands
          if (!ss.getProducerIds().contains(info.getProducerId())) {
-            ActiveMQDestination destination = info.getDestination();
+            final ActiveMQDestination destination = info.getDestination();
+            final AMQSession session = getSession(info.getProducerId().getParentId());
 
-            if (destination != null && !AdvisorySupport.isAdvisoryTopic(destination)) {
-               OpenWireConnection.this.addDestination(new DestinationInfo(getContext().getConnectionId(), DestinationInfo.ADD_OPERATION_TYPE, destination));
+            if (destination != null) {
+               session.checkDestinationForSendPermission(destination);
+
+               if (!AdvisorySupport.isAdvisoryTopic(destination)) {
+                  OpenWireConnection.this.addDestination(new DestinationInfo(getContext().getConnectionId(), DestinationInfo.ADD_OPERATION_TYPE, destination));
+               }
             }
 
             ss.addProducer(info);
-            getSession(info.getProducerId().getParentId()).getCoreSession().addProducer(
-                  info.getProducerId().toString(),
-                  OpenWireProtocolManagerFactory.OPENWIRE_PROTOCOL_NAME,
-                  info.getDestination() != null ? info.getDestination().getPhysicalName() : null);
-
+            session.getCoreSession().addProducer(info.getProducerId().toString(),
+                                                 OpenWireProtocolManagerFactory.OPENWIRE_PROTOCOL_NAME,
+                                                 info.getDestination() != null ? info.getDestination().getPhysicalName() : null);
          }
          return null;
       }
@@ -1475,7 +1469,7 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
       @Override
       public Response processAddSession(SessionInfo info) throws Exception {
          // Avoid replaying dup commands
-         if (!state.getSessionIds().contains(info.getSessionId())) {
+         if (state != null && !state.getSessionIds().contains(info.getSessionId())) {
             addSession(info);
             state.addSession(info);
          }
@@ -1897,5 +1891,26 @@ public class OpenWireConnection extends AbstractRemotingConnection implements Se
 
    public CoreMessageObjectPools getCoreMessageObjectPools() {
       return coreMessageObjectPools;
+   }
+
+   public void logCommand(Command command, boolean in) {
+      if (logger.isTraceEnabled()) {
+         StringBuilder message = new StringBuilder()
+            .append("OpenWire(")
+            .append(getRemoteAddress())
+            .append(", ")
+            .append(this.getID())
+            .append("):");
+
+         if (in) {
+            message.append(" IN << ");
+         } else {
+            message.append("OUT >> ");
+         }
+
+         message.append((command == null ? "NULL" : command));
+
+         logger.trace(message.toString());
+      }
    }
 }

@@ -28,8 +28,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.TransportConfiguration;
-import org.apache.activemq.artemis.api.core.client.FailoverEventListener;
-import org.apache.activemq.artemis.api.core.client.FailoverEventType;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.DivertConfiguration;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
@@ -39,10 +37,14 @@ import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.ReplicatedBackupUtils;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
 import org.apache.activemq.artemis.utils.ReusableLatch;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReplicationWithDivertTest extends ActiveMQTestBase {
 
@@ -77,7 +79,7 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
    static final ReusableLatch flagSyncWait = new ReusableLatch(1);
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -97,14 +99,14 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
       backupConfig = createDefaultInVMConfig().setBindingsDirectory(getBindingsDir(0, true)).
          setJournalDirectory(getJournalDir(0, true)).setPagingDirectory(getPageDir(0, true)).
          setLargeMessagesDirectory(getLargeMessagesDir(0, true));
-      backupConfig.addQueueConfiguration(new QueueConfiguration(SOURCE_QUEUE).setRoutingType(RoutingType.ANYCAST));
-      backupConfig.addQueueConfiguration(new QueueConfiguration(TARGET_QUEUE).setRoutingType(RoutingType.ANYCAST));
+      backupConfig.addQueueConfiguration(QueueConfiguration.of(SOURCE_QUEUE).setRoutingType(RoutingType.ANYCAST));
+      backupConfig.addQueueConfiguration(QueueConfiguration.of(TARGET_QUEUE).setRoutingType(RoutingType.ANYCAST));
 
       DivertConfiguration divertConfiguration = new DivertConfiguration().setName("Test").setAddress(SOURCE_QUEUE).setForwardingAddress(TARGET_QUEUE).setRoutingName("Test");
 
       primaryConfig = createDefaultInVMConfig();
-      primaryConfig.addQueueConfiguration(new QueueConfiguration(SOURCE_QUEUE).setRoutingType(RoutingType.ANYCAST));
-      primaryConfig.addQueueConfiguration(new QueueConfiguration(TARGET_QUEUE).setRoutingType(RoutingType.ANYCAST));
+      primaryConfig.addQueueConfiguration(QueueConfiguration.of(SOURCE_QUEUE).setRoutingType(RoutingType.ANYCAST));
+      primaryConfig.addQueueConfiguration(QueueConfiguration.of(TARGET_QUEUE).setRoutingType(RoutingType.ANYCAST));
       primaryConfig.addDivertConfiguration(divertConfiguration);
 
       backupConfig.addDivertConfiguration(divertConfiguration);
@@ -119,11 +121,11 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
       waitForServerToStart(primaryServer);
 
       // Just to make sure the expression worked
-      Assert.assertEquals(10000, factory.getMinLargeMessageSize());
-      Assert.assertEquals(10000, factory.getProducerWindowSize());
-      Assert.assertEquals(100, factory.getRetryInterval());
-      Assert.assertEquals(-1, factory.getReconnectAttempts());
-      Assert.assertTrue(factory.isHA());
+      assertEquals(10000, factory.getMinLargeMessageSize());
+      assertEquals(10000, factory.getProducerWindowSize());
+      assertEquals(100, factory.getRetryInterval());
+      assertEquals(-1, factory.getReconnectAttempts());
+      assertTrue(factory.isHA());
 
       connection = (ActiveMQConnection) factory.createConnection();
       session = connection.createSession(true, Session.SESSION_TRANSACTED);
@@ -141,7 +143,7 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
       waitForServerToStart(backupServer);
    }
 
-   @After
+   @AfterEach
    public void stopServers() throws Exception {
       if (connection != null) {
          try {
@@ -166,31 +168,23 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
    public void testSendLargeMessage() throws Exception {
 
       final CountDownLatch failedOver = new CountDownLatch(1);
-      connection.setFailoverListener(new FailoverEventListener() {
-         @Override
-         public void failoverEvent(FailoverEventType eventType) {
-            failedOver.countDown();
-         }
-      });
+      connection.setFailoverListener(eventType -> failedOver.countDown());
       Thread t;
 
       final int numberOfMessage = 5;
       {
          final MapMessage message = createLargeMessage();
 
-         t = new Thread() {
-            @Override
-            public void run() {
-               try {
-                  for (int i = 0; i < numberOfMessage; i++) {
-                     producer.send(message);
-                     session.commit();
-                  }
-               } catch (JMSException expected) {
-                  expected.printStackTrace();
+         t = new Thread(() -> {
+            try {
+               for (int i = 0; i < numberOfMessage; i++) {
+                  producer.send(message);
+                  session.commit();
                }
+            } catch (JMSException expected) {
+               expected.printStackTrace();
             }
-         };
+         });
       }
 
       t.start();
@@ -205,10 +199,10 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
          for (int msgi = 0; msgi < numberOfMessage; msgi++) {
             MapMessage message = (MapMessage) consumer.receive(5000);
 
-            Assert.assertNotNull(message);
+            assertNotNull(message);
 
             for (int i = 0; i < 10; i++) {
-               Assert.assertEquals(200 * 1024, message.getBytes("test" + i).length);
+               assertEquals(200 * 1024, message.getBytes("test" + i).length);
             }
 
             session.commit();
@@ -216,9 +210,9 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
          consumer.close();
       }
 
-      Assert.assertFalse(t.isAlive());
+      assertFalse(t.isAlive());
       primaryServer.fail(true);
-      Assert.assertTrue(failedOver.await(10, TimeUnit.SECONDS));
+      assertTrue(failedOver.await(10, TimeUnit.SECONDS));
 
       {
          MessageConsumer consumer = session.createConsumer(targetQueue);
@@ -228,10 +222,10 @@ public class ReplicationWithDivertTest extends ActiveMQTestBase {
          for (int msgi = 0; msgi < numberOfMessage; msgi++) {
             MapMessage message = (MapMessage) consumer.receive(5000);
 
-            Assert.assertNotNull(message);
+            assertNotNull(message);
 
             for (int i = 0; i < 10; i++) {
-               Assert.assertEquals(200 * 1024, message.getBytes("test" + i).length);
+               assertEquals(200 * 1024, message.getBytes("test" + i).length);
             }
 
             session.commit();

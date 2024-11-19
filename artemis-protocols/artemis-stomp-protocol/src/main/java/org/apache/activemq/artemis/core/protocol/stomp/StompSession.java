@@ -26,6 +26,7 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 
+import io.netty.channel.EventLoop;
 import org.apache.activemq.artemis.api.core.ActiveMQBuffer;
 import org.apache.activemq.artemis.api.core.ActiveMQQueueExistsException;
 import org.apache.activemq.artemis.api.core.ICoreMessage;
@@ -85,6 +86,8 @@ public class StompSession implements SessionCallback {
 
    private boolean txPending = false;
 
+   private final EventLoop eventLoop;
+
    public synchronized void begin() {
       txPending = true;
    }
@@ -101,6 +104,7 @@ public class StompSession implements SessionCallback {
       this.connection = connection;
       this.manager = manager;
       this.sessionContext = sessionContext;
+      eventLoop = connection.getTransportConnection().getEventLoop();
    }
 
    @Override
@@ -177,9 +181,15 @@ public class StompSession implements SessionCallback {
                afterDeliveryTasks.offer(new PendingTask() {
                   @Override
                   public void run() throws Exception {
-                     //we ack and commit only if the send is successful
-                     session.acknowledge(consumerID, messageID);
-                     session.commit();
+                     eventLoop.execute(() -> {
+                        try {
+                           //we ack and commit only if the send is successful
+                           session.acknowledge(consumerID, messageID);
+                           session.commit();
+                        } catch (Throwable e) {
+                           logger.warn(e.getMessage(), e);
+                        }
+                     });
                   }
                });
             }
@@ -297,9 +307,9 @@ public class StompSession implements SessionCallback {
                                                    String selector,
                                                    String ack,
                                                    Integer consumerWindowSize) throws Exception {
-      SimpleString address = SimpleString.toSimpleString(destination);
-      SimpleString queueName = SimpleString.toSimpleString(destination);
-      SimpleString selectorSimple = SimpleString.toSimpleString(selector);
+      SimpleString address = SimpleString.of(destination);
+      SimpleString queueName = SimpleString.of(destination);
+      SimpleString selectorSimple = SimpleString.of(selector);
       final int finalConsumerWindowSize;
 
       if (consumerWindowSize != null) {
@@ -319,17 +329,17 @@ public class StompSession implements SessionCallback {
             if (clientID == null) {
                throw BUNDLE.missingClientID();
             }
-            queueName = SimpleString.toSimpleString(clientID + "." + durableSubscriptionName);
+            queueName = SimpleString.of(clientID + "." + durableSubscriptionName);
             if (manager.getServer().locateQueue(queueName) == null) {
                try {
-                  session.createQueue(new QueueConfiguration(queueName).setAddress(address).setFilterString(selectorSimple));
+                  session.createQueue(QueueConfiguration.of(queueName).setAddress(address).setFilterString(selectorSimple));
                } catch (ActiveMQQueueExistsException e) {
                   // ignore; can be caused by concurrent durable subscribers
                }
             }
          } else {
             queueName = UUIDGenerator.getInstance().generateSimpleStringUUID();
-            session.createQueue(new QueueConfiguration(queueName).setAddress(address).setFilterString(selectorSimple).setDurable(false).setTemporary(true));
+            session.createQueue(QueueConfiguration.of(queueName).setAddress(address).setFilterString(selectorSimple).setDurable(false).setTemporary(true));
          }
       }
       final ServerConsumer consumer = session.createConsumer(consumerID, queueName, multicast ? null : selectorSimple, false, false, 0);
@@ -364,7 +374,7 @@ public class StompSession implements SessionCallback {
       }
 
       if (durableSubscriptionName != null && clientID != null) {
-         SimpleString queueName = SimpleString.toSimpleString(clientID + "." + durableSubscriptionName);
+         SimpleString queueName = SimpleString.of(clientID + "." + durableSubscriptionName);
          if (manager.getServer().locateQueue(queueName) != null) {
             session.deleteQueue(queueName);
          }
@@ -420,7 +430,7 @@ public class StompSession implements SessionCallback {
 
       StorageManager storageManager = ((ServerSessionImpl) session).getStorageManager();
       long id = storageManager.generateID();
-      LargeServerMessage largeMessage = storageManager.createLargeMessage(id, message);
+      LargeServerMessage largeMessage = storageManager.createCoreLargeMessage(id, message);
 
       ActiveMQBuffer body = message.getReadOnlyBodyBuffer();
       byte[] bytes = new byte[body.readableBytes()];

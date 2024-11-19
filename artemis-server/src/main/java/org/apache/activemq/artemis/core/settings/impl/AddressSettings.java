@@ -28,7 +28,6 @@ import org.apache.activemq.artemis.core.journal.EncodingSupport;
 import org.apache.activemq.artemis.core.settings.Mergeable;
 import org.apache.activemq.artemis.utils.bean.MetaBean;
 import org.apache.activemq.artemis.utils.BufferHelper;
-import org.apache.activemq.artemis.utils.DataConstants;
 
 /**
  * Configuration settings that are applied on the address level
@@ -108,9 +107,9 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
 
    public static final boolean DEFAULT_AUTO_CREATE_EXPIRY_RESOURCES = false;
 
-   public static final SimpleString DEFAULT_EXPIRY_QUEUE_PREFIX = SimpleString.toSimpleString("EXP.");
+   public static final SimpleString DEFAULT_EXPIRY_QUEUE_PREFIX = SimpleString.of("EXP.");
 
-   public static final SimpleString DEFAULT_EXPIRY_QUEUE_SUFFIX = SimpleString.toSimpleString("");
+   public static final SimpleString DEFAULT_EXPIRY_QUEUE_SUFFIX = SimpleString.of("");
 
    public static final long DEFAULT_EXPIRY_DELAY = -1;
 
@@ -135,9 +134,9 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
 
    public static final boolean DEFAULT_AUTO_CREATE_DEAD_LETTER_RESOURCES = false;
 
-   public static final SimpleString DEFAULT_DEAD_LETTER_QUEUE_PREFIX = SimpleString.toSimpleString("DLQ.");
+   public static final SimpleString DEFAULT_DEAD_LETTER_QUEUE_PREFIX = SimpleString.of("DLQ.");
 
-   public static final SimpleString DEFAULT_DEAD_LETTER_QUEUE_SUFFIX = SimpleString.toSimpleString("");
+   public static final SimpleString DEFAULT_DEAD_LETTER_QUEUE_SUFFIX = SimpleString.of("");
 
    public static final boolean DEFAULT_ENABLE_METRICS = true;
 
@@ -534,8 +533,15 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
    static {
       metaBean.add(Integer.class, "queuePrefetch", (t, p) -> t.queuePrefetch = p, t -> t.queuePrefetch);
    }
+
+   static {
+      metaBean.add(Integer.class, "initialQueueBufferSize", (t, p) -> t.initialQueueBufferSize = p, t -> t.initialQueueBufferSize);
+   }
+   private Integer initialQueueBufferSize = null;
+
    //from amq5
    //make it transient
+   @Deprecated
    private transient Integer queuePrefetch = null;
 
    public AddressSettings(AddressSettings other) {
@@ -1134,10 +1140,12 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
       return this;
    }
 
+   @Deprecated
    public int getQueuePrefetch() {
       return queuePrefetch != null ? queuePrefetch : AddressSettings.DEFAULT_QUEUE_PREFETCH;
    }
 
+   @Deprecated
    public AddressSettings setQueuePrefetch(int queuePrefetch) {
       this.queuePrefetch = queuePrefetch;
       return this;
@@ -1278,6 +1286,15 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
 
    public AddressSettings setIDCacheSize(int idCacheSize) {
       this.idCacheSize = idCacheSize;
+      return this;
+   }
+
+   public Integer getInitialQueueBufferSize() {
+      return initialQueueBufferSize;
+   }
+
+   public AddressSettings setInitialQueueBufferSize(int initialQueueBufferSize) {
+      this.initialQueueBufferSize = initialQueueBufferSize;
       return this;
    }
 
@@ -1601,240 +1618,23 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
       if (buffer.readableBytes() > 0) {
          prefetchPageMessages = BufferHelper.readNullableInteger(buffer);
       }
+
+      // WARNING: no more additions, this method is deprecated, any current persist usage should be in JSON format
+      //          This method serves the purpose of loading older records, but any new records should be on the new format
    }
 
    @Override
    public int getEncodeSize() {
+      ////// this method is no longer in use, any new usage of encoding an AddressSetting should be through its JSON format
 
-      return BufferHelper.sizeOfNullableSimpleString(addressFullMessagePolicy != null ? addressFullMessagePolicy.toString() : null) +
-         BufferHelper.sizeOfNullableLong(maxSizeBytes) +
-         BufferHelper.sizeOfNullableLong(pageSizeBytes == null ? null : Long.valueOf(pageSizeBytes)) +
-         BufferHelper.sizeOfNullableInteger(pageCacheMaxSize) +
-         BufferHelper.sizeOfNullableBoolean(dropMessagesWhenFull) +
-         BufferHelper.sizeOfNullableInteger(maxDeliveryAttempts) +
-         BufferHelper.sizeOfNullableInteger(messageCounterHistoryDayLimit) +
-         BufferHelper.sizeOfNullableLong(redeliveryDelay) +
-         BufferHelper.sizeOfNullableDouble(redeliveryMultiplier) +
-         BufferHelper.sizeOfNullableDouble(redeliveryCollisionAvoidanceFactor) +
-         BufferHelper.sizeOfNullableLong(maxRedeliveryDelay) +
-         SimpleString.sizeofNullableString(deadLetterAddress) +
-         SimpleString.sizeofNullableString(expiryAddress) +
-         BufferHelper.sizeOfNullableLong(expiryDelay) +
-         BufferHelper.sizeOfNullableLong(minExpiryDelay) +
-         BufferHelper.sizeOfNullableLong(maxExpiryDelay) +
-         BufferHelper.sizeOfNullableBoolean(defaultLastValueQueue) +
-         BufferHelper.sizeOfNullableLong(redistributionDelay) +
-         BufferHelper.sizeOfNullableBoolean(sendToDLAOnNoRoute) +
-         BufferHelper.sizeOfNullableLong(slowConsumerCheckPeriod) +
-         BufferHelper.sizeOfNullableLong(slowConsumerThreshold) +
-         BufferHelper.sizeOfNullableSimpleString(slowConsumerPolicy != null ? slowConsumerPolicy.toString() : null) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateJmsQueues) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteJmsQueues) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateJmsTopics) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteJmsTopics) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateQueues) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteQueues) + BufferHelper.sizeOfNullableSimpleString(configDeleteQueues != null ? configDeleteQueues.toString() : null) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateAddresses) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteAddresses) + BufferHelper.sizeOfNullableSimpleString(configDeleteAddresses != null ? configDeleteAddresses.toString() : null) +
-         BufferHelper.sizeOfNullableSimpleString(configDeleteDiverts != null ? configDeleteDiverts.toString() : null) +
-         BufferHelper.sizeOfNullableInteger(managementBrowsePageSize) +
-         BufferHelper.sizeOfNullableLong(maxSizeBytesRejectThreshold) +
-         BufferHelper.sizeOfNullableInteger(defaultMaxConsumers) +
-         BufferHelper.sizeOfNullableBoolean(defaultPurgeOnNoConsumers) +
-         DataConstants.SIZE_BYTE +
-         DataConstants.SIZE_BYTE +
-         BufferHelper.sizeOfNullableBoolean(defaultExclusiveQueue) +
-         BufferHelper.sizeOfNullableInteger(defaultConsumersBeforeDispatch) +
-         BufferHelper.sizeOfNullableLong(defaultDelayBeforeDispatch) +
-         BufferHelper.sizeOfNullableInteger(defaultConsumerWindowSize) +
-         SimpleString.sizeofNullableString(defaultLastValueKey) +
-         BufferHelper.sizeOfNullableBoolean(defaultNonDestructive) +
-         BufferHelper.sizeOfNullableLong(autoDeleteQueuesDelay) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteQueuesSkipUsageCheck) +
-         BufferHelper.sizeOfNullableLong(autoDeleteAddressesDelay) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteAddressesSkipUsageCheck) +
-         BufferHelper.sizeOfNullableBoolean(defaultGroupRebalance) +
-         BufferHelper.sizeOfNullableInteger(defaultGroupBuckets) +
-         SimpleString.sizeofNullableString(defaultGroupFirstKey) +
-         BufferHelper.sizeOfNullableLong(autoDeleteQueuesMessageCount) +
-         BufferHelper.sizeOfNullableBoolean(autoDeleteCreatedQueues) +
-         BufferHelper.sizeOfNullableLong(defaultRingSize) +
-         BufferHelper.sizeOfNullableLong(retroactiveMessageCount) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateDeadLetterResources) +
-         SimpleString.sizeofNullableString(deadLetterQueuePrefix) +
-         SimpleString.sizeofNullableString(deadLetterQueueSuffix) +
-         BufferHelper.sizeOfNullableBoolean(autoCreateExpiryResources) +
-         SimpleString.sizeofNullableString(expiryQueuePrefix) +
-         SimpleString.sizeofNullableString(expiryQueueSuffix) +
-         BufferHelper.sizeOfNullableBoolean(enableMetrics) +
-         BufferHelper.sizeOfNullableBoolean(defaultGroupRebalancePauseDispatch) +
-         BufferHelper.sizeOfNullableInteger(managementMessageAttributeSizeLimit) +
-         BufferHelper.sizeOfNullableInteger(slowConsumerThresholdMeasurementUnit.getValue()) +
-         BufferHelper.sizeOfNullableBoolean(enableIngressTimestamp) +
-         BufferHelper.sizeOfNullableLong(maxSizeMessages) +
-         BufferHelper.sizeOfNullableInteger(maxReadPageMessages) +
-         BufferHelper.sizeOfNullableInteger(maxReadPageBytes) +
-         BufferHelper.sizeOfNullableLong(pageLimitBytes) +
-         BufferHelper.sizeOfNullableLong(pageLimitMessages) +
-         BufferHelper.sizeOfNullableInteger(idCacheSize) +
-         BufferHelper.sizeOfNullableSimpleString(pageFullMessagePolicy != null ? pageFullMessagePolicy.toString() : null) +
-         BufferHelper.sizeOfNullableInteger(prefetchPageBytes) +
-         BufferHelper.sizeOfNullableInteger(prefetchPageMessages);
+      throw new UnsupportedOperationException("Encode of AddressSettings is no longer supported, please use JSON method and PersistAddressSettingJSON");
    }
 
    @Override
    public void encode(ActiveMQBuffer buffer) {
-      buffer.writeNullableSimpleString(addressFullMessagePolicy != null ? new SimpleString(addressFullMessagePolicy.toString()) : null);
+      ////// this method is no longer in use, any new usage of encoding an AddressSetting should be through its JSON format
 
-      BufferHelper.writeNullableLong(buffer, maxSizeBytes);
-
-      BufferHelper.writeNullableLong(buffer, pageSizeBytes == null ? null : Long.valueOf(pageSizeBytes));
-
-      BufferHelper.writeNullableInteger(buffer, pageCacheMaxSize);
-
-      BufferHelper.writeNullableBoolean(buffer, dropMessagesWhenFull);
-
-      BufferHelper.writeNullableInteger(buffer, maxDeliveryAttempts);
-
-      BufferHelper.writeNullableInteger(buffer, messageCounterHistoryDayLimit);
-
-      BufferHelper.writeNullableLong(buffer, redeliveryDelay);
-
-      BufferHelper.writeNullableDouble(buffer, redeliveryMultiplier);
-
-      BufferHelper.writeNullableLong(buffer, maxRedeliveryDelay);
-
-      buffer.writeNullableSimpleString(deadLetterAddress);
-
-      buffer.writeNullableSimpleString(expiryAddress);
-
-      BufferHelper.writeNullableLong(buffer, expiryDelay);
-
-      BufferHelper.writeNullableBoolean(buffer, defaultLastValueQueue);
-
-      BufferHelper.writeNullableLong(buffer, redistributionDelay);
-
-      BufferHelper.writeNullableBoolean(buffer, sendToDLAOnNoRoute);
-
-      BufferHelper.writeNullableLong(buffer, slowConsumerThreshold);
-
-      BufferHelper.writeNullableLong(buffer, slowConsumerCheckPeriod);
-
-      buffer.writeNullableSimpleString(slowConsumerPolicy != null ? new SimpleString(slowConsumerPolicy.toString()) : null);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateJmsQueues);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteJmsQueues);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateJmsTopics);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteJmsTopics);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateQueues);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteQueues);
-
-      buffer.writeNullableSimpleString(configDeleteQueues != null ? new SimpleString(configDeleteQueues.toString()) : null);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateAddresses);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteAddresses);
-
-      buffer.writeNullableSimpleString(configDeleteAddresses != null ? new SimpleString(configDeleteAddresses.toString()) : null);
-
-      BufferHelper.writeNullableInteger(buffer, managementBrowsePageSize);
-
-      BufferHelper.writeNullableLong(buffer, maxSizeBytesRejectThreshold);
-
-      BufferHelper.writeNullableInteger(buffer, defaultMaxConsumers);
-
-      BufferHelper.writeNullableBoolean(buffer, defaultPurgeOnNoConsumers);
-
-      buffer.writeByte(defaultQueueRoutingType == null ? -1 : defaultQueueRoutingType.getType());
-
-      buffer.writeByte(defaultAddressRoutingType == null ? -1 : defaultAddressRoutingType.getType());
-
-      BufferHelper.writeNullableBoolean(buffer, defaultExclusiveQueue);
-
-      BufferHelper.writeNullableInteger(buffer, defaultConsumersBeforeDispatch);
-
-      BufferHelper.writeNullableLong(buffer, defaultDelayBeforeDispatch);
-
-      BufferHelper.writeNullableInteger(buffer, defaultConsumerWindowSize);
-
-      buffer.writeNullableSimpleString(defaultLastValueKey);
-
-      BufferHelper.writeNullableBoolean(buffer, defaultNonDestructive);
-
-      BufferHelper.writeNullableLong(buffer, autoDeleteQueuesDelay);
-
-      BufferHelper.writeNullableLong(buffer, autoDeleteAddressesDelay);
-
-      BufferHelper.writeNullableBoolean(buffer, defaultGroupRebalance);
-
-      BufferHelper.writeNullableInteger(buffer, defaultGroupBuckets);
-
-      BufferHelper.writeNullableLong(buffer, autoDeleteQueuesMessageCount);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteCreatedQueues);
-
-      BufferHelper.writeNullableLong(buffer, defaultRingSize);
-
-      BufferHelper.writeNullableDouble(buffer, redeliveryCollisionAvoidanceFactor);
-
-      buffer.writeNullableSimpleString(defaultGroupFirstKey);
-
-      BufferHelper.writeNullableLong(buffer, retroactiveMessageCount);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateDeadLetterResources);
-
-      buffer.writeNullableSimpleString(deadLetterQueuePrefix);
-
-      buffer.writeNullableSimpleString(deadLetterQueueSuffix);
-
-      BufferHelper.writeNullableBoolean(buffer, autoCreateExpiryResources);
-
-      buffer.writeNullableSimpleString(expiryQueuePrefix);
-
-      buffer.writeNullableSimpleString(expiryQueueSuffix);
-
-      BufferHelper.writeNullableLong(buffer, minExpiryDelay);
-
-      BufferHelper.writeNullableLong(buffer, maxExpiryDelay);
-
-      BufferHelper.writeNullableBoolean(buffer, enableMetrics);
-
-      BufferHelper.writeNullableBoolean(buffer, defaultGroupRebalancePauseDispatch);
-
-      BufferHelper.writeNullableInteger(buffer, managementMessageAttributeSizeLimit);
-
-      BufferHelper.writeNullableInteger(buffer, slowConsumerThresholdMeasurementUnit == null ? null : slowConsumerThresholdMeasurementUnit.getValue());
-
-      BufferHelper.writeNullableBoolean(buffer, enableIngressTimestamp);
-
-      buffer.writeNullableSimpleString(configDeleteDiverts != null ? new SimpleString(configDeleteDiverts.toString()) : null);
-
-      BufferHelper.writeNullableLong(buffer, maxSizeMessages);
-
-      BufferHelper.writeNullableInteger(buffer, maxReadPageBytes);
-
-      BufferHelper.writeNullableInteger(buffer, maxReadPageMessages);
-
-      BufferHelper.writeNullableLong(buffer, pageLimitBytes);
-
-      BufferHelper.writeNullableLong(buffer, pageLimitMessages);
-
-      buffer.writeNullableSimpleString(pageFullMessagePolicy != null ? new SimpleString(pageFullMessagePolicy.toString()) : null);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteQueuesSkipUsageCheck);
-
-      BufferHelper.writeNullableBoolean(buffer, autoDeleteAddressesSkipUsageCheck);
-
-      BufferHelper.writeNullableInteger(buffer, idCacheSize);
-
-      BufferHelper.writeNullableInteger(buffer, prefetchPageBytes);
-
-      BufferHelper.writeNullableInteger(buffer, prefetchPageMessages);
+      throw new UnsupportedOperationException("Encode of AddressSettings is no longer supported, please use JSON method and PersistAddressSettingJSON");
    }
 
    @Override
@@ -1998,6 +1798,9 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
          return false;
       if (!Objects.equals(idCacheSize, that.idCacheSize))
          return false;
+      if (!Objects.equals(initialQueueBufferSize, that.initialQueueBufferSize)) {
+         return false;
+      }
       return Objects.equals(queuePrefetch, that.queuePrefetch);
    }
 
@@ -2080,11 +1883,13 @@ public class AddressSettings implements Mergeable<AddressSettings>, Serializable
       result = 31 * result + (enableIngressTimestamp != null ? enableIngressTimestamp.hashCode() : 0);
       result = 31 * result + (idCacheSize != null ? idCacheSize.hashCode() : 0);
       result = 31 * result + (queuePrefetch != null ? queuePrefetch.hashCode() : 0);
+      result = 31 * result + (initialQueueBufferSize != null ? initialQueueBufferSize.hashCode() : 0);
       return result;
    }
 
    @Override
    public String toString() {
-      return "AddressSettings{" + "addressFullMessagePolicy=" + addressFullMessagePolicy + ", maxSizeBytes=" + maxSizeBytes + ", maxReadPageBytes=" + maxReadPageBytes + ", maxReadPageMessages=" + maxReadPageMessages + ", prefetchPageBytes=" + prefetchPageBytes + ", prefetchPageMessages=" + prefetchPageMessages + ", pageLimitBytes=" + pageLimitBytes + ", pageLimitMessages=" + pageLimitMessages + ", pageFullMessagePolicy=" + pageFullMessagePolicy + ", maxSizeMessages=" + maxSizeMessages + ", pageSizeBytes=" + pageSizeBytes + ", pageMaxCache=" + pageCacheMaxSize + ", dropMessagesWhenFull=" + dropMessagesWhenFull + ", maxDeliveryAttempts=" + maxDeliveryAttempts + ", messageCounterHistoryDayLimit=" + messageCounterHistoryDayLimit + ", redeliveryDelay=" + redeliveryDelay + ", redeliveryMultiplier=" + redeliveryMultiplier + ", redeliveryCollisionAvoidanceFactor=" + redeliveryCollisionAvoidanceFactor + ", maxRedeliveryDelay=" + maxRedeliveryDelay + ", deadLetterAddress=" + deadLetterAddress + ", expiryAddress=" + expiryAddress + ", expiryDelay=" + expiryDelay + ", minExpiryDelay=" + minExpiryDelay + ", maxExpiryDelay=" + maxExpiryDelay + ", defaultLastValueQueue=" + defaultLastValueQueue + ", defaultLastValueKey=" + defaultLastValueKey + ", defaultNonDestructive=" + defaultNonDestructive + ", defaultExclusiveQueue=" + defaultExclusiveQueue + ", defaultGroupRebalance=" + defaultGroupRebalance + ", defaultGroupRebalancePauseDispatch=" + defaultGroupRebalancePauseDispatch + ", defaultGroupBuckets=" + defaultGroupBuckets + ", defaultGroupFirstKey=" + defaultGroupFirstKey + ", redistributionDelay=" + redistributionDelay + ", sendToDLAOnNoRoute=" + sendToDLAOnNoRoute + ", slowConsumerThreshold=" + slowConsumerThreshold + ", slowConsumerThresholdMeasurementUnit=" + slowConsumerThresholdMeasurementUnit + ", slowConsumerCheckPeriod=" + slowConsumerCheckPeriod + ", slowConsumerPolicy=" + slowConsumerPolicy + ", autoCreateJmsQueues=" + autoCreateJmsQueues + ", autoDeleteJmsQueues=" + autoDeleteJmsQueues + ", autoCreateJmsTopics=" + autoCreateJmsTopics + ", autoDeleteJmsTopics=" + autoDeleteJmsTopics + ", autoCreateQueues=" + autoCreateQueues + ", autoDeleteQueues=" + autoDeleteQueues + ", autoDeleteCreatedQueues=" + autoDeleteCreatedQueues + ", autoDeleteQueuesDelay=" + autoDeleteQueuesDelay + ", autoDeleteQueuesSkipUsageCheck=" + autoDeleteQueuesSkipUsageCheck + ", autoDeleteQueuesMessageCount=" + autoDeleteQueuesMessageCount + ", defaultRingSize=" + defaultRingSize + ", retroactiveMessageCount=" + retroactiveMessageCount + ", configDeleteQueues=" + configDeleteQueues + ", autoCreateAddresses=" + autoCreateAddresses + ", autoDeleteAddresses=" + autoDeleteAddresses + ", autoDeleteAddressesDelay=" + autoDeleteAddressesDelay + ", autoDeleteAddressesSkipUsageCheck=" + autoDeleteAddressesSkipUsageCheck + ", configDeleteAddresses=" + configDeleteAddresses + ", configDeleteDiverts=" + configDeleteDiverts + ", managementBrowsePageSize=" + managementBrowsePageSize + ", maxSizeBytesRejectThreshold=" + maxSizeBytesRejectThreshold + ", defaultMaxConsumers=" + defaultMaxConsumers + ", defaultPurgeOnNoConsumers=" + defaultPurgeOnNoConsumers + ", defaultConsumersBeforeDispatch=" + defaultConsumersBeforeDispatch + ", defaultDelayBeforeDispatch=" + defaultDelayBeforeDispatch + ", defaultQueueRoutingType=" + defaultQueueRoutingType + ", defaultAddressRoutingType=" + defaultAddressRoutingType + ", defaultConsumerWindowSize=" + defaultConsumerWindowSize + ", autoCreateDeadLetterResources=" + autoCreateDeadLetterResources + ", deadLetterQueuePrefix=" + deadLetterQueuePrefix + ", deadLetterQueueSuffix=" + deadLetterQueueSuffix + ", autoCreateExpiryResources=" + autoCreateExpiryResources + ", expiryQueuePrefix=" + expiryQueuePrefix + ", expiryQueueSuffix=" + expiryQueueSuffix + ", enableMetrics=" + enableMetrics + ", managementMessageAttributeSizeLimit=" + managementMessageAttributeSizeLimit + ", enableIngressTimestamp=" + enableIngressTimestamp + ", idCacheSize=" + idCacheSize + ", queuePrefetch=" + queuePrefetch + '}';
+      return "AddressSettings{" + "addressFullMessagePolicy=" + addressFullMessagePolicy + ", maxSizeBytes=" + maxSizeBytes + ", maxReadPageBytes=" + maxReadPageBytes + ", maxReadPageMessages=" + maxReadPageMessages + ", prefetchPageBytes=" + prefetchPageBytes + ", prefetchPageMessages=" + prefetchPageMessages + ", pageLimitBytes=" + pageLimitBytes + ", pageLimitMessages=" + pageLimitMessages + ", pageFullMessagePolicy=" + pageFullMessagePolicy + ", maxSizeMessages=" + maxSizeMessages + ", pageSizeBytes=" + pageSizeBytes + ", pageMaxCache=" + pageCacheMaxSize + ", dropMessagesWhenFull=" + dropMessagesWhenFull + ", maxDeliveryAttempts=" + maxDeliveryAttempts + ", messageCounterHistoryDayLimit=" + messageCounterHistoryDayLimit + ", redeliveryDelay=" + redeliveryDelay + ", redeliveryMultiplier=" + redeliveryMultiplier + ", redeliveryCollisionAvoidanceFactor=" + redeliveryCollisionAvoidanceFactor + ", maxRedeliveryDelay=" + maxRedeliveryDelay + ", deadLetterAddress=" + deadLetterAddress + ", expiryAddress=" + expiryAddress + ", expiryDelay=" + expiryDelay + ", minExpiryDelay=" + minExpiryDelay + ", maxExpiryDelay=" + maxExpiryDelay + ", defaultLastValueQueue=" + defaultLastValueQueue + ", defaultLastValueKey=" + defaultLastValueKey + ", defaultNonDestructive=" + defaultNonDestructive + ", defaultExclusiveQueue=" + defaultExclusiveQueue + ", defaultGroupRebalance=" + defaultGroupRebalance + ", defaultGroupRebalancePauseDispatch=" + defaultGroupRebalancePauseDispatch + ", defaultGroupBuckets=" + defaultGroupBuckets + ", defaultGroupFirstKey=" + defaultGroupFirstKey + ", redistributionDelay=" + redistributionDelay + ", sendToDLAOnNoRoute=" + sendToDLAOnNoRoute + ", slowConsumerThreshold=" + slowConsumerThreshold + ", slowConsumerThresholdMeasurementUnit=" + slowConsumerThresholdMeasurementUnit + ", slowConsumerCheckPeriod=" + slowConsumerCheckPeriod + ", slowConsumerPolicy=" + slowConsumerPolicy + ", autoCreateJmsQueues=" + autoCreateJmsQueues + ", autoDeleteJmsQueues=" + autoDeleteJmsQueues + ", autoCreateJmsTopics=" + autoCreateJmsTopics + ", autoDeleteJmsTopics=" + autoDeleteJmsTopics + ", autoCreateQueues=" + autoCreateQueues + ", autoDeleteQueues=" + autoDeleteQueues + ", autoDeleteCreatedQueues=" + autoDeleteCreatedQueues + ", autoDeleteQueuesDelay=" + autoDeleteQueuesDelay + ", autoDeleteQueuesSkipUsageCheck=" + autoDeleteQueuesSkipUsageCheck + ", autoDeleteQueuesMessageCount=" + autoDeleteQueuesMessageCount + ", defaultRingSize=" + defaultRingSize + ", retroactiveMessageCount=" + retroactiveMessageCount + ", configDeleteQueues=" + configDeleteQueues + ", autoCreateAddresses=" + autoCreateAddresses + ", autoDeleteAddresses=" + autoDeleteAddresses + ", autoDeleteAddressesDelay=" + autoDeleteAddressesDelay + ", autoDeleteAddressesSkipUsageCheck=" + autoDeleteAddressesSkipUsageCheck + ", configDeleteAddresses=" + configDeleteAddresses + ", configDeleteDiverts=" + configDeleteDiverts + ", managementBrowsePageSize=" + managementBrowsePageSize + ", maxSizeBytesRejectThreshold=" + maxSizeBytesRejectThreshold + ", defaultMaxConsumers=" + defaultMaxConsumers + ", defaultPurgeOnNoConsumers=" + defaultPurgeOnNoConsumers + ", defaultConsumersBeforeDispatch=" + defaultConsumersBeforeDispatch + ", defaultDelayBeforeDispatch=" + defaultDelayBeforeDispatch + ", defaultQueueRoutingType=" + defaultQueueRoutingType + ", defaultAddressRoutingType=" + defaultAddressRoutingType + ", defaultConsumerWindowSize=" + defaultConsumerWindowSize + ", autoCreateDeadLetterResources=" + autoCreateDeadLetterResources + ", deadLetterQueuePrefix=" + deadLetterQueuePrefix + ", deadLetterQueueSuffix=" + deadLetterQueueSuffix + ", autoCreateExpiryResources=" + autoCreateExpiryResources + ", expiryQueuePrefix=" + expiryQueuePrefix + ", expiryQueueSuffix=" + expiryQueueSuffix + ", enableMetrics=" + enableMetrics + ", managementMessageAttributeSizeLimit=" + managementMessageAttributeSizeLimit + ", enableIngressTimestamp=" + enableIngressTimestamp + ", idCacheSize=" + idCacheSize + ", queuePrefetch=" + queuePrefetch + ", initialQueueBufferSize=" + initialQueueBufferSize
+             + '}';
    }
 }

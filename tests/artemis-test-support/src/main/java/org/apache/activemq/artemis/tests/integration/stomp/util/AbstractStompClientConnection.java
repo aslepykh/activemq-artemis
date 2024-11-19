@@ -223,7 +223,7 @@ public abstract class AbstractStompClientConnection implements StompClientConnec
    private boolean validateFrame(ClientStompFrame f) {
       String h = f.getHeader(Stomp.Headers.CONTENT_LENGTH);
       if (h != null) {
-         int len = Integer.valueOf(h);
+         int len = Integer.parseInt(h);
          if (f.getBody().getBytes(StandardCharsets.UTF_8).length < len) {
             return false;
          }
@@ -341,7 +341,9 @@ public abstract class AbstractStompClientConnection implements StompClientConnec
 
    @Override
    public void closeTransport() throws IOException {
-      transport.close();
+      if (transport != null) {
+         transport.close();
+      }
    }
 
    @Override

@@ -113,31 +113,25 @@ public class JmsConnectionStartStopTest extends TestSupport {
    }
 
    public void testConcurrentSessionCreateWithStart() throws Exception {
-      ThreadPoolExecutor executor = new ThreadPoolExecutor(50, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+      ThreadPoolExecutor executor = new ThreadPoolExecutor(50, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<>());
       final Vector<Throwable> exceptions = new Vector<>();
       final Random rand = new Random();
-      Runnable createSessionTask = new Runnable() {
-         @Override
-         public void run() {
-            try {
-               TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
-               stoppedConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            } catch (Exception e) {
-               exceptions.add(e);
-            }
+      Runnable createSessionTask = () -> {
+         try {
+            TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
+            stoppedConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+         } catch (Exception e) {
+            exceptions.add(e);
          }
       };
 
-      Runnable startStopTask = new Runnable() {
-         @Override
-         public void run() {
-            try {
-               TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
-               stoppedConnection.start();
-               stoppedConnection.stop();
-            } catch (Exception e) {
-               exceptions.add(e);
-            }
+      Runnable startStopTask = () -> {
+         try {
+            TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
+            stoppedConnection.start();
+            stoppedConnection.stop();
+         } catch (Exception e) {
+            exceptions.add(e);
          }
       };
 

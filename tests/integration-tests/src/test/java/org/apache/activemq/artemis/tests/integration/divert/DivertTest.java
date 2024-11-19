@@ -16,6 +16,12 @@
  */
 package org.apache.activemq.artemis.tests.integration.divert;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.MessageConsumer;
@@ -31,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
+import org.apache.activemq.artemis.api.core.ActiveMQAddressDoesNotExistException;
 import org.apache.activemq.artemis.api.core.ActiveMQIllegalStateException;
 import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
@@ -51,6 +58,7 @@ import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.server.ComponentConfigurationRoutingType;
 import org.apache.activemq.artemis.core.server.Divert;
 import org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl;
+import org.apache.activemq.artemis.core.server.impl.QueueManagerImpl;
 import org.apache.activemq.artemis.core.server.impl.ServiceRegistryImpl;
 import org.apache.activemq.artemis.core.server.transformer.Transformer;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
@@ -58,9 +66,9 @@ import org.apache.activemq.artemis.core.settings.impl.DeletionPolicy;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
+import org.apache.activemq.artemis.tests.util.Wait;
 import org.apache.activemq.command.ActiveMQTopic;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,9 +108,9 @@ public class DivertTest extends ActiveMQTestBase {
 
       connection.close();
 
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
-      Assert.assertEquals("CONSUMER_CREATED", message.getStringProperty("_AMQ_NotifType"));
+      assertEquals("CONSUMER_CREATED", message.getStringProperty("_AMQ_NotifType"));
    }
 
    @Test
@@ -125,17 +133,17 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -143,7 +151,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 1;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -156,32 +164,32 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
-         Assert.assertEquals("forwardAddress", message.getAddress());
+         assertEquals("forwardAddress", message.getAddress());
 
-         Assert.assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
+         assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
-         Assert.assertEquals("testAddress", message.getAddress());
+         assertEquals("testAddress", message.getAddress());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
    }
 
    @Test
@@ -198,7 +206,7 @@ public class DivertTest extends ActiveMQTestBase {
       server.start();
 
       try {
-         server.createQueue(new QueueConfiguration(name));
+         server.createQueue(QueueConfiguration.of(name));
          fail();
       } catch (ActiveMQIllegalStateException e) {
          // expected
@@ -222,9 +230,9 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      final SimpleString queueName1 = SimpleString.toSimpleString(testAddress);
+      final SimpleString queueName1 = SimpleString.of(testAddress);
 
-      final SimpleString queueName2 = SimpleString.toSimpleString(forwardAddress);
+      final SimpleString queueName2 = SimpleString.of(forwardAddress);
 
       { // this is setting up the queues
          ServerLocator locator = createInVMNonHALocator();
@@ -233,11 +241,11 @@ public class DivertTest extends ActiveMQTestBase {
 
          ClientSession session = sf.createSession(false, true, true);
 
-         session.createQueue(new QueueConfiguration(queueName1).setAddress(testAddress).setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of(queueName1).setAddress(testAddress).setRoutingType(RoutingType.ANYCAST));
 
-         session.createQueue(new QueueConfiguration(SimpleString.toSimpleString(testForConvert)).setAddress(testForConvert).setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of(SimpleString.of(testForConvert)).setAddress(testForConvert).setRoutingType(RoutingType.ANYCAST));
 
-         session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST));
       }
 
       ConnectionFactory coreCF = CFUtil.createConnectionFactory("CORE", "tcp://localhost:61616");
@@ -264,7 +272,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       for (int i = 0; i < 10; i++) {
          javax.jms.Message received =  consumerFromConvert.receive(5000);
-         Assert.assertNotNull(received);
+         assertNotNull(received);
          producer.send(received);
       }
 
@@ -275,12 +283,12 @@ public class DivertTest extends ActiveMQTestBase {
 
       for (int i = 0; i < 10; i++) {
          TextMessage textMessage = (TextMessage)consumer.receive(5000);
-         Assert.assertNotNull(textMessage);
-         Assert.assertEquals("text" + i, textMessage.getText());
+         assertNotNull(textMessage);
+         assertEquals("text" + i, textMessage.getText());
          //if (i % 2 == 0) Assert.assertEquals(i, textMessage.getIntProperty("key"));
       }
 
-      Assert.assertNull(consumer.receiveNoWait());
+      assertNull(consumer.receiveNoWait());
 
    }
 
@@ -304,17 +312,17 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -322,7 +330,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 1;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -337,26 +345,26 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
    }
 
    @Test
@@ -379,23 +387,23 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
       final int numMessages = 1;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -410,14 +418,14 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
    }
 
    @Test
@@ -428,7 +436,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final String expiryAddress = "expiryAddress";
 
-      AddressSettings expirySettings = new AddressSettings().setExpiryAddress(new SimpleString(expiryAddress));
+      AddressSettings expirySettings = new AddressSettings().setExpiryAddress(SimpleString.of(expiryAddress));
 
       DivertConfiguration divertConf = new DivertConfiguration().setName("divert1").setRoutingName("divert1").setAddress(testAddress).setForwardingAddress(forwardAddress);
 
@@ -444,19 +452,19 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, false, false);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress));
 
-      session.createQueue(new QueueConfiguration(expiryAddress));
+      session.createQueue(QueueConfiguration.of(expiryAddress));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -464,7 +472,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 1;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(true);
@@ -545,25 +553,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(testAddress).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -575,7 +583,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -588,50 +596,50 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer4.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -653,19 +661,19 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -678,14 +686,14 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
    }
 
    @Test
@@ -707,23 +715,23 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(testAddress).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(testAddress).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -735,7 +743,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -748,24 +756,24 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
-         Assert.assertEquals("forwardAddress", message.getAddress());
+         assertEquals("forwardAddress", message.getAddress());
 
-         Assert.assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
+         assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -792,21 +800,21 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
-      final SimpleString queueName2 = new SimpleString("queue2");
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName1 = SimpleString.of("queue1");
+      final SimpleString queueName2 = SimpleString.of("queue2");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -823,17 +831,17 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          for (int j = 0; j < consumers.length; j++) {
             ClientMessage message = consumers[j].receive(DivertTest.TIMEOUT);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(i, message.getObjectProperty(propKey));
-            Assert.assertEquals("forwardAddress" + (j + 1), message.getAddress());
-            Assert.assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
+            assertNotNull(message);
+            assertEquals(i, message.getObjectProperty(propKey));
+            assertEquals("forwardAddress" + (j + 1), message.getAddress());
+            assertEquals("testAddress", message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
             message.acknowledge();
          }
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
-      Assert.assertNull(consumer2.receiveImmediate());
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
    }
 
    @Test
@@ -845,7 +853,7 @@ public class DivertTest extends ActiveMQTestBase {
       DivertConfiguration divertConf = new DivertConfiguration().setName("divert1").setRoutingName("divert1").setAddress(testAddress).setForwardingAddress(forwardAddress).setExclusive(true);
 
 
-      QueueConfiguration q1 = new QueueConfiguration("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
+      QueueConfiguration q1 = QueueConfiguration.of("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
 
       Configuration config = createDefaultInVMConfig().addDivertConfiguration(divertConf).addQueueConfiguration(q1);
 
@@ -859,11 +867,11 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      Binding divert1 = server.getPostOffice().getBinding(new SimpleString("divert1"));
+      Binding divert1 = server.getPostOffice().getBinding(SimpleString.of("divert1"));
 
-      Assert.assertNotNull(divert1);
+      assertNotNull(divert1);
 
-      Assert.assertEquals(divert1.getRoutingName(), new SimpleString("divert2"));
+      assertEquals(divert1.getRoutingName(), SimpleString.of("divert2"));
    }
 
    @Test
@@ -875,7 +883,7 @@ public class DivertTest extends ActiveMQTestBase {
       DivertConfiguration divertConf = new DivertConfiguration().setName("divert1").setRoutingName("divert1").setAddress(testAddress).setForwardingAddress(forwardAddress).setExclusive(true);
 
 
-      QueueConfiguration q1 = new QueueConfiguration("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
+      QueueConfiguration q1 = QueueConfiguration.of("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
 
       Configuration config = createDefaultInVMConfig().addDivertConfiguration(divertConf).addQueueConfiguration(q1);
 
@@ -893,11 +901,11 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      Binding divert1 = server.getPostOffice().getBinding(new SimpleString("divert1"));
+      Binding divert1 = server.getPostOffice().getBinding(SimpleString.of("divert1"));
 
-      Assert.assertNotNull(divert1);
+      assertNotNull(divert1);
 
-      Assert.assertEquals(divert1.getRoutingName(), new SimpleString("divert2"));
+      assertEquals(divert1.getRoutingName(), SimpleString.of("divert2"));
    }
 
    @Test
@@ -909,7 +917,7 @@ public class DivertTest extends ActiveMQTestBase {
       DivertConfiguration divertConf = new DivertConfiguration().setName("divert1").setRoutingName("divert1").setAddress(testAddress).setForwardingAddress(forwardAddress).setExclusive(true);
 
 
-      QueueConfiguration q1 = new QueueConfiguration("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
+      QueueConfiguration q1 = QueueConfiguration.of("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
 
       Configuration config = createDefaultInVMConfig().addDivertConfiguration(divertConf).addQueueConfiguration(q1);
 
@@ -923,11 +931,11 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      Binding divert1 = server.getPostOffice().getBinding(new SimpleString("divert1"));
+      Binding divert1 = server.getPostOffice().getBinding(SimpleString.of("divert1"));
 
-      Assert.assertNotNull(divert1);
+      assertNotNull(divert1);
 
-      Assert.assertEquals(divert1.getRoutingName(), new SimpleString("divert1"));
+      assertEquals(divert1.getRoutingName(), SimpleString.of("divert1"));
    }
 
    @Test
@@ -939,7 +947,7 @@ public class DivertTest extends ActiveMQTestBase {
       DivertConfiguration divertConf = new DivertConfiguration().setName("divert1").setRoutingName("divert1").setAddress(testAddress).setForwardingAddress(forwardAddress).setExclusive(true);
 
 
-      QueueConfiguration q1 = new QueueConfiguration("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
+      QueueConfiguration q1 = QueueConfiguration.of("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
 
       AddressSettings addressSettings = new AddressSettings();
 
@@ -961,9 +969,9 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      Binding divert1 = server.getPostOffice().getBinding(new SimpleString("divert1"));
+      Binding divert1 = server.getPostOffice().getBinding(SimpleString.of("divert1"));
 
-      Assert.assertNull(divert1);
+      assertNull(divert1);
    }
 
    @Test
@@ -981,7 +989,7 @@ public class DivertTest extends ActiveMQTestBase {
       DivertConfiguration divertConf2 = new DivertConfiguration().setName("divert2").setRoutingName("divert2").setAddress(testAddress2).setForwardingAddress(forwardAddress2).setExclusive(true);
 
 
-      QueueConfiguration q1 = new QueueConfiguration("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
+      QueueConfiguration q1 = QueueConfiguration.of("forwardAddress1").setDurable(true).setRoutingType(RoutingType.ANYCAST);
 
       AddressSettings addressSettings = new AddressSettings();
 
@@ -1007,13 +1015,13 @@ public class DivertTest extends ActiveMQTestBase {
 
       server.start();
 
-      Binding divert1 = server.getPostOffice().getBinding(new SimpleString("divert1"));
+      Binding divert1 = server.getPostOffice().getBinding(SimpleString.of("divert1"));
 
-      Assert.assertNull(divert1);
+      assertNull(divert1);
 
-      Binding divert2 = server.getPostOffice().getBinding(new SimpleString("divert2"));
+      Binding divert2 = server.getPostOffice().getBinding(SimpleString.of("divert2"));
 
-      Assert.assertNotNull(divert2);
+      assertNotNull(divert2);
    }
 
 
@@ -1042,25 +1050,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1072,7 +1080,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -1085,50 +1093,50 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer4.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -1157,25 +1165,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1187,7 +1195,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -1200,40 +1208,40 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -1261,25 +1269,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1291,7 +1299,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -1304,30 +1312,30 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    // If no exclusive diverts match then non exclusive ones should be called
@@ -1359,25 +1367,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1389,12 +1397,12 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
 
-         message.putStringProperty(new SimpleString("animal"), new SimpleString("giraffe"));
+         message.putStringProperty(SimpleString.of("animal"), SimpleString.of("giraffe"));
 
          message.putIntProperty(propKey, i);
 
@@ -1412,48 +1420,48 @@ public class DivertTest extends ActiveMQTestBase {
       // message.acknowledge();
       // }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer4.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
 
-         message.putStringProperty(new SimpleString("animal"), new SimpleString("antelope"));
+         message.putStringProperty(SimpleString.of("animal"), SimpleString.of("antelope"));
 
          message.putIntProperty(propKey, i);
 
@@ -1463,20 +1471,20 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -1505,25 +1513,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1535,7 +1543,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -1548,9 +1556,9 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; ) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
 
@@ -1562,9 +1570,9 @@ public class DivertTest extends ActiveMQTestBase {
 
          message = consumer2.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
 
@@ -1576,30 +1584,30 @@ public class DivertTest extends ActiveMQTestBase {
 
          message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
 
          i++;
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
-      Assert.assertNull(consumer2.receiveImmediate());
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer4.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getObjectProperty(propKey));
+         assertEquals(i, message.getObjectProperty(propKey));
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
@@ -1630,25 +1638,25 @@ public class DivertTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      final SimpleString queueName1 = new SimpleString("queue1");
+      final SimpleString queueName1 = SimpleString.of("queue1");
 
-      final SimpleString queueName2 = new SimpleString("queue2");
+      final SimpleString queueName2 = SimpleString.of("queue2");
 
-      final SimpleString queueName3 = new SimpleString("queue3");
+      final SimpleString queueName3 = SimpleString.of("queue3");
 
-      final SimpleString queueName4 = new SimpleString("queue4");
+      final SimpleString queueName4 = SimpleString.of("queue4");
 
-      session.createQueue(new QueueConfiguration(queueName1).setAddress(forwardAddress1).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName1).setAddress(forwardAddress1).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName2).setAddress(forwardAddress2).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName2).setAddress(forwardAddress2).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName3).setAddress(forwardAddress3).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName3).setAddress(forwardAddress3).setDurable(false));
 
-      session.createQueue(new QueueConfiguration(queueName4).setAddress(testAddress).setDurable(false));
+      session.createQueue(QueueConfiguration.of(queueName4).setAddress(testAddress).setDurable(false));
 
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress));
 
       ClientConsumer consumer1 = session.createConsumer(queueName1);
 
@@ -1660,7 +1668,7 @@ public class DivertTest extends ActiveMQTestBase {
 
       final int numMessages = 10;
 
-      final SimpleString propKey = new SimpleString("testkey");
+      final SimpleString propKey = SimpleString.of("testkey");
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(false);
@@ -1673,60 +1681,55 @@ public class DivertTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer1.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer1.receiveImmediate());
+      assertNull(consumer1.receiveImmediate());
 
-      Assert.assertNull(consumer2.receiveImmediate());
+      assertNull(consumer2.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer3.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer3.receiveImmediate());
+      assertNull(consumer3.receiveImmediate());
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer4.receive(DivertTest.TIMEOUT);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals(i, message.getIntProperty(propKey).intValue());
+         assertEquals(i, message.getIntProperty(propKey).intValue());
 
          message.acknowledge();
       }
 
-      Assert.assertNull(consumer4.receiveImmediate());
+      assertNull(consumer4.receiveImmediate());
    }
 
    @Test
    public void testInjectedTransformer() throws Exception {
-      final SimpleString ADDRESS = new SimpleString("myAddress");
+      final SimpleString ADDRESS = SimpleString.of("myAddress");
       final String DIVERT = "myDivert";
 
       ServiceRegistryImpl serviceRegistry = new ServiceRegistryImpl();
-      Transformer transformer = new Transformer() {
-         @Override
-         public Message transform(Message message) {
-            return null;
-         }
-      };
+      Transformer transformer = message -> null;
       serviceRegistry.addDivertTransformer(DIVERT, transformer);
 
       ActiveMQServer server = addServer(new ActiveMQServerImpl(createBasicConfig(), null, null, null, serviceRegistry));
       server.start();
       server.waitForActivation(100, TimeUnit.MILLISECONDS);
-      server.createQueue(new QueueConfiguration("myQueue").setAddress(ADDRESS).setDurable(false));
+      server.createQueue(QueueConfiguration.of("myQueue").setAddress(ADDRESS).setDurable(false));
       server.deployDivert(new DivertConfiguration().setName(DIVERT).setAddress(ADDRESS.toString()).setForwardingAddress(ADDRESS.toString()));
       Collection<Binding> bindings = server.getPostOffice().getBindingsForAddress(ADDRESS).getBindings();
       Divert divert = null;
@@ -1738,20 +1741,20 @@ public class DivertTest extends ActiveMQTestBase {
       assertNotNull(divert);
       assertEquals(transformer, divert.getTransformer());
 
-      server.destroyDivert(SimpleString.toSimpleString(DIVERT));
+      server.destroyDivert(SimpleString.of(DIVERT));
       assertNull(serviceRegistry.getDivertTransformer(DIVERT, null));
    }
 
    @Test
    public void testProperties() throws Exception {
       final String testAddress = "testAddress";
-      final SimpleString queue = SimpleString.toSimpleString("queue");
+      final SimpleString queue = SimpleString.of("queue");
       final int COUNT = 25;
 
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultInVMConfig(), false));
       server.start();
 
-      server.createQueue(new QueueConfiguration(queue).setAddress(testAddress + (COUNT)).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(queue).setAddress(testAddress + (COUNT)).setRoutingType(RoutingType.ANYCAST));
       for (int i = 0; i < COUNT; i++) {
          server.deployDivert(new DivertConfiguration()
                                 .setName("divert" + i)
@@ -1764,15 +1767,154 @@ public class DivertTest extends ActiveMQTestBase {
       ClientSession session = sf.createSession(false, true, true);
       session.start();
 
-      ClientProducer producer = session.createProducer(new SimpleString(testAddress + "0"));
+      ClientProducer producer = session.createProducer(SimpleString.of(testAddress + "0"));
       ClientConsumer consumer1 = session.createConsumer(queue);
       ClientMessage message = session.createMessage(false);
       producer.send(message);
 
       message = consumer1.receive(DivertTest.TIMEOUT);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
       message.acknowledge();
-      Assert.assertEquals("testAddress" + COUNT, message.getAddress());
-      Assert.assertEquals("testAddress" + (COUNT - 1), message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
+      assertEquals("testAddress" + COUNT, message.getAddress());
+      assertEquals("testAddress" + (COUNT - 1), message.getStringProperty(Message.HDR_ORIGINAL_ADDRESS));
    }
+
+   @Test
+   public void testDivertToNewAddress() throws Exception {
+      final String queueName = "queue";
+      final String dummyQueueName = "dummy";
+      final String noDivertAutoCreateQName = "notAllowed";
+      final String propKey = "newQueue";
+      final String DIVERT = "myDivert";
+      final int numMessages = 10;
+
+      Transformer transformer = message -> message.setAddress(message.getStringProperty(propKey));
+
+      ServiceRegistryImpl serviceRegistry = new ServiceRegistryImpl();
+      serviceRegistry.addDivertTransformer(DIVERT, transformer);
+
+      AddressSettings autoCreateDestinationsAS = new AddressSettings().setAutoCreateAddresses(true).setAutoCreateQueues(true);
+      AddressSettings noAutoCreateDestinationsAS = new AddressSettings().setAutoCreateAddresses(false).setAutoCreateQueues(false);
+
+      ActiveMQServer server = addServer(new ActiveMQServerImpl(createDefaultInVMConfig(), null, null, null, serviceRegistry));
+
+      server.getConfiguration().addAddressSetting("#", autoCreateDestinationsAS);
+      server.getConfiguration().addAddressSetting(noDivertAutoCreateQName, noAutoCreateDestinationsAS);
+
+      server.start();
+
+      server.createQueue(QueueConfiguration.of(queueName));
+      server.deployDivert(new DivertConfiguration()
+                             .setName(DIVERT)
+                             .setAddress(queueName)
+                             .setRoutingType(ComponentConfigurationRoutingType.ANYCAST)
+                             .setForwardingAddress(dummyQueueName)
+                             .setExclusive(true));
+
+      ServerLocator locator = createInVMNonHALocator();
+      ClientSessionFactory sf = createSessionFactory(locator);
+      ClientSession session = sf.createSession(false, true, true);
+      session.start();
+
+      ClientMessage message;
+      ClientProducer producer = session.createProducer(queueName);
+
+      for (int i = 0; i < numMessages; i++) {
+         message = session.createMessage(true);
+         message.putStringProperty(propKey, queueName + "." + i);
+         producer.send(message);
+      }
+
+      for (int i = 0; i < numMessages; i++) {
+         ClientConsumer consumer = session.createConsumer(queueName + "." + i);
+         message = consumer.receive(DivertTest.TIMEOUT);
+         assertNotNull(message);
+         message.acknowledge();
+         consumer.close();
+      }
+
+      ClientMessage failMessage = session.createMessage(true);
+
+      assertThrows(ActiveMQAddressDoesNotExistException.class, () -> {
+         failMessage.putStringProperty(propKey, noDivertAutoCreateQName);
+         producer.send(failMessage);
+      });
+
+      producer.close();
+
+      assertNull(server.locateQueue(noDivertAutoCreateQName));
+      assertNull(server.locateQueue(dummyQueueName));
+
+   }
+
+   @Test
+   public void testHandleAutoDeleteDestination() throws Exception {
+      final String testAddress = "testAddress";
+      final String forwardAddress = "forwardAddress";
+
+      DivertConfiguration divertConf = new DivertConfiguration()
+         .setName("divert")
+         .setRoutingType(ComponentConfigurationRoutingType.ANYCAST)
+         .setExclusive(true)
+         .setAddress(testAddress)
+         .setForwardingAddress(forwardAddress);
+
+      AddressSettings addressSettings = new AddressSettings()
+         .setAutoCreateAddresses(true)
+         .setAutoCreateQueues(true)
+         .setAutoDeleteAddresses(true)
+         .setAutoDeleteQueues(true);
+
+      Configuration config = createDefaultInVMConfig().addDivertConfiguration(divertConf).addAddressSetting("#", addressSettings);
+      ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(config, false));
+      server.start();
+
+      ServerLocator locator = createInVMNonHALocator();
+      ClientSessionFactory sf = createSessionFactory(locator);
+      ClientSession session = sf.createSession(false, true, true);
+
+      session.createQueue(QueueConfiguration.of(testAddress).setAddress(testAddress).setRoutingType(RoutingType.ANYCAST).setDurable(true));
+      session.createQueue(QueueConfiguration.of(forwardAddress).setAddress(forwardAddress).setRoutingType(RoutingType.ANYCAST).setDurable(true));
+      session.start();
+
+      ClientProducer producer = session.createProducer(testAddress);
+      ClientConsumer consumer = session.createConsumer(forwardAddress);
+
+      final int numMessages = 5;
+
+      for (int i = 0; i < numMessages; i++) {
+         ClientMessage message = session.createMessage(true);
+         message.setRoutingType(RoutingType.ANYCAST);
+         producer.send(message);
+      }
+
+      for (int i = 0; i < numMessages; i++) {
+         ClientMessage message = consumer.receive(DivertTest.TIMEOUT);
+         assertNotNull(message);
+         message.acknowledge();
+      }
+
+      assertNull(consumer.receiveImmediate());
+      consumer.close();
+
+      //Trigger autoDelete instead of waiting
+      QueueManagerImpl.performAutoDeleteQueue(server, server.locateQueue(forwardAddress));
+      Wait.assertTrue(() -> server.getPostOffice().getAddressInfo(SimpleString.of(forwardAddress))
+         .getBindingRemovedTimestamp() != -1, DivertTest.TIMEOUT, 100);
+
+      for (int i = 0; i < numMessages; i++) {
+         ClientMessage message = session.createMessage(true);
+         producer.send(message);
+      }
+
+      consumer = session.createConsumer(forwardAddress);
+      for (int i = 0; i < numMessages; i++) {
+         ClientMessage message = consumer.receive(DivertTest.TIMEOUT);
+         assertNotNull(message);
+         message.acknowledge();
+      }
+
+      assertNull(consumer.receiveImmediate());
+   }
+
 }

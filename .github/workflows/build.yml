@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: [ 11, 17, 21 ]
+        java: [ 11, 17, 21, 22 ]
 
     steps:
       - uses: actions/checkout@v4
@@ -64,13 +64,21 @@ jobs:
           rm -rf ~/.m2/repository/org/apache/activemq/examples
           if [ -d ~/.m2/repository/org/apache/activemq ]; then find ~/.m2/repository/org/apache/activemq -name "*-SNAPSHOT" -type d -prune -exec rm -r '{}' \; ; fi
 
+      - name: Archive Test Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk-${{ matrix.java }}
+          path: activemq-artemis/**/target/surefire-reports/*
+          retention-days: 10
+
   checks:
     name: Checks (${{ matrix.java }})
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        java: [ 11, 17, 21 ]
+        java: [ 11, 17, 21, 22 ]
 
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +108,14 @@ jobs:
           ref: ${{ env.EXAMPLES_BRANCH }}
           path: activemq-artemis-examples
 
-      - name: Build Main
+      - name: Build Main (JDK11 / -Prelease)
+        if: matrix.java == '11'
+        run: |
+          cd activemq-artemis
+          mvn -s .github/maven-settings.xml -DskipTests -Derrorprone -Pdev -Prelease -Dgpg.skip install
+
+      - name: Build Main (JDK >11)
+        if: matrix.java != '11'
         run: |
           cd activemq-artemis
           mvn -s .github/maven-settings.xml -DskipTests -Derrorprone -Pdev -Pjmh install

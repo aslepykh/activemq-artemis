@@ -39,7 +39,7 @@ import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.integration.amqp.AmqpClientTestSupport;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 
@@ -162,7 +162,7 @@ public class AMQPClusterReplicaTest extends AmqpClientTestSupport {
    private void configureAddressAndQueue(ActiveMQServer node) throws Exception {
       node.addAddressInfo(new AddressInfo("test").setAutoCreated(false));
       node.getAddressSettingsRepository().addMatch("test", new AddressSettings().setRedistributionDelay(0));
-      node.createQueue(new QueueConfiguration("test").setAddress("test").setRoutingType(RoutingType.ANYCAST).setDurable(true));
+      node.createQueue(QueueConfiguration.of("test").setAddress("test").setRoutingType(RoutingType.ANYCAST).setDurable(true));
    }
 
    @Override

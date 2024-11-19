@@ -26,7 +26,7 @@ import org.apache.activemq.artemis.utils.JsonLoader;
 
 public class QueueView extends ActiveMQAbstractView<QueueControl> {
 
-   private static final String defaultSortColumn = QueueField.NAME.getName();
+   private static final String defaultSortField = QueueField.NAME.getName();
 
    private ActiveMQServer server;
 
@@ -43,7 +43,7 @@ public class QueueView extends ActiveMQAbstractView<QueueControl> {
 
    @Override
    public JsonObjectBuilder toJson(QueueControl queue) {
-      Queue q = server.locateQueue(new SimpleString(queue.getName()));
+      Queue q = server.locateQueue(SimpleString.of(queue.getName()));
       JsonObjectBuilder obj = JsonLoader.createObjectBuilder()
          .add(QueueField.ID.getName(), toString(queue.getID()))
          .add(QueueField.NAME.getName(), toString(queue.getName()))
@@ -77,13 +77,14 @@ public class QueueView extends ActiveMQAbstractView<QueueControl> {
          .add(QueueField.RING_SIZE.getName(), toString(queue.getRingSize()))
          .add(QueueField.CONSUMERS_BEFORE_DISPATCH.getName(), toString(queue.getConsumersBeforeDispatch()))
          .add(QueueField.DELAY_BEFORE_DISPATCH.getName(), toString(queue.getDelayBeforeDispatch()))
-         .add(QueueField.AUTO_DELETE.getName(), toString(q.isAutoDelete()));
+         .add(QueueField.AUTO_DELETE.getName(), toString(q.isAutoDelete()))
+         .add(QueueField.INTERNAL_QUEUE.getName(), toString(q.isInternalQueue()));
       return obj;
    }
 
    @Override
    public Object getField(QueueControl queue, String fieldName) {
-      Queue q = server.locateQueue(new SimpleString(queue.getName()));
+      Queue q = server.locateQueue(SimpleString.of(queue.getName()));
 
       QueueField field = QueueField.valueOfName(fieldName);
 
@@ -152,6 +153,8 @@ public class QueueView extends ActiveMQAbstractView<QueueControl> {
             return q.getConsumersBeforeDispatch();
          case DELAY_BEFORE_DISPATCH:
             return q.getDelayBeforeDispatch();
+         case INTERNAL_QUEUE:
+            return q.isInternalQueue();
          default:
             throw new IllegalArgumentException("Unsupported field, " + fieldName);
       }
@@ -159,6 +162,6 @@ public class QueueView extends ActiveMQAbstractView<QueueControl> {
 
    @Override
    public String getDefaultOrderColumn() {
-      return defaultSortColumn;
+      return defaultSortField;
    }
 }

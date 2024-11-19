@@ -70,6 +70,13 @@
       <critical-analyzer-timeout>777</critical-analyzer-timeout>
       <critical-analyzer>false</critical-analyzer>
       <literal-match-markers>()</literal-match-markers>
+
+      <mirror-ack-manager-queue-attempts>111</mirror-ack-manager-queue-attempts>
+      <mirror-ack-manager-page-attempts>222</mirror-ack-manager-page-attempts>
+      <mirror-ack-manager-retry-delay>333</mirror-ack-manager-retry-delay>
+      <mirror-ack-manager-warn-unacked>true</mirror-ack-manager-warn-unacked>
+      <mirror-page-transaction>true</mirror-page-transaction>
+
       <remoting-incoming-interceptors>
          <class-name>org.apache.activemq.artemis.tests.unit.core.config.impl.TestInterceptor1</class-name>
          <class-name>org.apache.activemq.artemis.tests.unit.core.config.impl.TestInterceptor2</class-name>
@@ -169,6 +176,15 @@
                </static-connectors>
             </pool>
          </connection-router>
+         <connection-router name="simple-router-connector2">
+            <key-type>USER_NAME</key-type>
+            <policy name="FIRST_ELEMENT"/>
+            <pool>
+               <static-connectors>
+                  <connector-ref>connector2</connector-ref>
+               </static-connectors>
+            </pool>
+         </connection-router>
          <connection-router name="consistent-hash-router">
             <key-type>SNI_HOST</key-type>
             <key-filter>^[^.]+</key-filter>
@@ -244,7 +260,9 @@
                <property key="bridgeTransformerKey2" value="bridgeTransformerValue2"/>
             </transformer>
             <producer-window-size>555k</producer-window-size>
+            <pending-ack-timeout>123456</pending-ack-timeout>
             <discovery-group-ref discovery-group-name="dg1"/>
+            <client-id>myClientID</client-id>
          </bridge>
          <bridge name="bridge4">
             <queue-name>queue3</queue-name>
@@ -265,6 +283,8 @@
          <file-descriptors>true</file-descriptors>
          <processor>true</processor>
          <uptime>true</uptime>
+         <logging>true</logging>
+         <security-caches>true</security-caches>
          <plugin class-name="org.apache.activemq.artemis.core.server.metrics.plugins.SimpleMetricsPlugin">
             <property key="foo" value="x"/>
             <property key="bar" value="y"/>
@@ -322,6 +342,7 @@
          <cluster-connection name="cluster-connection3">
             <connector-ref>connector2</connector-ref>
             <message-load-balancing>OFF_WITH_REDISTRIBUTION</message-load-balancing>
+            <client-id>myClientID</client-id>
          </cluster-connection>
       </cluster-connections>
       <broker-connections>

@@ -104,7 +104,8 @@ var Artemis;
                   {name: "Ring Size", visible: false},
                   {name: "Consumers Before Dispatch", visible: false},
                   {name: "Delay Before Dispatch", visible: false},
-                  {name: "Auto Delete", visible: false}
+                  {name: "Auto Delete", visible: false},
+                  {name: "Internal", visible: false}
              ]
         };
 
@@ -142,10 +143,12 @@ var Artemis;
                 {id: 'paused', name: 'Paused'},
                 {id: 'temporary', name: 'Temporary'},
                 {id: 'autoCreated', name: 'Auto Created'},
-                {id: 'autoDelete', name: 'Auto Delete'}
+                {id: 'autoDelete', name: 'Auto Delete'},
+                {id: 'internalQueue', name: 'Internal'}
             ],
             operationOptions: [
                 {id: 'EQUALS', name: 'Equals'},
+                {id: 'NOT_EQUALS', name: 'Not Equals'},
                 {id: 'CONTAINS', name: 'Contains'},
                 {id: 'NOT_CONTAINS', name: 'Does Not Contain'},
                 {id: 'GREATER_THAN', name: 'Greater Than'},
@@ -160,7 +163,7 @@ var Artemis;
                 operation: "",
                 value: "",
                 sortOrder: "asc",
-                sortColumn: "id"
+                sortField: "id"
             },
             text: {
                 fieldText: "Filter Field..",
@@ -218,7 +221,8 @@ var Artemis;
             { header: 'Ring Size', itemField: 'ringSize'},
             { header: 'Consumers Before Dispatch', itemField: 'consumersBeforeDispatch'},
             { header: 'Delay Before Dispatch', itemField: 'delayBeforeDispatch'},
-            { header: 'Auto Delete', itemField: 'autoDelete'}
+            { header: 'Auto Delete', itemField: 'autoDelete'},
+            { header: 'Internal', itemField: 'internalQueue'}
         ];
 
         ctrl.refresh = function () {
@@ -230,7 +234,7 @@ var Artemis;
             ctrl.filter.values.operation = "";
             ctrl.filter.values.value = "";
             ctrl.filter.sortOrder = "asc";
-            ctrl.filter.sortColumn = "id";
+            ctrl.filter.sortField = "id";
             ctrl.filter.text.fieldText = "Filter Field..";
             ctrl.filter.text.operationText = "Operation..";
             ctrl.filter.text.sortOrderText = "ascending";
@@ -318,7 +322,7 @@ var Artemis;
                     operation: ctrl.filter.values.operation,
                     value: ctrl.filter.values.value,
                     sortOrder: ctrl.filter.values.sortOrder,
-                    sortColumn: ctrl.filter.values.sortColumn
+                    sortField: ctrl.filter.values.sortField
                 };
 
                 if (ctrl.refreshed == true) {

@@ -22,9 +22,9 @@ import org.apache.activemq.artemis.logs.annotation.LogMessage;
 import org.apache.activemq.artemis.logs.BundleFactory;
 
 /**
- * Logger Code 11
+ * Logger Codes 110000 - 118999
  */
-@LogBundle(projectCode = "AMQ", regexID = "11[0-9]{4}")
+@LogBundle(projectCode = "AMQ", regexID = "11[0-8][0-9]{3}")
 public interface ActiveMQAMQPProtocolLogger {
 
    ActiveMQAMQPProtocolLogger LOGGER = BundleFactory.newBundle(ActiveMQAMQPProtocolLogger.class, ActiveMQAMQPProtocolLogger.class.getPackage().getName());
@@ -58,4 +58,19 @@ public interface ActiveMQAMQPProtocolLogger {
 
    @LogMessage(id = 111007, value = "Invalid Connection State: {} for remote IP {}", level = LogMessage.Level.WARN)
    void invalidAMQPConnectionState(Object state, Object remoteIP);
+
+   @LogMessage(id = 111008, value = "The AckManager timed out waiting for operations to complete on the MirrorTarget. timeout = {} milliseconds", level = LogMessage.Level.WARN)
+   void timedOutAckManager(long timeout);
+
+   @LogMessage(id = 111009, value = "The AckManager was interrupt. timeout = {} milliseconds", level = LogMessage.Level.WARN)
+   void interruptedAckManager(Exception e);
+
+   @LogMessage(id = 111010, value = "Duplicate AckManager node detected. Queue={}, ServerID={}, recordID={}", level = LogMessage.Level.WARN)
+   void duplicateNodeStoreID(String queue, String serverId, long recordID, Exception trace);
+
+   @LogMessage(id = 111011, value = "There are {} consumers on queue {}, what made the Ack for message with nodeID={}, messageID={} enter a retry list", level = LogMessage.Level.WARN)
+   void unackWithConsumer(int numberOfConsumers, Object queueName, String nodeID, long messageID);
+
+   @LogMessage(id = 111012, value = "Acknowledgement retry failed for {} on address {}, queueID={}", level = LogMessage.Level.WARN)
+   void ackRetryFailed(Object ackRetryInformation, Object address, long queueID);
 }

@@ -26,9 +26,9 @@ import org.apache.activemq.artemis.logs.BundleFactory;
 import org.w3c.dom.Node;
 
 /**
- * Logger Code 21
+ * Logger Codes 210000 - 218999
  */
-@LogBundle(projectCode = "AMQ", regexID = "21[0-9]{4}")
+@LogBundle(projectCode = "AMQ", regexID = "21[0-8][0-9]{3}", retiredIDs = {211001, 211002, 211003, 212000, 212006, 212029, 212074, 212078, 214012, 214023, 214024, 214026, 214027, 214028, 214029})
 public interface ActiveMQClientLogger {
 
    ActiveMQClientLogger LOGGER = BundleFactory.newBundle(ActiveMQClientLogger.class, ActiveMQClientLogger.class.getPackage().getName());
@@ -133,8 +133,8 @@ public interface ActiveMQClientLogger {
    @LogMessage(id = 212036, value = "Can not find packet to clear: {} last received command id first stored command id {}", level = LogMessage.Level.WARN)
    void cannotFindPacketToClear(Integer lastReceivedCommandID, Integer firstStoredCommandID);
 
-   @LogMessage(id = 212037, value = "Connection failure to {} has been detected: {} [code={}]", level = LogMessage.Level.WARN)
-   void connectionFailureDetected(String remoteAddress, String message, ActiveMQExceptionType type);
+   @LogMessage(id = 212037, value = "{} connection failure to {} has been detected: {} [code={}]", level = LogMessage.Level.WARN)
+   void connectionFailureDetected(String protocol, String remoteAddress, String message, ActiveMQExceptionType type);
 
    @LogMessage(id = 212038, value = "Failure in calling interceptor: {}", level = LogMessage.Level.WARN)
    void errorCallingInterceptor(Interceptor interceptor, Throwable e);
@@ -329,9 +329,6 @@ public interface ActiveMQClientLogger {
 
    @LogMessage(id = 214025, value = "Invalid type {}, Using default connection factory at {}", level = LogMessage.Level.ERROR)
    void invalidCFType(String type, String uri);
-
-   @LogMessage(id = 214029, value = "Unexpected response from HTTP server: {}", level = LogMessage.Level.ERROR)
-   void unexpectedResponseFromHttpServer(Object response);
 
    @LogMessage(id = 214030, value = "Failed to bind {}={}", level = LogMessage.Level.ERROR)
    void failedToBind(String p1, String p2, Throwable cause);

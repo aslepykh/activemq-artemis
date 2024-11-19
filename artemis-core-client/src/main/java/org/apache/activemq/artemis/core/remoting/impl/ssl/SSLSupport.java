@@ -47,7 +47,6 @@ import java.security.cert.X509CertSelector;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 
-import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
@@ -279,7 +278,7 @@ public class SSLSupport {
 
    private TrustManagerFactory loadTrustManagerFactory() throws Exception {
       if (trustManagerFactoryPlugin != null) {
-         return AccessController.doPrivileged((PrivilegedAction<TrustManagerFactory>) () -> ((TrustManagerFactoryPlugin) ClassloadingUtil.newInstanceFromClassLoader(SSLSupport.class, trustManagerFactoryPlugin)).getTrustManagerFactory());
+         return AccessController.doPrivileged((PrivilegedAction<TrustManagerFactory>) () -> ((TrustManagerFactoryPlugin) ClassloadingUtil.newInstanceFromClassLoader(SSLSupport.class, trustManagerFactoryPlugin, TrustManagerFactoryPlugin.class)).getTrustManagerFactory());
       } else if (trustAll) {
          //This is useful for testing but not should be used outside of that purpose
          return InsecureTrustManagerFactory.INSTANCE;
@@ -356,7 +355,8 @@ public class SSLSupport {
    public static void checkPemProviderLoaded(String keystoreType) {
       if (keystoreType != null && keystoreType.startsWith("PEM")) {
          if (Security.getProvider("PEM") == null) {
-            Security.insertProviderAt(new PemKeyStoreProvider(), Integer.parseInt(System.getProperty("artemis.pemProvider.insertAt", "0")));
+            Security.insertProviderAt(new de.dentrassi.crypto.pem.PemKeyStoreProvider(),
+               Integer.parseInt(System.getProperty("artemis.pemProvider.insertAt", "0")));
          }
       }
    }
@@ -415,12 +415,7 @@ public class SSLSupport {
     * For that reason any class trying to do a privileged block should do with the AccessController directly.
     */
    private static URL findResource(final String resourceName) {
-      return AccessController.doPrivileged(new PrivilegedAction<URL>() {
-         @Override
-         public URL run() {
-            return ClassloadingUtil.findResource(resourceName);
-         }
-      });
+      return AccessController.doPrivileged((PrivilegedAction<URL>) () -> ClassloadingUtil.findResource(resourceName));
    }
 
    private Pair<PrivateKey, X509Certificate[]> getPrivateKeyAndCertChain(KeyStore keyStore) throws KeyStoreException, UnrecoverableKeyException, NoSuchAlgorithmException {

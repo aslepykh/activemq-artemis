@@ -161,6 +161,14 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
    }
 
    @Override
+   public void clearAMQPProperties() {
+      final TypedProperties properties = this.properties;
+      if (properties != null && properties.clearAMQPProperties()) {
+         messageChanged();
+      }
+   }
+
+   @Override
    public Persister<Message> getPersister() {
       return CoreMessagePersister.getInstance();
    }
@@ -313,7 +321,7 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
 
    @Override
    public CoreMessage setGroupID(String groupId) {
-      return this.setGroupID(SimpleString.toSimpleString(groupId, coreMessageObjectPools == null ? null : coreMessageObjectPools.getGroupIdStringSimpleStringPool()));
+      return this.setGroupID(SimpleString.of(groupId, coreMessageObjectPools == null ? null : coreMessageObjectPools.getGroupIdStringSimpleStringPool()));
    }
 
    @Override
@@ -621,7 +629,7 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
       try {
          TypedProperties properties = this.properties;
          if (properties == null) {
-            properties = new TypedProperties(INTERNAL_PROPERTY_NAMES_PREDICATE);
+            properties = new TypedProperties(INTERNAL_PROPERTY_NAMES_PREDICATE, AMQP_PROPERTY_PREDICATE);
             if (buffer != null && propertiesLocation >= 0) {
                final ByteBuf byteBuf = buffer.duplicate().readerIndex(propertiesLocation);
                properties.decode(byteBuf, coreMessageObjectPools == null ? null : coreMessageObjectPools.getPropertiesDecoderPools());
@@ -737,7 +745,7 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
          properties = null;
          propertiesLocation = buffer.readerIndex();
       } else {
-         properties = new TypedProperties(INTERNAL_PROPERTY_NAMES_PREDICATE);
+         properties = new TypedProperties(INTERNAL_PROPERTY_NAMES_PREDICATE, AMQP_PROPERTY_PREDICATE);
          properties.decode(buffer, pools == null ? null : pools.getPropertiesDecoderPools());
       }
    }
@@ -860,7 +868,7 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
    @Override
    public CoreMessage setAddress(String address) {
       messageChanged();
-      this.address = SimpleString.toSimpleString(address, coreMessageObjectPools == null ? null : coreMessageObjectPools.getAddressStringSimpleStringPool());
+      this.address = SimpleString.of(address, coreMessageObjectPools == null ? null : coreMessageObjectPools.getAddressStringSimpleStringPool());
       return this;
    }
 
@@ -1308,11 +1316,11 @@ public class CoreMessage extends RefCountMessage implements ICoreMessage {
    }
 
    private SimpleString key(String key) {
-      return SimpleString.toSimpleString(key, getPropertyKeysPool());
+      return SimpleString.of(key, getPropertyKeysPool());
    }
 
    private SimpleString value(String value) {
-      return SimpleString.toSimpleString(value, getPropertyValuesPool());
+      return SimpleString.of(value, getPropertyValuesPool());
    }
 
    private SimpleString.StringSimpleStringPool getPropertyKeysPool() {

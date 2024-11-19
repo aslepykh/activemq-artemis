@@ -16,14 +16,18 @@
  */
 package org.apache.activemq.artemis.core.protocol.stomp;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.activemq.artemis.api.core.ActiveMQBuffer;
+import org.apache.activemq.artemis.api.core.ActiveMQBuffers;
+import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.api.core.ICoreMessage;
 import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.core.message.LargeBodyReader;
 import org.apache.activemq.artemis.core.message.impl.CoreMessage;
 import org.apache.activemq.artemis.core.protocol.stomp.Stomp.Headers;
 import org.apache.activemq.artemis.core.protocol.stomp.v10.StompFrameHandlerV10;
@@ -35,6 +39,8 @@ import org.apache.activemq.artemis.utils.ExecutorFactory;
 import static org.apache.activemq.artemis.core.protocol.stomp.ActiveMQStompProtocolMessageBundle.BUNDLE;
 
 public abstract class VersionedStompFrameHandler {
+
+   protected static byte[] EMPTY_BODY = new byte[0];
 
    protected StompConnection connection;
    protected StompDecoder decoder;
@@ -198,7 +204,7 @@ public abstract class VersionedStompFrameHandler {
             message.setRoutingType(routingType);
          }
          message.setTimestamp(timestamp);
-         message.setAddress(SimpleString.toSimpleString(destination));
+         message.setAddress(SimpleString.of(destination));
          StompUtils.copyStandardHeadersFromFrameToMessage(frame, message, getPrefix(frame));
          if (frame.hasHeader(Stomp.Headers.CONTENT_LENGTH)) {
             message.setType(Message.BYTES_TYPE);
@@ -206,7 +212,7 @@ public abstract class VersionedStompFrameHandler {
          } else {
             message.setType(Message.TEXT_TYPE);
             String text = frame.getBody();
-            message.getBodyBuffer().writeNullableSimpleString(SimpleString.toSimpleString(text));
+            message.getBodyBuffer().writeNullableSimpleString(SimpleString.of(text));
          }
 
          connection.sendServerMessage(message, txID);
@@ -261,12 +267,12 @@ public abstract class VersionedStompFrameHandler {
       String selector = frame.getHeader(Stomp.Headers.Subscribe.SELECTOR);
       String ack = frame.getHeader(Stomp.Headers.Subscribe.ACK_MODE);
       String id = frame.getHeader(Stomp.Headers.Subscribe.ID);
-      String durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.DURABLE_SUBSCRIBER_NAME);
+      String durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.DURABLE_SUBSCRIPTION_NAME);
       if (durableSubscriptionName == null) {
-         durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.DURABLE_SUBSCRIPTION_NAME);
-      }
-      if (durableSubscriptionName == null) {
-         durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.ACTIVEMQ_DURABLE_SUBSCRIPTION_NAME);
+         durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.DURABLE_SUBSCRIBER_NAME);
+         if (durableSubscriptionName == null) {
+            durableSubscriptionName = frame.getHeader(Stomp.Headers.Subscribe.ACTIVEMQ_DURABLE_SUBSCRIPTION_NAME);
+         }
       }
       RoutingType routingType = getRoutingType(frame.getHeader(Headers.Subscribe.SUBSCRIPTION_TYPE), frame.getHeader(Headers.Subscribe.DESTINATION));
       boolean noLocal = false;
@@ -293,7 +299,7 @@ public abstract class VersionedStompFrameHandler {
       if (destination == null) {
          return null;
       }
-      return connection.getSession().getCoreSession().removePrefix(SimpleString.toSimpleString(destination)).toString();
+      return connection.getSession().getCoreSession().removePrefix(SimpleString.of(destination)).toString();
    }
 
    public String getPrefix(StompFrame request) throws Exception {
@@ -301,7 +307,7 @@ public abstract class VersionedStompFrameHandler {
       if (destination == null) {
          return null;
       }
-      SimpleString prefix = connection.getSession().getCoreSession().getPrefix(SimpleString.toSimpleString(destination));
+      SimpleString prefix = connection.getSession().getCoreSession().getPrefix(SimpleString.of(destination));
       return prefix == null ? null : prefix.toString();
    }
 
@@ -324,34 +330,79 @@ public abstract class VersionedStompFrameHandler {
    public StompFrame createMessageFrame(ICoreMessage serverMessage,
                                         StompSubscription subscription,
                                         ServerConsumer consumer,
-                                        int deliveryCount) {
-      StompFrame frame = createStompFrame(Stomp.Responses.MESSAGE);
+                                        int deliveryCount) throws ActiveMQException {
+      final StompFrame frame = createStompFrame(Stomp.Responses.MESSAGE);
 
       if (subscription.getID() != null) {
          frame.addHeader(Stomp.Headers.Message.SUBSCRIPTION, subscription.getID());
       }
 
-      ActiveMQBuffer buffer = serverMessage.getReadOnlyBodyBuffer();
-
-      byte[] data = new byte[buffer.writerIndex()];
-
-      if (data.length > 0) {
-         if (serverMessage.containsProperty(Stomp.Headers.CONTENT_LENGTH) || serverMessage.getType() == Message.BYTES_TYPE) {
-            frame.addHeader(Headers.CONTENT_LENGTH, String.valueOf(data.length));
-            buffer.readBytes(data);
-         } else {
-            SimpleString text = buffer.readNullableSimpleString();
-            if (text != null) {
-               data = text.toString().getBytes(StandardCharsets.UTF_8);
-            }
-         }
+      if (serverMessage.isLargeMessage()) {
+         populateFrameBodyFromLargeMessage(frame, serverMessage);
+      } else {
+         populateFrameBodyFromMessage(frame, serverMessage);
       }
-      frame.setByteBody(data);
 
       frame.addHeader(Stomp.Headers.Message.MESSAGE_ID, new StringBuilder(41).append(consumer.getID()).append(StompSession.MESSAGE_ID_SEPARATOR).append(serverMessage.getMessageID()).toString());
       StompUtils.copyStandardHeadersFromMessageToFrame(serverMessage, frame, deliveryCount);
 
       return frame;
+   }
+
+   private void populateFrameBodyFromMessage(StompFrame frame, ICoreMessage serverMessage) {
+      final ActiveMQBuffer buffer = serverMessage.getReadOnlyBodyBuffer();
+      final int bodyLength = buffer.readableBytes();
+
+      if (bodyLength > 0) {
+         if (serverMessage.containsProperty(Stomp.Headers.CONTENT_LENGTH) || serverMessage.getType() == Message.BYTES_TYPE) {
+            final byte[] data = new byte[bodyLength];
+
+            buffer.readBytes(data);
+
+            frame.addHeader(Headers.CONTENT_LENGTH, String.valueOf(bodyLength));
+            frame.setByteBody(data);
+         } else {
+            final SimpleString text = buffer.readNullableSimpleString();
+
+            if (text != null) {
+               frame.setByteBody(text.toString().getBytes(StandardCharsets.UTF_8));
+            }
+         }
+      } else {
+         frame.setByteBody(EMPTY_BODY);
+      }
+   }
+
+   private void populateFrameBodyFromLargeMessage(StompFrame frame, ICoreMessage serverMessage) throws ActiveMQException {
+      try (LargeBodyReader reader = serverMessage.getLargeBodyReader()) {
+         reader.open();
+
+         final int bodyLength = (int) reader.getSize();
+
+         if (bodyLength > 0) {
+            final byte[] bodyBytes = new byte[bodyLength];
+            final ByteBuffer bodyBuffer = ByteBuffer.wrap(bodyBytes);
+
+            reader.readInto(bodyBuffer);
+
+            if (serverMessage.containsProperty(Stomp.Headers.CONTENT_LENGTH) || serverMessage.getType() == Message.BYTES_TYPE) {
+               frame.addHeader(Headers.CONTENT_LENGTH, String.valueOf(bodyLength));
+               frame.setByteBody(bodyBytes);
+            } else {
+               final ActiveMQBuffer buffer = ActiveMQBuffers.wrappedBuffer(bodyBuffer);
+
+               buffer.writerIndex(bodyLength);
+
+               final SimpleString text = buffer.readNullableSimpleString();
+
+               if (text != null) {
+                  frame.setByteBody(text.toString().getBytes(StandardCharsets.UTF_8));
+               }
+            }
+         } else {
+            frame.setByteBody(EMPTY_BODY);
+         }
+      }
    }
 
    /**
@@ -377,7 +428,7 @@ public abstract class VersionedStompFrameHandler {
       if (typeHeader != null) {
          routingType = RoutingType.valueOf(typeHeader);
       } else {
-         routingType = connection.getSession().getCoreSession().getRoutingTypeFromPrefix(new SimpleString(destination), null);
+         routingType = connection.getSession().getCoreSession().getRoutingTypeFromPrefix(SimpleString.of(destination), null);
       }
       return routingType;
    }
@@ -391,5 +442,4 @@ public abstract class VersionedStompFrameHandler {
       response.addHeader(Stomp.Headers.Error.MESSAGE, responseText);
       return response;
    }
-
 }

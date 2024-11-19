@@ -34,7 +34,6 @@ import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ClientConsumer;
 import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
-import org.apache.activemq.artemis.api.core.client.FailoverEventListener;
 import org.apache.activemq.artemis.api.core.client.FailoverEventType;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.api.core.client.SessionFailureListener;
@@ -48,16 +47,14 @@ import org.apache.activemq.artemis.core.server.ServerSession;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.spi.core.protocol.RemotingConnection;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.apache.activemq.artemis.utils.RetryRule;
 import org.apache.activemq.artemis.utils.Wait;
-import org.junit.Assert;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ReconnectTest extends ActiveMQTestBase {
-
-   @Rule
-   public RetryRule retryRule = new RetryRule(2);
 
    @Test
    public void testReconnectNetty() throws Exception {
@@ -112,12 +109,12 @@ public class ReconnectTest extends ActiveMQTestBase {
 
          server.start();
 
-         Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+         assertTrue(latch.await(5, TimeUnit.SECONDS));
 
          // Some time to let possible loops to occur
          Thread.sleep(500);
 
-         Assert.assertEquals(1, count.get());
+         assertEquals(1, count.get());
 
          locator.close();
       } finally {
@@ -165,28 +162,25 @@ public class ReconnectTest extends ActiveMQTestBase {
             session.addMetaData("meta1", "meta1");
 
             ServerSession[] sessions = countMetadata(server, "meta1", 1);
-            Assert.assertEquals(1, sessions.length);
+            assertEquals(1, sessions.length);
 
             final AtomicInteger count = new AtomicInteger(0);
 
             final CountDownLatch latch = new CountDownLatch(1);
 
-            session.addFailoverListener(new FailoverEventListener() {
-               @Override
-               public void failoverEvent(FailoverEventType eventType) {
-                  if (eventType == FailoverEventType.FAILOVER_COMPLETED) {
-                     latch.countDown();
-                  }
+            session.addFailoverListener(eventType -> {
+               if (eventType == FailoverEventType.FAILOVER_COMPLETED) {
+                  latch.countDown();
                }
             });
 
             sessions[0].getRemotingConnection().fail(new ActiveMQException("failure!"));
 
-            Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
 
             sessions = countMetadata(server, "meta1", 1);
 
-            Assert.assertEquals(1, sessions.length);
+            assertEquals(1, sessions.length);
 
             locator.close();
          }
@@ -302,17 +296,14 @@ public class ReconnectTest extends ActiveMQTestBase {
 
          server.stop();
 
-         Thread tcommitt = new Thread() {
-            @Override
-            public void run() {
-               latchCommit.countDown();
-               try {
-                  session.commit();
-               } catch (ActiveMQException e) {
-                  e.printStackTrace();
-               }
+         Thread tcommitt = new Thread(() -> {
+            latchCommit.countDown();
+            try {
+               session.commit();
+            } catch (ActiveMQException e) {
+               e.printStackTrace();
             }
-         };
+         });
 
          tcommitt.start();
          assertTrue(latchCommit.await(10, TimeUnit.SECONDS));
@@ -390,18 +381,14 @@ public class ReconnectTest extends ActiveMQTestBase {
 
       final AtomicBoolean consumerClosed = new AtomicBoolean(false);
       // imitate consumer close timeout
-      Interceptor reattachInterceptor = new Interceptor() {
-
-         @Override
-         public boolean intercept(Packet packet, RemotingConnection connection) throws ActiveMQException {
-            if (!consumerClosed.get() && packet.getType() == PacketImpl.SESS_CONSUMER_CLOSE) {
-               consumerClosed.set(true);
-               return false;
-            } else {
-               return true;
-            }
-
+      Interceptor reattachInterceptor = (packet, connection) -> {
+         if (!consumerClosed.get() && packet.getType() == PacketImpl.SESS_CONSUMER_CLOSE) {
+            consumerClosed.set(true);
+            return false;
+         } else {
+            return true;
          }
+
       };
       server.getRemotingService().addIncomingInterceptor(reattachInterceptor);
 
@@ -412,11 +399,11 @@ public class ReconnectTest extends ActiveMQTestBase {
       ClientSessionFactoryInternal sf = (ClientSessionFactoryInternal) createSessionFactory(locator);
 
       ClientSessionInternal session = (ClientSessionInternal)sf.createSession(false, true, true);
-      SimpleString queueName1 = new SimpleString("my_queue_one");
-      SimpleString addressName1 = new SimpleString("my_address_one");
+      SimpleString queueName1 = SimpleString.of("my_queue_one");
+      SimpleString addressName1 = SimpleString.of("my_address_one");
 
       server.addAddressInfo(new AddressInfo(addressName1, RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration(queueName1).setAddress(addressName1).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(queueName1).setAddress(addressName1).setRoutingType(RoutingType.ANYCAST));
       ClientConsumer clientConsumer1 = session.createConsumer(queueName1);
       ClientConsumer clientConsumer2 = session.createConsumer(queueName1);
       clientConsumer1.close();

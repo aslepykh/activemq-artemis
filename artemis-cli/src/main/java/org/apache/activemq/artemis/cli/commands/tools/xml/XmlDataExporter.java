@@ -80,6 +80,11 @@ public final class XmlDataExporter extends DBOption {
 
    private XMLStreamWriter xmlWriter;
 
+   private Throwable lastError;
+
+   @Option(names = "undefined-prefix", description = "In case a queue does not exist, this will define the prefix to be used on the message export. Default: 'UndefinedQueue_'")
+   private String undefinedPrefix = "UndefinedQueue_";
+
    // an inner map of message refs hashed by the queue ID to which they belong and then hashed by their record ID
    private final Map<Long, HashMap<Long, ReferenceDescribe>> messageRefs = new HashMap<>();
 
@@ -99,6 +104,15 @@ public final class XmlDataExporter extends DBOption {
    long bindingsPrinted = 0L;
 
    XMLMessageExporter exporter;
+
+   public String getUndefinedPrefix() {
+      return undefinedPrefix;
+   }
+
+   public XmlDataExporter setUndefinedPrefix(String undefinedPrefix) {
+      this.undefinedPrefix = undefinedPrefix;
+      return this;
+   }
 
    @Override
    public Object execute(ActionContext context) throws Exception {
@@ -184,35 +198,30 @@ public final class XmlDataExporter extends DBOption {
       messageJournal.start();
 
       // Just logging these, no action necessary
-      TransactionFailureCallback transactionFailureCallback = new TransactionFailureCallback() {
-         @Override
-         public void failedTransaction(long transactionID,
-                                       List<RecordInfo> records1,
-                                       List<RecordInfo> recordsToDelete) {
-            StringBuilder message = new StringBuilder();
-            message.append("Encountered failed journal transaction: ").append(transactionID);
-            for (int i = 0; i < records1.size(); i++) {
-               if (i == 0) {
-                  message.append("; Records: ");
-               }
-               message.append(records1.get(i));
-               if (i != (records1.size() - 1)) {
-                  message.append(", ");
-               }
+      TransactionFailureCallback transactionFailureCallback = (transactionID, records1, recordsToDelete) -> {
+         StringBuilder message = new StringBuilder();
+         message.append("Encountered failed journal transaction: ").append(transactionID);
+         for (int i = 0; i < records1.size(); i++) {
+            if (i == 0) {
+               message.append("; Records: ");
             }
-
-            for (int i = 0; i < recordsToDelete.size(); i++) {
-               if (i == 0) {
-                  message.append("; RecordsToDelete: ");
-               }
-               message.append(recordsToDelete.get(i));
-               if (i != (recordsToDelete.size() - 1)) {
-                  message.append(", ");
-               }
+            message.append(records1.get(i));
+            if (i != (records1.size() - 1)) {
+               message.append(", ");
             }
-
-            logger.debug(message.toString());
          }
+
+         for (int i = 0; i < recordsToDelete.size(); i++) {
+            if (i == 0) {
+               message.append("; RecordsToDelete: ");
+            }
+            message.append(recordsToDelete.get(i));
+            if (i != (recordsToDelete.size() - 1)) {
+               message.append(", ");
+            }
+         }
+
+         logger.debug(message.toString());
       };
 
       messageJournal.load(records, preparedTransactions, transactionFailureCallback, false);
@@ -336,9 +345,14 @@ public final class XmlDataExporter extends DBOption {
          xmlWriter.writeEndDocument();
          xmlWriter.flush();
          xmlWriter.close();
-      } catch (Exception e) {
+      } catch (Throwable e) {
          e.printStackTrace();
+         this.lastError = e;
       }
+   }
+
+   public Throwable getLastError() {
+      return lastError;
    }
 
    private void printBindingsAsXML() throws XMLStreamException {
@@ -374,7 +388,7 @@ public final class XmlDataExporter extends DBOption {
       xmlWriter.writeStartElement(XmlDataConstants.MESSAGES_PARENT);
 
       if (logInterval > 0) {
-         System.err.println("Processing journal messages");
+         getActionContext().err.println("Processing journal messages");
       }
 
       long msgs = 0;
@@ -385,7 +399,7 @@ public final class XmlDataExporter extends DBOption {
          msgs++;
          if (logInterval > 0) {
             if (msgs % logInterval == 0) {
-               System.err.println("exported " + msgs + " messages from journal");
+               getActionContext().err.println("exported " + msgs + " messages from journal");
             }
          }
       }
@@ -433,7 +447,7 @@ public final class XmlDataExporter extends DBOption {
                      while (iter.hasNext()) {
                         msgs++;
                         if (logInterval > 0 && msgs % logInterval == 0) {
-                           System.err.println("Exported " + msgs + " messages from paging");
+                           getActionContext().err.println("Exported " + msgs + " messages from paging");
                         }
                         PagedMessage message = iter.next();
                         message.initMessage(storageManager);
@@ -480,7 +494,22 @@ public final class XmlDataExporter extends DBOption {
    private List<String> extractQueueNames(HashMap<Long, DescribeJournal.ReferenceDescribe> refMap) {
       List<String> queues = new ArrayList<>();
       for (DescribeJournal.ReferenceDescribe ref : refMap.values()) {
-         queues.add(queueBindings.get(ref.refEncoding.queueID).getQueueName().toString());
+         String queueName;
+
+         PersistentQueueBindingEncoding persistentQueueBindingEncoding = queueBindings.get(ref.refEncoding.queueID);
+         if (persistentQueueBindingEncoding == null) {
+            PersistentQueueBindingEncoding undefinedQueue = new PersistentQueueBindingEncoding();
+            undefinedQueue.setId(ref.refEncoding.queueID);
+            undefinedQueue.replaceQueueName(SimpleString.of(undefinedPrefix + ref.refEncoding.queueID));
+            undefinedQueue.replaceAddress(undefinedQueue.getQueueName());
+            queueBindings.put(undefinedQueue.getId(), undefinedQueue);
+            queueName = String.valueOf(undefinedQueue.getQueueName());
+            getActionContext().err.println("Queue ID " + ref.refEncoding.queueID + " not defined. Exporting it as " + undefinedQueue.getQueueName());
+         } else {
+            queueName = String.valueOf(persistentQueueBindingEncoding.getQueueName());
+         }
+
+         queues.add(queueName);
       }
       return queues;
    }

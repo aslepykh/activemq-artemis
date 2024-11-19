@@ -17,6 +17,9 @@
 
 package org.apache.activemq.artemis.utils;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.ObjectName;
 import javax.management.remote.JMXConnector;
@@ -34,18 +37,20 @@ import java.net.MalformedURLException;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.management.ActiveMQServerControl;
 import org.apache.activemq.artemis.api.core.management.ObjectNameBuilder;
 import org.apache.activemq.artemis.api.core.management.QueueControl;
+import org.apache.activemq.artemis.api.core.management.SimpleManagement;
 import org.apache.activemq.artemis.api.jms.ActiveMQJMSClient;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.util.ServerUtil;
-import org.junit.After;
-import org.junit.Assert;
+import org.junit.jupiter.api.AfterEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +66,13 @@ public class RealServerTestBase extends ActiveMQTestBase {
 
    public static final String basedir = System.getProperty("basedir");
 
-   @After
+   public static final String ARTEMIS_HOME_PROPERTY = "artemis.distribution.output";
+
+   public static HelperCreate helperCreate() {
+      return new HelperCreate(ARTEMIS_HOME_PROPERTY);
+   }
+
+   @AfterEach
    public void after() throws Exception {
       // close ServerLocators before killing the server otherwise they'll hang and delay test termination
       closeAllServerLocatorsFactories();
@@ -89,7 +100,12 @@ public class RealServerTestBase extends ActiveMQTestBase {
       File serverPlace = new File(serverLocation);
       File etcPlace = new File(serverPlace, "etc");
       File stopMe = new File(etcPlace, STOP_FILE_NAME);
-      Assert.assertTrue(stopMe.createNewFile());
+      assertTrue(stopMe.createNewFile());
+   }
+
+   protected static void stopServerWithFile(String serverLocation, Process process, int timeout, TimeUnit unit) throws Exception {
+      stopServerWithFile(serverLocation);
+      process.waitFor(timeout, unit);
    }
 
    public static String getServerLocation(String serverName) {
@@ -177,7 +193,7 @@ public class RealServerTestBase extends ActiveMQTestBase {
       } catch (Exception e) {
          jmxConnector = null;
          e.printStackTrace();
-         Assert.fail(e.getMessage());
+         fail(e.getMessage());
       }
       return jmxConnector;
    }
@@ -188,7 +204,7 @@ public class RealServerTestBase extends ActiveMQTestBase {
    }
 
    protected boolean findLogRecord(File logFile, String... values) throws Exception {
-      Assert.assertTrue(logFile.exists());
+      assertTrue(logFile.exists());
       boolean hasRecord = false;
       try (BufferedReader reader = new BufferedReader(new FileReader(logFile))) {
          String line = reader.readLine();
@@ -225,7 +241,7 @@ public class RealServerTestBase extends ActiveMQTestBase {
          try {
             JMXConnector connector = newJMXFactory(uri);
 
-            ObjectName objectQueueName = builder.getQueueObjectName(SimpleString.toSimpleString(address), SimpleString.toSimpleString(queueName), routingType);
+            ObjectName objectQueueName = builder.getQueueObjectName(SimpleString.of(address), SimpleString.of(queueName), routingType);
 
             QueueControl queueControl = MBeanServerInvocationHandler.newProxyInstance(connector.getMBeanServerConnection(), objectQueueName, QueueControl.class, false);
             queueControl.getMessagesAcknowledged(); // making one call
@@ -281,5 +297,23 @@ public class RealServerTestBase extends ActiveMQTestBase {
       properties.store(outputStream, "# Broker properties");
       outputStream.close();
    }
+
+
+   protected long getMessageCount(String uri, String queueName) throws Exception {
+      SimpleManagement management = new SimpleManagement(uri, null, null);
+      return getMessageCount(management, queueName);
+   }
+
+   protected long getMessageCount(SimpleManagement simpleManagement, String queue) throws Exception {
+      try {
+         long value = simpleManagement.getMessageCountOnQueue(queue);
+         logger.info("count on queue {} is {}", queue, value);
+         return value;
+      } catch (Exception e) {
+         logger.warn(e.getMessage(), e);
+         return -1;
+      }
+   }
+
 
 }

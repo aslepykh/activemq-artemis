@@ -16,22 +16,32 @@
  */
 package org.apache.activemq.artemis.core.config.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.ByteArrayInputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.config.BridgeConfiguration;
 import org.apache.activemq.artemis.core.config.Configuration;
+import org.apache.activemq.artemis.core.config.FederationConfiguration;
 import org.apache.activemq.artemis.core.config.FileDeploymentManager;
 import org.apache.activemq.artemis.core.config.HAPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ScaleDownConfiguration;
 import org.apache.activemq.artemis.core.config.WildcardConfiguration;
+import org.apache.activemq.artemis.core.config.federation.FederationQueuePolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.PrimaryOnlyPolicyConfiguration;
 import org.apache.activemq.artemis.core.config.ha.SharedStorePrimaryPolicyConfiguration;
 import org.apache.activemq.artemis.core.deployers.impl.FileConfigurationParser;
@@ -42,8 +52,7 @@ import org.apache.activemq.artemis.utils.ClassloadingUtil;
 import org.apache.activemq.artemis.utils.DefaultSensitiveStringCodec;
 import org.apache.activemq.artemis.utils.PasswordMaskingUtil;
 import org.apache.activemq.artemis.utils.StringPrintStream;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FileConfigurationParserTest extends ServerTestBase {
 
@@ -70,7 +79,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
             fail("parsing should have failed for " + filename);
          } catch (java.lang.IllegalStateException e) {
             Throwable cause = e.getCause();
-            assertTrue("must have been org.xml.sax.SAXParseException", cause instanceof org.xml.sax.SAXParseException);
+            assertTrue(cause instanceof org.xml.sax.SAXParseException, "must have been org.xml.sax.SAXParseException");
          }
       }
    }
@@ -93,7 +102,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       deploymentManager.readConfiguration();
       ActiveMQServer server = addServer((ActiveMQServer) deploymentManager.buildService(null, null, null).get("core"));
       server.start();
-      assertEquals(0, server.locateQueue(SimpleString.toSimpleString("q")).getMaxConsumers());
+      assertEquals(0, server.locateQueue(SimpleString.of("q")).getMaxConsumers());
    }
 
    @Test
@@ -115,7 +124,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       Configuration config = parser.parseMainConfig(ClassloadingUtil.findResource("FileConfigurationParser-duplicateAddressSettings.xml").openStream());
 
-      Assert.assertEquals(123, config.getAddressSettings().get("foo").getRedistributionDelay());
+      assertEquals(123, config.getAddressSettings().get("foo").getRedistributionDelay());
    }
 
    @Test
@@ -129,10 +138,10 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration config = parser.parseMainConfig(input);
 
-      Assert.assertEquals(1, config.getClusterConfigurations().size());
+      assertEquals(1, config.getClusterConfigurations().size());
 
-      Assert.assertEquals("my-discovery-group", config.getClusterConfigurations().get(0).getDiscoveryGroupName());
-      Assert.assertEquals(333, config.getClusterConfigurations().get(0).getRetryInterval());
+      assertEquals("my-discovery-group", config.getClusterConfigurations().get(0).getDiscoveryGroupName());
+      assertEquals(333, config.getClusterConfigurations().get(0).getRetryInterval());
    }
 
    @Test
@@ -144,7 +153,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration config = parser.parseMainConfig(input);
 
-      Assert.assertEquals(0, config.getIDCacheSize());
+      assertEquals(0, config.getIDCacheSize());
    }
 
    @Test
@@ -202,7 +211,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       assertEquals("helloworld", config.getClusterPassword());
 
       //if we add mask, it should be able to decode correctly
-      DefaultSensitiveStringCodec codec = new DefaultSensitiveStringCodec();
+      DefaultSensitiveStringCodec codec = PasswordMaskingUtil.getDefaultCodec();
       String mask = codec.encode("helloworld");
 
       String maskPasswordPart = "<mask-password>true</mask-password>";
@@ -257,7 +266,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       assertEquals("helloworld", config.getClusterPassword());
 
       //if we add mask, it should be able to decode correctly
-      DefaultSensitiveStringCodec codec = new DefaultSensitiveStringCodec();
+      DefaultSensitiveStringCodec codec = PasswordMaskingUtil.getDefaultCodec();
       String mask = codec.encode("helloworld");
 
       clusterPasswordPart = "<cluster-password>" + PasswordMaskingUtil.wrap(mask) + "</cluster-password>";
@@ -399,7 +408,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration configuration = parser.parseMainConfig(input);
       AddressSettings settings = configuration.getAddressSettings().get("foo");
-      Assert.assertEquals(123, settings.getMaxSizeMessages());
+      assertEquals(123, settings.getMaxSizeMessages());
    }
 
 
@@ -412,11 +421,11 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration configuration = parser.parseMainConfig(input);
       AddressSettings settings = configuration.getAddressSettings().get("foo");
-      Assert.assertEquals(1024, settings.getMaxReadPageBytes());
-      Assert.assertEquals(33, settings.getMaxReadPageMessages());
-      Assert.assertNull(settings.getPageLimitBytes());
-      Assert.assertNull(settings.getPageLimitMessages());
-      Assert.assertNull(settings.getPageFullMessagePolicy());
+      assertEquals(1024, settings.getMaxReadPageBytes());
+      assertEquals(33, settings.getMaxReadPageMessages());
+      assertNull(settings.getPageLimitBytes());
+      assertNull(settings.getPageLimitMessages());
+      assertNull(settings.getPageFullMessagePolicy());
    }
 
    @Test
@@ -428,13 +437,13 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration configuration = parser.parseMainConfig(input);
       AddressSettings settings = configuration.getAddressSettings().get("foo");
-      Assert.assertEquals(1024, settings.getMaxReadPageBytes());
-      Assert.assertEquals(33, settings.getMaxReadPageMessages());
-      Assert.assertEquals(10L * 1024 * 1024 * 1024, settings.getPageLimitBytes().longValue());
-      Assert.assertEquals(100 * 1024 * 1024, settings.getPrefetchPageBytes());
-      Assert.assertEquals(777, settings.getPrefetchPageMessages());
-      Assert.assertEquals(3L * 1024 * 1024 * 1024, settings.getPageLimitMessages().longValue());
-      Assert.assertEquals("FAIL", settings.getPageFullMessagePolicy().toString());
+      assertEquals(1024, settings.getMaxReadPageBytes());
+      assertEquals(33, settings.getMaxReadPageMessages());
+      assertEquals(10L * 1024 * 1024 * 1024, settings.getPageLimitBytes().longValue());
+      assertEquals(100 * 1024 * 1024, settings.getPrefetchPageBytes());
+      assertEquals(777, settings.getPrefetchPageMessages());
+      assertEquals(3L * 1024 * 1024 * 1024, settings.getPageLimitMessages().longValue());
+      assertEquals("FAIL", settings.getPageFullMessagePolicy().toString());
    }
 
    @Test
@@ -446,8 +455,8 @@ public class FileConfigurationParserTest extends ServerTestBase {
 
       Configuration configuration = parser.parseMainConfig(input);
       AddressSettings settings = configuration.getAddressSettings().get("foo");
-      Assert.assertEquals(-1, settings.getMaxReadPageBytes());
-      Assert.assertEquals(-1, settings.getMaxReadPageMessages());
+      assertEquals(-1, settings.getMaxReadPageBytes());
+      assertEquals(-1, settings.getMaxReadPageMessages());
    }
 
    @Test
@@ -458,7 +467,43 @@ public class FileConfigurationParserTest extends ServerTestBase {
       ByteArrayInputStream input = new ByteArrayInputStream(configStr.getBytes(StandardCharsets.UTF_8));
 
       Configuration configuration = parser.parseMainConfig(input);
-      Assert.assertEquals("()", configuration.getLiteralMatchMarkers());
+      assertEquals("()", configuration.getLiteralMatchMarkers());
+   }
+
+   @Test
+   public void testViewPermissionMethodMatchPattern() throws Exception {
+      final String pattern = "^(get|list).+$";
+      String configStr = "<configuration><view-permission-method-match-pattern>" + pattern + "</view-permission-method-match-pattern>\n</configuration>\n";
+
+      FileConfigurationParser parser = new FileConfigurationParser();
+      ByteArrayInputStream input = new ByteArrayInputStream(configStr.getBytes(StandardCharsets.UTF_8));
+
+      Configuration configuration = parser.parseMainConfig(input);
+      assertEquals(pattern, configuration.getViewPermissionMethodMatchPattern());
+   }
+
+   @Test
+   public void testManagementRbacPrefix() throws Exception {
+      final String pattern = "j.m.x";
+      String configStr = "<configuration><management-rbac-prefix>" + pattern + "</management-rbac-prefix>\n</configuration>\n";
+
+      FileConfigurationParser parser = new FileConfigurationParser();
+      ByteArrayInputStream input = new ByteArrayInputStream(configStr.getBytes(StandardCharsets.UTF_8));
+
+      Configuration configuration = parser.parseMainConfig(input);
+      assertEquals(pattern, configuration.getManagementRbacPrefix());
+   }
+
+   @Test
+   public void testManagementRbac() throws Exception {
+      final boolean enabled = true;
+      String configStr = "<configuration><management-message-rbac>" + enabled + "</management-message-rbac>\n</configuration>\n";
+
+      FileConfigurationParser parser = new FileConfigurationParser();
+      ByteArrayInputStream input = new ByteArrayInputStream(configStr.getBytes(StandardCharsets.UTF_8));
+
+      Configuration configuration = parser.parseMainConfig(input);
+      assertEquals(enabled, configuration.isManagementMessageRbac());
    }
 
    // you should not use K, M notations on address settings max-size-messages
@@ -475,7 +520,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       } catch (Throwable expected) {
          valid = true;
       }
-      Assert.assertTrue("Exception expected", valid);
+      assertTrue(valid, "Exception expected");
    }
 
    private static String bridgePart = "<bridges>\n" +
@@ -551,8 +596,8 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       Configuration configuration = parser.parseMainConfig(inputStream);
 
-      Assert.assertEquals(10 * 1024 * 1024, configuration.getGlobalMaxSize());
-      Assert.assertEquals(1000, configuration.getGlobalMaxMessages());
+      assertEquals(10 * 1024 * 1024, configuration.getGlobalMaxSize());
+      assertEquals(1000, configuration.getGlobalMaxMessages());
    }
 
    @Test
@@ -568,7 +613,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       Configuration configuration = parser.parseMainConfig(inputStream);
 
-      Assert.assertEquals(0, configuration.getMaxRedeliveryRecords());
+      assertEquals(0, configuration.getMaxRedeliveryRecords());
    }
 
    @Test
@@ -590,7 +635,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
          exceptionHappened = true;
       }
 
-      Assert.assertTrue("Exception expected parsing notation for global-max-messages", exceptionHappened);
+      assertTrue(exceptionHappened, "Exception expected parsing notation for global-max-messages");
 
    }
 
@@ -610,10 +655,10 @@ public class FileConfigurationParserTest extends ServerTestBase {
       Configuration configuration = parser.parseMainConfig(inputStream);
 
       // check that suffixes were interpreted well
-      Assert.assertEquals(100 * 1024 * 1024, configuration.getGlobalMaxSize());
-      Assert.assertEquals(10 * 1024 * 1024, configuration.getJournalFileSize());
+      assertEquals(100 * 1024 * 1024, configuration.getGlobalMaxSize());
+      assertEquals(10 * 1024 * 1024, configuration.getJournalFileSize());
       // one of the two will get the value
-      Assert.assertTrue(5 * 1024 * 1024 == configuration.getJournalBufferSize_AIO() ||
+      assertTrue(5 * 1024 * 1024 == configuration.getJournalBufferSize_AIO() ||
                                  5 * 1024 * 1024 == configuration.getJournalBufferSize_NIO());
    }
 
@@ -649,9 +694,9 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       Configuration configuration = parser.parseMainConfig(inputStream);
 
-      Assert.assertEquals("history", configuration.getJournalRetentionDirectory());
+      assertEquals("history", configuration.getJournalRetentionDirectory());
 
-      Assert.assertEquals(expected.toMillis(365), configuration.getJournalRetentionPeriod());
+      assertEquals(expected.toMillis(365), configuration.getJournalRetentionPeriod());
    }
 
 
@@ -674,7 +719,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
          exceptionHappened = true;
       }
 
-      Assert.assertTrue(exceptionHappened);
+      assertTrue(exceptionHappened);
    }
 
 
@@ -692,9 +737,9 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       Configuration configuration = null;
       configuration = parser.parseMainConfig(inputStream);
-      Assert.assertNull(configuration.getJournalRetentionLocation());
-      Assert.assertNull(configuration.getJournalRetentionDirectory());
-      Assert.assertEquals("journal", configuration.getJournalDirectory());
+      assertNull(configuration.getJournalRetentionLocation());
+      assertNull(configuration.getJournalRetentionDirectory());
+      assertEquals("journal", configuration.getJournalDirectory());
    }
 
 
@@ -715,7 +760,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
          exception = true;
       }
 
-      Assert.assertTrue(exception);
+      assertTrue(exception);
    }
 
    @Test
@@ -729,7 +774,7 @@ public class FileConfigurationParserTest extends ServerTestBase {
       FileConfigurationParser parser = new FileConfigurationParser();
       ByteArrayInputStream inputStream = new ByteArrayInputStream(stringPrintStream.getBytes());
       Configuration configuration = parser.parseMainConfig(inputStream);
-      Assert.assertFalse(configuration.isLargeMessageSync());
+      assertFalse(configuration.isLargeMessageSync());
    }
 
    private static String firstPart = "<core xmlns=\"urn:activemq:core\">" + "\n" +
@@ -766,4 +811,47 @@ public class FileConfigurationParserTest extends ServerTestBase {
       "</address-settings>" + "\n";
 
    private static String lastPart = "</core>";
+
+   @Test
+   public void testParseQueueMatchInFederationConfiguration() throws Exception {
+      String configStr = firstPart +
+                         "<federations>" +
+                          "<federation name=\"server-1-federation\">" +
+                           "<upstream name=\"upstream\">" +
+                            "<static-connectors>" +
+                             "<connector-ref>server-connector</connector-ref>" +
+                            "</static-connectors>" +
+                            "<policy ref=\"queue-federation\"/>" +
+                           "</upstream>" +
+                           "" +
+                           "<queue-policy name=\"queue-federation\">" +
+                            "<include queue-match=\"myQueue\" address-match=\"#\"/>" +
+                           "</queue-policy>" +
+                          "</federation>" +
+                         "</federations>" +
+                         lastPart;
+
+      final FileConfigurationParser parser = new FileConfigurationParser();
+      final ByteArrayInputStream input = new ByteArrayInputStream(configStr.getBytes(StandardCharsets.UTF_8));
+
+      final Configuration configuration = parser.parseMainConfig(input);
+      final List<FederationConfiguration> federations = configuration.getFederationConfigurations();
+
+      assertEquals(1, federations.size());
+
+      final FederationConfiguration federation = federations.get(0);
+      final FederationQueuePolicyConfiguration policy =
+         (FederationQueuePolicyConfiguration) federation.getQueuePolicies().get("queue-federation");
+
+      assertNotNull(policy);
+
+      final Set<FederationQueuePolicyConfiguration.Matcher> matches = policy.getIncludes();
+
+      assertEquals(1, matches.size());
+
+      final FederationQueuePolicyConfiguration.Matcher match = matches.iterator().next();
+
+      assertEquals("#", match.getAddressMatch());
+      assertEquals("myQueue", match.getQueueMatch());
+   }
 }

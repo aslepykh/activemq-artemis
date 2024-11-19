@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.openwire;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
@@ -30,14 +34,13 @@ import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class OpenWireScheduledDelayTest extends OpenWireTestBase {
 
    @Override
    protected void configureAddressSettings(Map<String, AddressSettings> addressSettingsMap) {
-      addressSettingsMap.put("#", new AddressSettings().setDeadLetterAddress(new SimpleString("ActiveMQ.DLQ")));
+      addressSettingsMap.put("#", new AddressSettings().setDeadLetterAddress(SimpleString.of("ActiveMQ.DLQ")));
    }
 
    @Test
@@ -73,7 +76,7 @@ public class OpenWireScheduledDelayTest extends OpenWireTestBase {
       received = consumer.receive(DELAY + 250);
       assertNotNull(received);
       assertEquals(FIRST, received.getStringProperty(PROP_NAME));
-      Assert.assertTrue(System.currentTimeMillis() >= ETA);
+      assertTrue(System.currentTimeMillis() >= ETA);
 
       connection.close();
    }

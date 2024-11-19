@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.jms.multiprotocol;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.jms.DeliveryMode;
 import javax.jms.JMSException;
@@ -30,10 +35,16 @@ import java.lang.invoke.MethodHandles;
 
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.RoutingType;
+import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.api.core.management.AddressControl;
+import org.apache.activemq.artemis.api.core.management.ResourceNames;
+import org.apache.activemq.artemis.core.paging.PagingStore;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.utils.DestinationUtil;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Test;
+import org.apache.activemq.artemis.utils.Wait;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,28 +52,32 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
 
    protected static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testDeliveryModeAMQPProducerCoreConsumer() throws Exception {
       Connection connection = createConnection(); //AMQP
       Connection connection2 = createCoreConnection(); //CORE
       testDeliveryMode(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testDeliveryModeAMQPProducerAMQPConsumer() throws Exception {
       Connection connection = createConnection(); //AMQP
       Connection connection2 = createConnection(); //AMQP
       testDeliveryMode(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testDeliveryModeCoreProducerAMQPConsumer() throws Exception {
       Connection connection = createCoreConnection(); //CORE
       Connection connection2 = createConnection(); //AMQP
       testDeliveryMode(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testDeliveryModeCoreProducerCoreConsumer() throws Exception {
       Connection connection = createCoreConnection(); //CORE
       Connection connection2 = createCoreConnection(); //CORE
@@ -89,8 +104,8 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
 
          Message received = consumer2.receive(100);
 
-         assertNotNull("Should have received a message by now.", received);
-         assertTrue("Should be an instance of TextMessage", received instanceof TextMessage);
+         assertNotNull(received, "Should have received a message by now.");
+         assertTrue(received instanceof TextMessage, "Should be an instance of TextMessage");
          assertEquals(DeliveryMode.PERSISTENT, received.getJMSDeliveryMode());
       } finally {
          connection1.close();
@@ -98,17 +113,20 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testQueueRoutingTypeMismatchCore() throws Exception {
       testQueueRoutingTypeMismatch(createCoreConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testQueueRoutingTypeMismatchOpenWire() throws Exception {
       testQueueRoutingTypeMismatch(createOpenWireConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testQueueRoutingTypeMismatchAMQP() throws Exception {
       testQueueRoutingTypeMismatch(createConnection());
    }
@@ -116,7 +134,7 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
    private void testQueueRoutingTypeMismatch(Connection connection) throws Exception {
       server.getAddressSettingsRepository().getMatch("#").setAutoCreateQueues(false).setAutoCreateAddresses(false);
       String name = getTopicName();
-      server.createQueue(new QueueConfiguration(name).setAddress(name).setRoutingType(RoutingType.MULTICAST).setAutoCreateAddress(true));
+      server.createQueue(QueueConfiguration.of(name).setAddress(name).setRoutingType(RoutingType.MULTICAST).setAutoCreateAddress(true));
       try {
          Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
          session.createConsumer(session.createQueue(name));
@@ -128,28 +146,32 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPriorityAMQPProducerCoreConsumer() throws Exception {
       Connection connection = createConnection(); //AMQP
       Connection connection2 = createCoreConnection(); //CORE
       testPriority(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPriorityAMQPProducerAMQPConsumer() throws Exception {
       Connection connection = createConnection(); //AMQP
       Connection connection2 = createConnection(); //AMQP
       testPriority(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPriorityModeCoreProducerAMQPConsumer() throws Exception {
       Connection connection = createCoreConnection(); //CORE
       Connection connection2 = createConnection(); //AMQP
       testPriority(connection, connection2);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPriorityCoreProducerCoreConsumer() throws Exception {
       Connection connection = createCoreConnection(); //CORE
       Connection connection2 = createCoreConnection(); //CORE
@@ -176,8 +198,8 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
 
          Message received = consumer2.receive(100);
 
-         assertNotNull("Should have received a message by now.", received);
-         assertTrue("Should be an instance of TextMessage", received instanceof TextMessage);
+         assertNotNull(received, "Should have received a message by now.");
+         assertTrue(received instanceof TextMessage, "Should be an instance of TextMessage");
          assertEquals(2, received.getJMSPriority());
       } finally {
          connection1.close();
@@ -185,19 +207,22 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testDurableSubscriptionWithConfigurationManagedQueueWithCore() throws Exception {
       testDurableSubscriptionWithConfigurationManagedQueue(() -> createCoreConnection(false));
 
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testDurableSubscriptionWithConfigurationManagedQueueWithOpenWire() throws Exception {
       testDurableSubscriptionWithConfigurationManagedQueue(() -> createOpenWireConnection(false));
 
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testDurableSubscriptionWithConfigurationManagedQueueWithAMQP() throws Exception {
       testDurableSubscriptionWithConfigurationManagedQueue(() -> JMSMessageConsumerTest.super.createConnection(false));
    }
@@ -207,7 +232,7 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
       final String subName = "foo";
       final String queueName = DestinationUtil.createQueueNameForSubscription(true, clientId, subName).toString();
       server.stop();
-      server.getConfiguration().addQueueConfiguration(new QueueConfiguration(queueName).setAddress("myTopic").setFilterString("color = 'BLUE'").setRoutingType(RoutingType.MULTICAST));
+      server.getConfiguration().addQueueConfiguration(QueueConfiguration.of(queueName).setAddress("myTopic").setFilterString("color = 'BLUE'").setRoutingType(RoutingType.MULTICAST));
       server.getConfiguration().setAmqpUseCoreSubscriptionNaming(true);
       server.start();
 
@@ -226,32 +251,38 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenOpenWireAndAMQP() throws Exception {
       testEmptyMapMessageConversion(createOpenWireConnection(), createConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenAMQPAndOpenWire() throws Exception {
       testEmptyMapMessageConversion(createConnection(), createOpenWireConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenCoreAndAMQP() throws Exception {
       testEmptyMapMessageConversion(createCoreConnection(), createConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenAMQPAndCore() throws Exception {
       testEmptyMapMessageConversion(createConnection(), createCoreConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenCoreAndOpenWire() throws Exception {
       testEmptyMapMessageConversion(createCoreConnection(), createOpenWireConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testEmptyMapMessageConversionBetweenOpenWireAndCore() throws Exception {
       testEmptyMapMessageConversion(createOpenWireConnection(), createCoreConnection());
    }
@@ -268,35 +299,40 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
 
          Message received = consumer.receive(1000);
 
-         assertNotNull("Should have received a message by now.", received);
-         assertTrue("Should be an instance of MapMessage", received instanceof MapMessage);
+         assertNotNull(received, "Should have received a message by now.");
+         assertTrue(received instanceof MapMessage, "Should be an instance of MapMessage");
       } finally {
          senderConnection.close();
          consumerConnection.close();
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testMapMessageConversionBetweenAMQPAndOpenWire() throws Exception {
       testMapMessageConversion(createConnection(), createOpenWireConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testMapMessageConversionBetweenCoreAndAMQP() throws Exception {
       testMapMessageConversion(createCoreConnection(), createConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testMapMessageConversionBetweenAMQPAndCore() throws Exception {
       testMapMessageConversion(createConnection(), createCoreConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testMapMessageConversionBetweenCoreAndOpenWire() throws Exception {
       testMapMessageConversion(createCoreConnection(), createOpenWireConnection());
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testMapMessageConversionBetweenOpenWireAndCore() throws Exception {
       testMapMessageConversion(createOpenWireConnection(), createCoreConnection());
    }
@@ -346,8 +382,8 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
 
          Message received = consumer.receive(1000);
 
-         assertNotNull("Should have received a message by now.", received);
-         assertTrue("Should be an instance of MapMessage", received instanceof MapMessage);
+         assertNotNull(received, "Should have received a message by now.");
+         assertTrue(received instanceof MapMessage, "Should be an instance of MapMessage");
          MapMessage receivedMapMessage = (MapMessage) received;
 
          assertEquals(BOOLEAN_VALUE, receivedMapMessage.getBoolean(BOOLEAN_KEY));
@@ -367,4 +403,38 @@ public class JMSMessageConsumerTest extends MultiprotocolJMSClientTestSupport {
          consumerConnection.close();
       }
    }
+
+
+   @Test
+   public void testConvertedAndPaging() throws Exception {
+      final int MESSAGE_COUNT = 1;
+      server.createQueue(QueueConfiguration.of(getQueueName()).setRoutingType(RoutingType.ANYCAST));
+      PagingStore store = server.getPagingManager().getPageStore(SimpleString.of(getQueueName()));
+      store.startPaging();
+      try (Connection senderConnection = createConnection(); Connection consumerConnection = createCoreConnection()) {
+         Session consumerSession = consumerConnection.createSession(true, Session.SESSION_TRANSACTED);
+         MessageConsumer consumer = consumerSession.createConsumer(consumerSession.createQueue(getQueueName()));
+
+         Session senderSession = senderConnection.createSession(true, Session.SESSION_TRANSACTED);
+         MessageProducer producer = senderSession.createProducer(senderSession.createQueue(getQueueName()));
+         for (int i = 0; i < MESSAGE_COUNT; i++) {
+            Message message = senderSession.createMessage();
+            message.setIntProperty("count", i); // test will also pass if this is removed
+            producer.send(message);
+         }
+         senderSession.commit();
+
+         for (int i = 0; i < MESSAGE_COUNT; i++) {
+            Message received = consumer.receive(1000);
+            assertNotNull(received);
+         }
+         consumerSession.commit();
+         consumer.close();
+
+         assertEquals(0, server.locateQueue(getQueueName()).getMessageCount());
+         Wait.assertEquals(0, store::getAddressSize, 5000);
+         assertEquals(0, ((AddressControl) server.getManagementService().getResource(ResourceNames.ADDRESS + getQueueName())).getAddressSize());
+      }
+   }
+
 }

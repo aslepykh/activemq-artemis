@@ -25,10 +25,17 @@ import java.util.Enumeration;
 import org.apache.activemq.artemis.tests.integration.stomp.util.ClientStompFrame;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnection;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnectionFactory;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StompWithMessageIDTest extends StompTestBase {
+
+   public StompWithMessageIDTest() {
+      super("tcp+v10.stomp");
+   }
 
    @Override
    public boolean isEnableStompMessageId() {
@@ -66,13 +73,13 @@ public class StompWithMessageIDTest extends StompTestBase {
       MessageConsumer consumer = session.createConsumer(queue);
 
       TextMessage message = (TextMessage) consumer.receive(1000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
       message = (TextMessage) consumer.receive(1000);
-      Assert.assertNotNull(message);
+      assertNotNull(message);
 
       message = (TextMessage) consumer.receive(100);
-      Assert.assertNull(message);
+      assertNull(message);
 
       conn.disconnect();
    }

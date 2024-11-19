@@ -208,10 +208,12 @@ The combination of these two headers will form the identity of the durable subsc
 To delete a durable subscription the `client-id` header must be set on the `CONNECT` frame and the `durable-subscription-name` must be set on the `UNSUBSCRIBE` frame.
 The values for these headers should match what was set on the `SUBSCRIBE` frame to delete the corresponding durable subscription.
 
-Aside from `durable-subscription-name`, the broker also supports `durable-subscriber-name` (a deprecated property used before `durable-subscription-name`) as well as `activemq.subscriptionName` from ActiveMQ "Classic".
+Aside from `durable-subscription-name`, the broker also supports `durable-subscriber-name` (a deprecated property used before `durable-subscription-name`) as well as `activemq.subscriptionName` from ActiveMQ Classic.
 This is the order of precedence if the frame contains more than one of these:
 
-1) `durable-subscriber-name` 2) `durable-subscription-name` 3) `activemq.subscriptionName`
+. `durable-subscription-name`
+. `durable-subscriber-name`
+. `activemq.subscriptionName`
 
 It is possible to pre-configure durable subscriptions since the STOMP implementation creates the queue used for the durable subscription in a deterministic way (i.e. using the format of `client-id`.`subscription-name`).
 For example, if you wanted to configure a durable subscription on the address `myAddress` with a client-id of `myclientid` and a subscription name of `mysubscription` then configure the durable subscription:
@@ -281,7 +283,7 @@ The `stomp-websockets` xref:examples.adoc[example] shows how to configure an Apa
 STOMP clients can use the `consumer-window-size` header on the `SUBSCRIBE` frame to control the flow of messages to clients.
 This is broadly discussed in the xref:flow-control.adoc#flow-control[Flow Control] chapter.
 
-This ability is similar to the `activemq.prefetchSize` header supported by ActiveMQ "Classic".
+This ability is similar to the `activemq.prefetchSize` header supported by ActiveMQ Classic.
 However, that header specifies the size in terms of _messages_ whereas `consumer-window-size` specifies the size in terms of _bytes_.
 ActiveMQ Artemis supports the `activemq.prefetchSize` header for backwards compatibility but the value will be interpreted as _bytes_ just like `consumer-window-size` would be.
 If both `activemq.prefetchSize` and `consumer-window-size` are set then the value for `consumer-window-size` will be used.

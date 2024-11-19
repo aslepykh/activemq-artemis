@@ -29,9 +29,9 @@ import java.util.Arrays;
 import java.util.Set;
 
 /**
- * Logger Code 60
+ * Logger Codes 600000 - 609999
  */
-@LogBundle(projectCode = "AMQ", regexID = "60[0-9]{4}")
+@LogBundle(projectCode = "AMQ", regexID = "60[0-9]{4}", retiredIDs = {601268, 601503, 601504, 601505, 601506, 601507, 601508})
 public interface AuditLogger {
 
    AuditLogger BASE_LOGGER = BundleFactory.newBundle(AuditLogger.class, "org.apache.activemq.audit.base");
@@ -2668,12 +2668,12 @@ public interface AuditLogger {
    @LogMessage(id = 601770, value = "User {} is clearing authorization cache on target resource: {}", level = LogMessage.Level.INFO)
    void clearAuthorizationCache(String user, Object source);
 
-   static void getCurrentTimeMillis() {
-      BASE_LOGGER.getCurrentTimeMillis(getCaller());
+   static void getCurrentTimeMillis(Object source) {
+      BASE_LOGGER.getCurrentTimeMillis(getCaller(), source);
    }
 
    @LogMessage(id = 601771, value = "User {} is getting name on target resource: {}", level = LogMessage.Level.INFO)
-   void getCurrentTimeMillis(Object source);
+   void getCurrentTimeMillis(String user, Object source);
 
    static void getProducerWindowSize(Object source) {
       BASE_LOGGER.getProducerWindowSize(getCaller(), source);
@@ -2682,4 +2682,66 @@ public interface AuditLogger {
    @LogMessage(id = 601772, value = "User {} is getting producerWindowSize on target resource: {}", level = LogMessage.Level.INFO)
    void getProducerWindowSize(String user, Object source);
 
+   static void peekFirstScheduledMessage(Object source) {
+      BASE_LOGGER.peekFirstScheduledMessage(getCaller(), source);
+   }
+
+   @LogMessage(id = 601773, value = "User {} is getting first scheduled message on target resource: {}", level = LogMessage.Level.INFO)
+   void peekFirstScheduledMessage(String user, Object source);
+
+   static void peekFirstScheduledMessageAsJSON(Object source) {
+      BASE_LOGGER.peekFirstScheduledMessageAsJSON(getCaller(), source);
+   }
+
+   @LogMessage(id = 601774, value = "User {} is getting first scheduled message as json on target resource: {}", level = LogMessage.Level.INFO)
+   void peekFirstScheduledMessageAsJSON(String user, Object source);
+
+   static void peekFirstMessage(Object source) {
+      BASE_LOGGER.peekFirstMessage(getCaller(), source);
+   }
+
+   @LogMessage(id = 601775, value = "User {} is getting first message on target resource: {}", level = LogMessage.Level.INFO)
+   void peekFirstMessage(String user, Object source);
+
+   static void peekFirstMessageAsJSON(Object source) {
+      BASE_LOGGER.peekFirstMessageAsJSON(getCaller(), source);
+   }
+
+   @LogMessage(id = 601776, value = "User {} is getting first message as json on target resource: {}", level = LogMessage.Level.INFO)
+   void peekFirstMessageAsJSON(String user, Object source);
+
+   static void getBrokerPluginClassNames(Object source) {
+      BASE_LOGGER.getBrokerPluginClassNames(getCaller(), source);
+   }
+
+   @LogMessage(id = 601777, value = "User {} is getting broker plugin class names on target resource: {}", level = LogMessage.Level.INFO)
+   void getBrokerPluginClassNames(String user, Object source);
+
+   static void getAuthenticationSuccessCount(Object source) {
+      BASE_LOGGER.getAuthenticationSuccessCount(getCaller(), source);
+   }
+
+   @LogMessage(id = 601778, value = "User {} is getting authentication success count on target resource: {}", level = LogMessage.Level.INFO)
+   void getAuthenticationSuccessCount(String user, Object source);
+
+   static void getAuthenticationFailureCount(Object source) {
+      BASE_LOGGER.getAuthenticationFailureCount(getCaller(), source);
+   }
+
+   @LogMessage(id = 601779, value = "User {} is getting authentication failure count on target resource: {}", level = LogMessage.Level.INFO)
+   void getAuthenticationFailureCount(String user, Object source);
+
+   static void getAuthorizationSuccessCount(Object source) {
+      BASE_LOGGER.getAuthorizationSuccessCount(getCaller(), source);
+   }
+
+   @LogMessage(id = 601780, value = "User {} is getting authorization success count on target resource: {}", level = LogMessage.Level.INFO)
+   void getAuthorizationSuccessCount(String user, Object source);
+
+   static void getAuthorizationFailureCount(Object source) {
+      BASE_LOGGER.getAuthorizationFailureCount(getCaller(), source);
+   }
+
+   @LogMessage(id = 601781, value = "User {} is getting authorization failure count on target resource: {}", level = LogMessage.Level.INFO)
+   void getAuthorizationFailureCount(String user, Object source);
 }

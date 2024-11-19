@@ -37,6 +37,7 @@ import org.apache.activemq.artemis.core.protocol.openwire.OpenWireConnection;
 import org.apache.activemq.artemis.core.protocol.openwire.OpenWireMessageConverter;
 import org.apache.activemq.artemis.core.protocol.openwire.OpenWireProtocolManager;
 import org.apache.activemq.artemis.core.protocol.openwire.util.OpenWireUtil;
+import org.apache.activemq.artemis.core.security.CheckType;
 import org.apache.activemq.artemis.core.server.ActiveMQMessageBundle;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.MessageReference;
@@ -106,7 +107,7 @@ public class AMQSession implements SessionCallback {
                      OpenWireProtocolManager protocolManager, CoreMessageObjectPools coreMessageObjectPools) {
       this.connInfo = connInfo;
       this.sessInfo = sessInfo;
-      this.clientId = SimpleString.toSimpleString(connInfo.getClientId());
+      this.clientId = SimpleString.of(connInfo.getClientId());
       this.server = server;
       this.connection = connection;
       this.protocolManager = protocolManager;
@@ -181,7 +182,7 @@ public class AMQSession implements SessionCallback {
          }
          if (openWireDest.isQueue()) {
             openWireDest = protocolManager.virtualTopicConsumerToFQQN(openWireDest);
-            SimpleString queueName = new SimpleString(convertWildcard(openWireDest));
+            SimpleString queueName = SimpleString.of(convertWildcard(openWireDest));
 
             if (!checkAutoCreateQueue(queueName, openWireDest.isTemporary(), OpenWireUtil.extractFilterStringOrNull(info, openWireDest))) {
                throw new InvalidDestinationException("Destination doesn't exist: " + queueName);
@@ -243,7 +244,7 @@ public class AMQSession implements SessionCallback {
                routingTypeToUse = as.getDefaultAddressRoutingType();
             }
          }
-         AutoCreateResult autoCreateResult = coreSession.checkAutoCreate(new QueueConfiguration(queueName)
+         AutoCreateResult autoCreateResult = coreSession.checkAutoCreate(QueueConfiguration.of(queueName)
                                                                             .setAddress(queueName)
                                                                             .setRoutingType(routingTypeToUse)
                                                                             .setTemporary(isTemporary)
@@ -364,6 +365,14 @@ public class AMQSession implements SessionCallback {
 
       final ActiveMQDestination destination = messageSend.getDestination();
 
+      if (producerInfo.getDestination() == null) {
+         // a named producer will have its target destination checked on create but an
+         // anonymous producer can send to different addresses on each send so we need to
+         // check here before going into message conversion and pre-dispatch stages before
+         // the target gets a security check.
+         checkDestinationForSendPermission(destination);
+      }
+
       final ActiveMQDestination[] actualDestinations;
       final int actualDestinationsCount;
       if (destination.isComposite()) {
@@ -385,7 +394,7 @@ public class AMQSession implements SessionCallback {
       * message comes from failover connection.  If so we add a DUPLICATE_ID to handle duplicates after a resend. */
 
       if (connection.getContext().isFaultTolerant() && protocolManager.isOpenwireUseDuplicateDetectionOnFailover() && !messageSend.getProperties().containsKey(org.apache.activemq.artemis.api.core.Message.HDR_DUPLICATE_DETECTION_ID.toString()) && !isTemporary(producerInfo)) {
-         originalCoreMsg.putStringProperty(org.apache.activemq.artemis.api.core.Message.HDR_DUPLICATE_DETECTION_ID, SimpleString.toSimpleString(messageSend.getMessageId().toString()));
+         originalCoreMsg.putStringProperty(org.apache.activemq.artemis.api.core.Message.HDR_DUPLICATE_DETECTION_ID, SimpleString.of(messageSend.getMessageId().toString()));
       }
 
       final boolean shouldBlockProducer = producerInfo.getWindowSize() > 0 || messageSend.isResponseRequired();
@@ -399,7 +408,7 @@ public class AMQSession implements SessionCallback {
       for (int i = 0; i < actualDestinationsCount; i++) {
          final ActiveMQDestination dest = actualDestinations != null ? actualDestinations[i] : destination;
          final String physicalName = dest.getPhysicalName();
-         final SimpleString address = SimpleString.toSimpleString(physicalName, coreMessageObjectPools.getAddressStringSimpleStringPool());
+         final SimpleString address = SimpleString.of(physicalName, coreMessageObjectPools.getAddressStringSimpleStringPool());
          //the last coreMsg could be directly the original one -> it avoid 1 copy if actualDestinations > 1 and ANY copy if actualDestinations == 1
          final org.apache.activemq.artemis.api.core.Message coreMsg = (i == actualDestinationsCount - 1) ? originalCoreMsg : originalCoreMsg.copy();
          coreMsg.setAddress(address);
@@ -567,5 +576,26 @@ public class AMQSession implements SessionCallback {
 
    public boolean isInternal() {
       return sessInfo.getSessionId().getValue() == -1;
+   }
+
+   public void checkDestinationForSendPermission(ActiveMQDestination destination) throws Exception {
+      if (server.getSecurityStore().isSecurityEnabled()) {
+         if (destination.isComposite()) {
+            for (ActiveMQDestination composite : destination.getCompositeDestinations()) {
+               doCheckDestinationForSendPermission(composite);
+            }
+         } else {
+            doCheckDestinationForSendPermission(destination);
+         }
+      }
+   }
+
+   private void doCheckDestinationForSendPermission(ActiveMQDestination destination) throws Exception {
+      final SimpleString destinationName = SimpleString.of(destination.getPhysicalName());
+      final SimpleString address = CompositeAddress.extractAddressName(destinationName);
+      final SimpleString queue = CompositeAddress.isFullyQualified(destinationName) ?
+         CompositeAddress.extractQueueName(destinationName) : null;
+
+      server.getSecurityStore().check(address, queue, CheckType.SEND, getCoreSession());
    }
 }

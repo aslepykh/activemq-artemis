@@ -17,11 +17,18 @@
 package org.apache.activemq.artemis.core.security.impl;
 
 import javax.security.auth.Subject;
+import java.lang.invoke.MethodHandles;
+import java.nio.charset.StandardCharsets;
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.apache.activemq.artemis.api.core.Pair;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.management.CoreNotificationType;
@@ -46,17 +53,12 @@ import org.apache.activemq.artemis.spi.core.security.ActiveMQSecurityManager3;
 import org.apache.activemq.artemis.spi.core.security.ActiveMQSecurityManager4;
 import org.apache.activemq.artemis.spi.core.security.ActiveMQSecurityManager5;
 import org.apache.activemq.artemis.spi.core.security.jaas.NoCacheLoginException;
-import org.apache.activemq.artemis.spi.core.security.jaas.UserPrincipal;
+import org.apache.activemq.artemis.utils.ByteUtil;
 import org.apache.activemq.artemis.utils.CompositeAddress;
 import org.apache.activemq.artemis.utils.collections.ConcurrentHashSet;
 import org.apache.activemq.artemis.utils.collections.TypedProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-
-import java.lang.invoke.MethodHandles;
 
 /**
  * The ActiveMQ Artemis SecurityStore implementation
@@ -81,6 +83,15 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
 
    private final NotificationService notificationService;
 
+   private static final AtomicLongFieldUpdater<SecurityStoreImpl> AUTHENTICATION_SUCCESS_COUNT_UPDATER = AtomicLongFieldUpdater.newUpdater(SecurityStoreImpl.class, "authenticationSuccessCount");
+   private volatile long authenticationSuccessCount;
+   private static final AtomicLongFieldUpdater<SecurityStoreImpl> AUTHENTICATION_FAILURE_COUNT_UPDATER = AtomicLongFieldUpdater.newUpdater(SecurityStoreImpl.class, "authenticationFailureCount");
+   private volatile long authenticationFailureCount;
+   private static final AtomicLongFieldUpdater<SecurityStoreImpl> AUTHORIZATION_SUCCESS_COUNT_UPDATER = AtomicLongFieldUpdater.newUpdater(SecurityStoreImpl.class, "authorizationSuccessCount");
+   private volatile long authorizationSuccessCount;
+   private static final AtomicLongFieldUpdater<SecurityStoreImpl> AUTHORIZATION_FAILURE_COUNT_UPDATER = AtomicLongFieldUpdater.newUpdater(SecurityStoreImpl.class, "authorizationFailureCount");
+   private volatile long authorizationFailureCount;
+
 
    /**
     * @param notificationService can be <code>null</code>
@@ -93,30 +104,39 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
                             final String managementClusterPassword,
                             final NotificationService notificationService,
                             final long authenticationCacheSize,
-                            final long authorizationCacheSize) {
+                            final long authorizationCacheSize) throws NoSuchAlgorithmException {
       this.securityRepository = securityRepository;
       this.securityManager = securityManager;
       this.securityEnabled = securityEnabled;
       this.managementClusterUser = managementClusterUser;
       this.managementClusterPassword = managementClusterPassword;
       this.notificationService = notificationService;
-      if (authenticationCacheSize == 0) {
+      if (securityEnabled) {
+         if (authenticationCacheSize == 0) {
+            authenticationCache = null;
+         } else {
+            authenticationCache = Caffeine.newBuilder()
+                                          .maximumSize(authenticationCacheSize)
+                                          .expireAfterWrite(invalidationInterval, TimeUnit.MILLISECONDS)
+                                          .recordStats()
+                                          .build();
+            logger.trace("Created authn cache: {}; maxSize: {}; invalidationInterval: {}", authenticationCache, authenticationCacheSize, invalidationInterval);
+         }
+         if (authorizationCacheSize == 0) {
+            authorizationCache = null;
+         } else {
+            authorizationCache = Caffeine.newBuilder()
+                                         .maximumSize(authorizationCacheSize)
+                                         .expireAfterWrite(invalidationInterval, TimeUnit.MILLISECONDS)
+                                         .recordStats()
+                                         .build();
+            logger.trace("Created authz cache: {}; maxSize: {}; invalidationInterval: {}", authorizationCache, authorizationCacheSize, invalidationInterval);
+         }
+         this.securityRepository.registerListener(this);
+      } else {
          authenticationCache = null;
-      } else {
-         authenticationCache = Caffeine.newBuilder()
-                                       .maximumSize(authenticationCacheSize)
-                                       .expireAfterWrite(invalidationInterval, TimeUnit.MILLISECONDS)
-                                       .build();
-      }
-      if (authorizationCacheSize == 0) {
          authorizationCache = null;
-      } else {
-         authorizationCache = Caffeine.newBuilder()
-                                      .maximumSize(authorizationCacheSize)
-                                      .expireAfterWrite(invalidationInterval, TimeUnit.MILLISECONDS)
-                                      .build();
       }
-      this.securityRepository.registerListener(this);
    }
 
    // SecurityManager implementation --------------------------------
@@ -158,8 +178,10 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
              * operation between nodes
              */
             if (!managementClusterPassword.equals(password)) {
+               AUTHENTICATION_FAILURE_COUNT_UPDATER.incrementAndGet(this);
                throw ActiveMQMessageBundle.BUNDLE.unableToValidateClusterUser(user);
             } else {
+               AUTHENTICATION_SUCCESS_COUNT_UPDATER.incrementAndGet(this);
                return managementClusterUser;
             }
          }
@@ -169,7 +191,8 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
          boolean check = true;
 
          Subject subject = null;
-         Pair<Boolean, Subject> cacheEntry = getAuthenticationCacheEntry(user, password, connection);
+         String authnCacheKey = createAuthenticationCacheKey(user, password, connection);
+         Pair<Boolean, Subject> cacheEntry = getAuthenticationCacheEntry(authnCacheKey);
          if (cacheEntry != null) {
             if (!cacheEntry.getA()) {
                // cached authentication failed previously so don't check again
@@ -196,7 +219,7 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
             if (securityManager instanceof ActiveMQSecurityManager5) {
                try {
                   subject = ((ActiveMQSecurityManager5) securityManager).authenticate(user, password, connection, securityDomain);
-                  putAuthenticationCacheEntry(user, password, connection, subject);
+                  putAuthenticationCacheEntry(authnCacheKey, subject);
                   validatedUser = getUserFromSubject(subject);
                } catch (NoCacheLoginException e) {
                   handleNoCacheLoginException(e);
@@ -221,9 +244,14 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
             connection.setSubject(subject);
          }
          if (AuditLogger.isResourceLoggingEnabled()) {
-            AuditLogger.userSuccesfullyAuthenticatedInAudit(subject, connection.getRemoteAddress(), connection.getID().toString());
+            if (connection != null) {
+               AuditLogger.userSuccesfullyAuthenticatedInAudit(subject, connection.getRemoteAddress(), connection.getID().toString());
+            } else {
+               AuditLogger.userSuccesfullyAuthenticatedInAudit(subject, null, null);
+            }
          }
 
+         AUTHENTICATION_SUCCESS_COUNT_UPDATER.incrementAndGet(this);
          return validatedUser;
       }
 
@@ -251,6 +279,7 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
          // bypass permission checks for management cluster user
          String user = session.getUsername();
          if (managementClusterUser.equals(user) && session.getPassword().equals(managementClusterPassword)) {
+            AUTHORIZATION_SUCCESS_COUNT_UPDATER.incrementAndGet(this);
             return;
          }
 
@@ -268,6 +297,7 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
          }
 
          if (checkAuthorizationCache(fqqn != null  ? fqqn : bareAddress, user, checkType)) {
+            AUTHORIZATION_SUCCESS_COUNT_UPDATER.incrementAndGet(this);
             return;
          }
 
@@ -302,8 +332,8 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
                TypedProperties props = new TypedProperties();
 
                props.putSimpleStringProperty(ManagementHelper.HDR_ADDRESS, bareAddress);
-               props.putSimpleStringProperty(ManagementHelper.HDR_CHECK_TYPE, new SimpleString(checkType.toString()));
-               props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.toSimpleString(user));
+               props.putSimpleStringProperty(ManagementHelper.HDR_CHECK_TYPE, SimpleString.of(checkType.toString()));
+               props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.of(getCaller(user, session.getRemotingConnection().getSubject())));
 
                Notification notification = new Notification(null, CoreNotificationType.SECURITY_PERMISSION_VIOLATION, props);
 
@@ -312,15 +342,26 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
 
             Exception ex;
             if (bareQueue == null) {
-               ex = ActiveMQMessageBundle.BUNDLE.userNoPermissions(session.getUsername(), checkType, bareAddress);
+               ex = ActiveMQMessageBundle.BUNDLE.userNoPermissions(getCaller(user, session.getRemotingConnection().getSubject()), checkType, bareAddress);
             } else {
-               ex = ActiveMQMessageBundle.BUNDLE.userNoPermissionsQueue(session.getUsername(), checkType, bareQueue, bareAddress);
+               ex = ActiveMQMessageBundle.BUNDLE.userNoPermissionsQueue(getCaller(user, session.getRemotingConnection().getSubject()), checkType, bareQueue, bareAddress);
             }
             AuditLogger.securityFailure(session.getRemotingConnection().getSubject(), session.getRemotingConnection().getRemoteAddress(), ex.getMessage(), ex);
+            AUTHORIZATION_FAILURE_COUNT_UPDATER.incrementAndGet(this);
             throw ex;
          }
 
          // if we get here we're granted, add to the cache
+
+         AUTHORIZATION_SUCCESS_COUNT_UPDATER.incrementAndGet(this);
+
+         if (user == null) {
+            // should get all user/pass into a subject and only cache subjects
+            // till then when subject is in play, the user may be null and
+            // we cannot cache as we don't have a unique key
+            return;
+         }
+
          ConcurrentHashSet<SimpleString> set;
          String key = createAuthorizationCacheKey(user, checkType);
          ConcurrentHashSet<SimpleString> act = getAuthorizationCacheEntry(key);
@@ -340,19 +381,15 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
       // we don't invalidate the authentication cache here because it's not necessary
    }
 
-   public static String getUserFromSubject(Subject subject) {
-      if (subject == null) {
-         return null;
-      }
+   public String getUserFromSubject(Subject subject) {
+      return securityManager.getUserFromSubject(subject);
+   }
 
-      String validatedUser = "";
-      Set<UserPrincipal> users = subject.getPrincipals(UserPrincipal.class);
-
-      // should only ever be 1 UserPrincipal
-      for (UserPrincipal userPrincipal : users) {
-         validatedUser = userPrincipal.getName();
+   public String getCaller(String user, Subject subject) {
+      if (user != null) {
+         return user;
       }
-      return validatedUser;
+      return getUserFromSubject(subject);
    }
 
    /**
@@ -376,9 +413,9 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
 
       if (notificationService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.toSimpleString(user));
-         props.putSimpleStringProperty(ManagementHelper.HDR_CERT_SUBJECT_DN, SimpleString.toSimpleString(certSubjectDN));
-         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.toSimpleString(connection == null ? "null" : connection.getRemoteAddress()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.of(user));
+         props.putSimpleStringProperty(ManagementHelper.HDR_CERT_SUBJECT_DN, SimpleString.of(certSubjectDN));
+         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.of(connection == null ? "null" : connection.getRemoteAddress()));
 
          Notification notification = new Notification(null, CoreNotificationType.SECURITY_AUTHENTICATION_VIOLATION, props);
 
@@ -390,9 +427,10 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
       ActiveMQServerLogger.LOGGER.securityProblemWhileAuthenticating(e.getMessage());
 
       if (AuditLogger.isResourceLoggingEnabled()) {
-         AuditLogger.userFailedAuthenticationInAudit(null, e.getMessage(), connection.getID().toString());
+         AuditLogger.userFailedAuthenticationInAudit(null, e.getMessage(), connection == null ? "null" : connection.getID().toString());
       }
 
+      AUTHENTICATION_FAILURE_COUNT_UPDATER.incrementAndGet(this);
       throw e;
    }
 
@@ -404,7 +442,8 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
     * @return the authenticated Subject with all associated role principals
     */
    private Subject getSubjectForAuthorization(SecurityAuth auth, ActiveMQSecurityManager5 securityManager) {
-      Pair<Boolean, Subject> cached = getAuthenticationCacheEntry(auth.getUsername(), auth.getPassword(), auth.getRemotingConnection());
+      String authnCacheKey = createAuthenticationCacheKey(auth.getUsername(), auth.getPassword(), auth.getRemotingConnection());
+      Pair<Boolean, Subject> cached = getAuthenticationCacheEntry(authnCacheKey);
 
       if (cached == null && auth.getUsername() == null && auth.getPassword() == null && auth.getRemotingConnection() instanceof ManagementRemotingConnection) {
          AccessControlContext accessControlContext = AccessController.getContext();
@@ -420,7 +459,7 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
       if (cached == null) {
          try {
             Subject subject = securityManager.authenticate(auth.getUsername(), auth.getPassword(), auth.getRemotingConnection(), auth.getSecurityDomain());
-            putAuthenticationCacheEntry(auth.getUsername(), auth.getPassword(), auth.getRemotingConnection(), subject);
+            putAuthenticationCacheEntry(authnCacheKey, subject);
             return subject;
          } catch (NoCacheLoginException e) {
             handleNoCacheLoginException(e);
@@ -434,28 +473,28 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
       logger.debug("Skipping authentication cache due to exception: {}", e.getMessage());
    }
 
-   private void putAuthenticationCacheEntry(String user,
-                                            String password,
-                                            RemotingConnection connection,
-                                            Subject subject) {
+   private void putAuthenticationCacheEntry(String key, Subject subject) {
       if (authenticationCache != null) {
-         authenticationCache.put(createAuthenticationCacheKey(user, password, connection), new Pair<>(subject != null, subject));
+         Pair<Boolean, Subject> value = new Pair<>(subject != null, subject);
+         authenticationCache.put(key, value);
+         logger.trace("Put into authn cache; key: {}; value: {}", key, value);
       }
    }
 
-   private Pair<Boolean, Subject> getAuthenticationCacheEntry(String user,
-                                                              String password,
-                                                              RemotingConnection connection) {
+   private Pair<Boolean, Subject> getAuthenticationCacheEntry(String key) {
       if (authenticationCache == null) {
          return null;
       } else {
-         return authenticationCache.getIfPresent(createAuthenticationCacheKey(user, password, connection));
+         Pair<Boolean, Subject> value = authenticationCache.getIfPresent(key);
+         logger.trace("Get from authn cache; key: {}; value: {}", key, value);
+         return value;
       }
    }
 
-   private void putAuthorizationCacheEntry(ConcurrentHashSet<SimpleString> set, String key) {
+   private void putAuthorizationCacheEntry(ConcurrentHashSet<SimpleString> value, String key) {
       if (authorizationCache != null) {
-         authorizationCache.put(key, set);
+         authorizationCache.put(key, value);
+         logger.trace("Put into authz cache; key: {}; value: {}", key, value);
       }
    }
 
@@ -463,19 +502,23 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
       if (authorizationCache == null) {
          return null;
       } else {
-         return authorizationCache.getIfPresent(key);
+         ConcurrentHashSet<SimpleString> value = authorizationCache.getIfPresent(key);
+         logger.trace("Get from authz cache; key: {}; value: {}", key, value);
+         return value;
       }
    }
 
    public void invalidateAuthorizationCache() {
       if (authorizationCache != null) {
          authorizationCache.invalidateAll();
+         logger.trace("Invalidated authz cache");
       }
    }
 
    public void invalidateAuthenticationCache() {
       if (authenticationCache != null) {
          authenticationCache.invalidateAll();
+         logger.trace("Invalidated authn cache");
       }
    }
 
@@ -507,20 +550,42 @@ public class SecurityStoreImpl implements SecurityStore, HierarchicalRepositoryC
    }
 
    private String createAuthenticationCacheKey(String username, String password, RemotingConnection connection) {
-      return username + password + CertificateUtil.getCertSubjectDN(connection);
+      try {
+         return ByteUtil.bytesToHex(MessageDigest.getInstance("SHA-256").digest((username + password + CertificateUtil.getCertSubjectDN(connection)).getBytes(StandardCharsets.UTF_8)));
+      } catch (NoSuchAlgorithmException e) {
+         throw new RuntimeException(e);
+      }
    }
 
    private String createAuthorizationCacheKey(String user, CheckType checkType) {
       return user + "." + checkType.name();
    }
 
-   // for testing
-   protected Cache<String, Pair<Boolean, Subject>> getAuthenticationCache() {
+   public Cache<String, Pair<Boolean, Subject>> getAuthenticationCache() {
       return authenticationCache;
    }
 
-   // for testing
-   protected Cache<String, ConcurrentHashSet<SimpleString>> getAuthorizationCache() {
+   public Cache<String, ConcurrentHashSet<SimpleString>> getAuthorizationCache() {
       return authorizationCache;
+   }
+
+   @Override
+   public long getAuthenticationSuccessCount() {
+      return authenticationSuccessCount;
+   }
+
+   @Override
+   public long getAuthenticationFailureCount() {
+      return authenticationFailureCount;
+   }
+
+   @Override
+   public long getAuthorizationSuccessCount() {
+      return authorizationSuccessCount;
+   }
+
+   @Override
+   public long getAuthorizationFailureCount() {
+      return authorizationFailureCount;
    }
 }

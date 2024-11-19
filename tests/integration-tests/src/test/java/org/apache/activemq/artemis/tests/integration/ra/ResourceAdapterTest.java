@@ -16,6 +16,13 @@
  */
 package org.apache.activemq.artemis.tests.integration.ra;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.resource.ResourceException;
 import javax.resource.spi.endpoint.MessageEndpoint;
@@ -49,7 +56,7 @@ import org.apache.activemq.artemis.tests.unit.ra.BootstrapContext;
 import org.apache.activemq.artemis.tests.unit.ra.MessageEndpointFactory;
 import org.apache.activemq.artemis.utils.DefaultSensitiveStringCodec;
 import org.apache.activemq.artemis.utils.PasswordMaskingUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ResourceAdapterTest extends ActiveMQRATestBase {
 
@@ -59,7 +66,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
       ClientSessionFactory factory = locator.createSessionFactory();
       ClientSession session = factory.createSession(false, false, false);
       ActiveMQDestination queue = (ActiveMQDestination) ActiveMQJMSClient.createQueue("test");
-      session.createQueue(new QueueConfiguration(queue.getSimpleAddress()));
+      session.createQueue(QueueConfiguration.of(queue.getSimpleAddress()));
       session.close();
 
       ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
@@ -110,8 +117,8 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
    public void testQueuePrefixWhenUseJndiIsFalse() throws Exception {
       final String prefix = "jms.queue.";
       final String destinationName = "test";
-      final SimpleString prefixedDestinationName = SimpleString.toSimpleString(prefix + destinationName);
-      server.createQueue(new QueueConfiguration(prefixedDestinationName).setRoutingType(RoutingType.ANYCAST).setDurable(false));
+      final SimpleString prefixedDestinationName = SimpleString.of(prefix + destinationName);
+      server.createQueue(QueueConfiguration.of(prefixedDestinationName).setRoutingType(RoutingType.ANYCAST).setDurable(false));
       ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
       ra.setConnectorClassName(INVM_CONNECTOR_FACTORY);
       ra.start(new BootstrapContext());
@@ -140,7 +147,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
    public void testAutoCreateQueuePrefixWhenUseJndiIsFalse() throws Exception {
       final String prefix = "jms.queue.";
       final String destinationName = "autocreatedtest";
-      final SimpleString prefixedDestinationName = SimpleString.toSimpleString(prefix + destinationName);
+      final SimpleString prefixedDestinationName = SimpleString.of(prefix + destinationName);
       ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
       ra.setConnectorClassName(INVM_CONNECTOR_FACTORY);
       ra.start(new BootstrapContext());
@@ -169,7 +176,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
    public void testTopicPrefixWhenUseJndiIsFalse() throws Exception {
       final String prefix = "jms.topic.";
       final String destinationName = "test";
-      final SimpleString prefixedDestinationName = SimpleString.toSimpleString(prefix + destinationName);
+      final SimpleString prefixedDestinationName = SimpleString.of(prefix + destinationName);
       server.addAddressInfo(new AddressInfo(prefixedDestinationName).addRoutingType(RoutingType.MULTICAST));
       ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
       ra.setConnectorClassName(INVM_CONNECTOR_FACTORY);
@@ -687,7 +694,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
       qResourceAdapter.setConnectorClassName(INVM_CONNECTOR_FACTORY);
       ActiveMQRATestBase.MyBootstrapContext ctx = new ActiveMQRATestBase.MyBootstrapContext();
 
-      DefaultSensitiveStringCodec codec = new DefaultSensitiveStringCodec();
+      DefaultSensitiveStringCodec codec = PasswordMaskingUtil.getDefaultCodec();
       String mask = codec.encode("helloworld");
 
       qResourceAdapter.setUseMaskedPassword(true);
@@ -723,7 +730,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
       qResourceAdapter.setConnectorClassName(INVM_CONNECTOR_FACTORY);
       ActiveMQRATestBase.MyBootstrapContext ctx = new ActiveMQRATestBase.MyBootstrapContext();
 
-      DefaultSensitiveStringCodec codec = new DefaultSensitiveStringCodec();
+      DefaultSensitiveStringCodec codec = PasswordMaskingUtil.getDefaultCodec();
       String mask = codec.encode("helloworld");
 
       qResourceAdapter.setPassword(PasswordMaskingUtil.wrap(mask));
@@ -860,7 +867,7 @@ public class ResourceAdapterTest extends ActiveMQRATestBase {
       ClientSessionFactory factory = locator.createSessionFactory();
       ClientSession session = factory.createSession(false, false, false);
       ActiveMQDestination queue = (ActiveMQDestination) ActiveMQJMSClient.createQueue("test");
-      session.createQueue(new QueueConfiguration(queue.getSimpleAddress()));
+      session.createQueue(QueueConfiguration.of(queue.getSimpleAddress()));
       session.close();
 
       ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();

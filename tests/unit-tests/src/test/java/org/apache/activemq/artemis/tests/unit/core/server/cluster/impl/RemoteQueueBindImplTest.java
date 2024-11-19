@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.unit.core.server.cluster.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
@@ -27,7 +31,7 @@ import org.apache.activemq.artemis.core.server.cluster.impl.RemoteQueueBindingIm
 import org.apache.activemq.artemis.tests.unit.core.postoffice.impl.fakes.FakeQueue;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class RemoteQueueBindImplTest extends ActiveMQTestBase {
 
@@ -39,7 +43,7 @@ public class RemoteQueueBindImplTest extends ActiveMQTestBase {
       final SimpleString uniqueName = RandomUtil.randomSimpleString();
       final SimpleString routingName = RandomUtil.randomSimpleString();
       final Long remoteQueueID = RandomUtil.randomLong();
-      final SimpleString filterString = new SimpleString("A>B");
+      final SimpleString filterString = SimpleString.of("A>B");
       final Queue storeAndForwardQueue = new FakeQueue(null);
       final SimpleString bridgeName = RandomUtil.randomSimpleString();
       final int distance = 0;
@@ -63,17 +67,17 @@ public class RemoteQueueBindImplTest extends ActiveMQTestBase {
 
    @Test
    public void testAddRemoveConsumer() throws Exception {
-      testAddRemoveConsumerWithFilter(i -> new SimpleString("B" + i + "<A"), 100, 100);
+      testAddRemoveConsumerWithFilter(i -> SimpleString.of("B" + i + "<A"), 100, 100);
    }
 
    @Test
    public void testAddRemoveConsumerUsingSameFilter() throws Exception {
-      testAddRemoveConsumerWithFilter(i -> new SimpleString("B" + 0 + "<A"), 100, 1);
+      testAddRemoveConsumerWithFilter(i -> SimpleString.of("B" + 0 + "<A"), 100, 1);
    }
 
    @Test
    public void testAddRemoveConsumerUsingEmptyFilters() throws Exception {
-      testAddRemoveConsumerWithFilter(i -> new SimpleString(""), 1, 0);
+      testAddRemoveConsumerWithFilter(i -> SimpleString.of(""), 1, 0);
    }
 
    @Test
@@ -88,7 +92,7 @@ public class RemoteQueueBindImplTest extends ActiveMQTestBase {
       final SimpleString uniqueName = RandomUtil.randomSimpleString();
       final SimpleString routingName = RandomUtil.randomSimpleString();
       final Long remoteQueueID = RandomUtil.randomLong();
-      final SimpleString filterString = new SimpleString("A>B");
+      final SimpleString filterString = SimpleString.of("A>B");
       final Queue storeAndForwardQueue = new FakeQueue(null);
       final SimpleString bridgeName = RandomUtil.randomSimpleString();
       final int distance = 0;

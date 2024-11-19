@@ -30,7 +30,7 @@ import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MeasurePagingMultiThreadTest extends ActiveMQTestBase {
 
@@ -48,7 +48,7 @@ public class MeasurePagingMultiThreadTest extends ActiveMQTestBase {
       ServerLocator locator = createInVMNonHALocator();
       try {
          final ClientSessionFactory factory = createSessionFactory(locator);
-         final SimpleString adr = new SimpleString("test-adr");
+         final SimpleString adr = SimpleString.of("test-adr");
 
          createDestination(factory, adr);
 
@@ -190,7 +190,7 @@ public class MeasurePagingMultiThreadTest extends ActiveMQTestBase {
    private void createDestination(final ClientSessionFactory factory, final SimpleString adr) throws ActiveMQException {
       {
          ClientSession session = factory.createSession(false, false, false);
-         session.createQueue(new QueueConfiguration(adr));
+         session.createQueue(QueueConfiguration.of(adr));
          session.close();
       }
    }

@@ -17,6 +17,13 @@
 
 package org.apache.activemq.artemis.tests.db.paging;
 
+import static org.apache.activemq.artemis.utils.TestParameters.testProperty;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import javax.jms.BytesMessage;
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
@@ -30,17 +37,17 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.tests.db.common.Database;
 import org.apache.activemq.artemis.tests.db.common.ParameterDBTestBase;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.activemq.artemis.utils.TestParameters.testProperty;
-
+@ExtendWith(ParameterizedTestExtension.class)
 public class RealServerDatabasePagingTest extends ParameterDBTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -49,49 +56,60 @@ public class RealServerDatabasePagingTest extends ParameterDBTestBase {
 
    private static final int MAX_MESSAGES = Integer.parseInt(testProperty(TEST_NAME, "MAX_MESSAGES", "200"));
 
-   private static final int MESSAGE_SIZE = Integer.parseInt(testProperty(TEST_NAME, "MESSAGE_SIZE", "1000"));
+   private static final int SOAK_MAX_MESSAGES = Integer.parseInt(testProperty(TEST_NAME, "SOAK_MAX_MESSAGES", "100000"));
 
-   private static final int COMMIT_INTERVAL = Integer.parseInt(testProperty(TEST_NAME, "COMMIT_INTERVAL", "100"));
+   private static final int MESSAGE_SIZE = Integer.parseInt(testProperty(TEST_NAME, "MESSAGE_SIZE", "1000"));
+   private static final int SOAK_MESSAGE_SIZE = Integer.parseInt(testProperty(TEST_NAME, "SOAK_MESSAGE_SIZE", "1000"));
+
+   private static final int COMMIT_INTERVAL = Integer.parseInt(testProperty(TEST_NAME, "COMMIT_INTERVAL", "1000"));
 
    Process serverProcess;
 
-   @Parameterized.Parameters(name = "db={0}")
+   @Parameters(name = "db={0}")
    public static Collection<Object[]> parameters() {
       return convertParameters(Database.selectedList());
    }
 
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       serverProcess = startServer(database.getName(), 0, 60_000);
    }
 
 
-   @Test
+   @TestTemplate
    public void testPaging() throws Exception {
-      testPaging("CORE");
-      testPaging("AMQP");
-      testPaging("OPENWIRE");
+      testPaging("CORE", MAX_MESSAGES, MESSAGE_SIZE);
+      testPaging("AMQP", MAX_MESSAGES, MESSAGE_SIZE);
+      testPaging("OPENWIRE", MAX_MESSAGES, MESSAGE_SIZE);
    }
 
-   public void testPaging(String protocol) throws Exception {
+
+   @TestTemplate
+   public void testSoakPaging() throws Exception {
+      testPaging("AMQP", SOAK_MAX_MESSAGES, SOAK_MESSAGE_SIZE);
+   }
+
+   private void testPaging(String protocol, int messages, int messageSize) throws Exception {
       logger.info("performing paging test on protocol={} and db={}", protocol, database);
 
       final String queueName = "QUEUE_" + RandomUtil.randomString() + "_" + protocol + "_" + database;
 
       ConnectionFactory connectionFactory = CFUtil.createConnectionFactory(protocol, "tcp://localhost:61616");
 
+      byte[] messageLoad = RandomUtil.randomBytes(messageSize);
+
       try (Connection connection = connectionFactory.createConnection()) {
-         byte[] messageLoad = new byte[MESSAGE_SIZE];
          Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
          Queue queue = session.createQueue(queueName);
          MessageProducer producer = session.createProducer(queue);
-         for (int i = 0; i < MAX_MESSAGES; i++) {
+         for (int i = 0; i < messages; i++) {
             BytesMessage message = session.createBytesMessage();
             message.writeBytes(messageLoad);
             message.setIntProperty("i", i);
             producer.send(message);
             if (i % COMMIT_INTERVAL == 0) {
+               logger.info("Sent {} messages", i);
                session.commit();
             }
          }
@@ -101,22 +119,30 @@ public class RealServerDatabasePagingTest extends ParameterDBTestBase {
 
       serverProcess.destroyForcibly();
       serverProcess.waitFor(1, TimeUnit.MINUTES);
-      Assert.assertFalse(serverProcess.isAlive());
+      assertFalse(serverProcess.isAlive());
 
       serverProcess = startServer(database.getName(), 0, 60_000);
 
       try (Connection connection = connectionFactory.createConnection()) {
          connection.start();
-         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+         Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
          Queue queue = session.createQueue(queueName);
          MessageConsumer consumer = session.createConsumer(queue);
-         for (int i = 0; i < MAX_MESSAGES; i++) {
+         for (int i = 0; i < messages; i++) {
             BytesMessage message = (BytesMessage) consumer.receive(5000);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(i, message.getIntProperty("i"));
-            Assert.assertEquals(MESSAGE_SIZE, message.getBodyLength());
+            assertNotNull(message);
+            assertEquals(i, message.getIntProperty("i"));
+            assertEquals(messageSize, message.getBodyLength());
+            byte[] bytesOutput = new byte[(int)message.getBodyLength()];
+            message.readBytes(bytesOutput);
+            assertArrayEquals(messageLoad, bytesOutput);
+            if (i % COMMIT_INTERVAL == 0) {
+               logger.info("Received {}", i);
+               session.commit();
+            }
          }
-         Assert.assertNull(consumer.receiveNoWait());
+         session.commit();
+         assertNull(consumer.receiveNoWait());
       }
 
 

@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.mqtt;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
@@ -43,10 +48,8 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.jgroups.util.UUID;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
-
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 public class MqttWildCardSubAutoCreateTest extends MQTTTestSupport {
 
@@ -55,7 +58,7 @@ public class MqttWildCardSubAutoCreateTest extends MQTTTestSupport {
    private MqttClient sender;
    private volatile LinkedList<String> topics = new LinkedList<>();
 
-   @After
+   @AfterEach
    public void clean() throws MqttException {
       topics.clear();
       if (subscriber != null && subscriber.isConnected()) {
@@ -93,14 +96,14 @@ public class MqttWildCardSubAutoCreateTest extends MQTTTestSupport {
       sender.publish(publishTo, UUID.randomUUID().toString().getBytes(), 2, false);
       sender.publish(publishTo, UUID.randomUUID().toString().getBytes(), 2, false);
 
-      assertTrue(server.getPagingManager().getPageStore(new SimpleString(MQTTUtil.getCoreAddressFromMqttTopic(subscribeTo, server.getConfiguration().getWildcardConfiguration()))).isPaging());
+      assertTrue(server.getPagingManager().getPageStore(SimpleString.of(MQTTUtil.getCoreAddressFromMqttTopic(subscribeTo, server.getConfiguration().getWildcardConfiguration()))).isPaging());
 
       subscriber = createMqttClient(subscriberId);
       subscriber.subscribe(subscribeTo, 2);
 
       boolean satisfied = Wait.waitFor(() -> topics.size() == 2, 5_000);
       if (!satisfied) {
-         Assert.fail();
+         fail();
       }
 
       subscriber.messageArrivedComplete(lastId, 2);
@@ -225,16 +228,16 @@ public class MqttWildCardSubAutoCreateTest extends MQTTTestSupport {
          int countOfPageStores = 0;
          SimpleString[] storeNames = server.getPagingManager().getStoreNames();
          for (int i = 0; i < storeNames.length; i++) {
-            if (!storeNames[i].equals(SimpleString.toSimpleString(MQTTUtil.MQTT_SESSION_STORE))) {
+            if (!storeNames[i].equals(SimpleString.of(MQTTUtil.MQTT_SESSION_STORE))) {
                countOfPageStores++;
             }
          }
 
-         assertEquals("there should be 5", 5, countOfPageStores);
+         assertEquals(5, countOfPageStores, "there should be 5");
 
          connection.close();
 
-         Assert.assertFalse(loggerHandler.findText("222295"));
+         assertFalse(loggerHandler.findText("222295"));
       }
    }
 

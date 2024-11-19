@@ -46,6 +46,11 @@ import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPF
 import static org.apache.activemq.artemis.protocol.amqp.proton.AMQPTunneledMessageConstants.AMQP_TUNNELED_CORE_LARGE_MESSAGE_FORMAT;
 import static org.apache.activemq.artemis.protocol.amqp.proton.AMQPTunneledMessageConstants.AMQP_TUNNELED_CORE_MESSAGE_FORMAT;
 import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -91,6 +96,7 @@ import org.apache.activemq.artemis.core.config.amqpBrokerConnectivity.AMQPFedera
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ComponentConfigurationRoutingType;
 import org.apache.activemq.artemis.core.server.Divert;
+import org.apache.activemq.artemis.core.server.QueueQueryResult;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.core.server.transformer.Transformer;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
@@ -122,7 +128,8 @@ import org.apache.qpid.protonj2.test.driver.matchers.transport.TransferPayloadCo
 import org.apache.qpid.protonj2.test.driver.matchers.types.EncodedAmqpValueMatcher;
 import org.hamcrest.Matchers;
 import org.jgroups.util.UUID;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -148,7 +155,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       return createServer(AMQP_PORT, false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverWhenLocalQueueIsStaticlyDefined() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -208,11 +216,11 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
                             .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString());
          peer.expectFlow().withLinkCredit(1000);
 
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
 
@@ -233,8 +241,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          // This should trigger the federation consumer to be shutdown as the statically defined queue
          // should be the only remaining demand on the address.
          logger.info("Removing Queues from federated address to eliminate demand");
-         server.destroyQueue(SimpleString.toSimpleString("test"));
-         Wait.assertFalse(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         server.destroyQueue(SimpleString.of("test"));
+         Wait.assertFalse(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectClose();
@@ -244,7 +252,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverLinkForAddressMatch() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -284,7 +293,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, true);
@@ -317,7 +326,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverLinkForAddressMatchUsingPolicyCredit() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -359,7 +369,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, true);
@@ -392,12 +402,14 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverLinkForAddressMatchWithMaxHopsFilter() throws Exception {
       doTestFederationCreatesAddressReceiverLinkForAddressWithCorrectFilters(true);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverLinkForAddressMatchWithoutMaxHopsFilter() throws Exception {
       doTestFederationCreatesAddressReceiverLinkForAddressWithCorrectFilters(false);
    }
@@ -446,7 +458,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final String expectedJMSFilter = generateAddressFilter(1);
          final Symbol jmsSelectorKey = Symbol.valueOf("jms-selector");
@@ -555,7 +567,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationClosesAddressReceiverLinkWhenDemandRemoved() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -595,7 +608,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -634,7 +647,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationRetainsAddressReceiverLinkWhenDurableSubscriberIsOffline() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -674,7 +688,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -720,7 +734,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationClosesAddressReceiverLinkWaitsForAllDemandToRemoved() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -760,7 +775,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -801,7 +816,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationHandlesAddressDeletedAndConsumerRecreates() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -834,7 +850,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectAttach().ofReceiver()
@@ -857,7 +873,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.expectDetach().respond();
 
-            server.removeAddressInfo(SimpleString.toSimpleString("test"), null, true);
+            server.removeAddressInfo(SimpleString.of("test"), null, true);
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          }
@@ -887,7 +903,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationConsumerCreatedWhenDemandAddedToDivertAddress() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -930,7 +947,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
          server.deployDivert(divertConfig);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -969,7 +986,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationConsumerCreatedWhenDemandAddedToCompositeDivertAddress() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1012,7 +1030,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
          server.deployDivert(divertConfig);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1059,7 +1077,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationConsumerRemovesDemandFromDivertConsumersOnlyWhenAllDemandIsRemoved() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1102,7 +1121,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
          server.deployDivert(divertConfig);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1143,7 +1162,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationConsumerRetainsDemandForDivertBindingWithoutActiveAnycastSubscriptions() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1191,7 +1211,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.deployDivert(divertConfig);
          // Current implementation requires the source address exist on the local broker before it
          // will attempt to federate it from the remote.
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("source"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("source"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1232,7 +1252,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationConsumerRemovesDemandForDivertBindingWithoutActiveMulticastSubscriptions() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1280,7 +1301,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.deployDivert(divertConfig);
          // Current implementation requires the source address exist on the local broker before it
          // will attempt to federate it from the remote.
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("source"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("source"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1323,7 +1344,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationRemovesRemoteDemandIfDivertIsRemoved() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1366,7 +1388,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
          server.deployDivert(divertConfig);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("source"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("source"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1397,7 +1419,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.expectDetach().respond();
 
-            server.destroyDivert(SimpleString.toSimpleString("test-divert"));
+            server.destroyDivert(SimpleString.of("test-divert"));
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.close();
@@ -1405,7 +1427,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testDivertBindingsDoNotCreateAdditionalDemandIfDemandOnForwardingAddressAlreadyExists() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1448,7 +1471,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
          server.deployDivert(divertConfig);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          final Map<String, Object> expectedSourceProperties = new HashMap<>();
          expectedSourceProperties.put(ADDRESS_AUTO_DELETE, false);
@@ -1485,7 +1508,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
             consumer1.close();
             consumer2.close();
 
-            server.destroyDivert(SimpleString.toSimpleString("test-divert"));
+            server.destroyDivert(SimpleString.of("test-divert"));
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.expectDetach().respond();
@@ -1498,7 +1521,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testInboundMessageRoutedToReceiverOnLocalAddress() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1531,7 +1555,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectAttach().ofReceiver()
@@ -1570,7 +1594,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAcceptsAddressPolicyFromControlLink() throws Exception {
       server.start();
 
@@ -1607,7 +1632,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAcceptsAddressPolicyFromControlLinkWithTransformerConfiguration() throws Exception {
       server.start();
 
@@ -1652,7 +1678,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesAddressWhenDemandIsApplied() throws Exception {
       server.start();
 
@@ -1715,7 +1742,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesAddressWhenDemandIsAppliedUsingControllerDefinedLinkCredit() throws Exception {
       server.start();
 
@@ -1779,7 +1807,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesAddressWhenDemandIsAppliedUsingPolicyDefinedLinkCredit() throws Exception {
       server.start();
 
@@ -1848,7 +1877,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesAddressAndAppliesTransformerWhenDemandIsApplied() throws Exception {
       server.start();
 
@@ -1921,7 +1951,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAnswersAttachOfFederationReceiverProperly() throws Exception {
       server.start();
 
@@ -1967,7 +1998,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testReceiverWithMaxHopsFilterAppliesFilterCorrectly() throws Exception {
       server.start();
 
@@ -2084,7 +2116,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteConnectionCannotAttachAddressFederationLinkWithoutControlLink() throws Exception {
       server.start();
 
@@ -2129,7 +2162,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testTransformInboundFederatedMessageBeforeDispatch() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -2171,7 +2205,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectAttach().ofReceiver()
@@ -2212,7 +2246,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationDoesNotCreateAddressReceiverLinkForAddressMatchWhenLinkCreditIsSetToZero() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -2250,7 +2285,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -2274,12 +2309,14 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageConvertedToAMQPWhenTunnelingDisabled() throws Exception {
       doTestCoreMessageHandlingBasedOnTunnelingState(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageNotConvertedToAMQPWhenTunnelingEnabled() throws Exception {
       doTestCoreMessageHandlingBasedOnTunnelingState(true);
    }
@@ -2351,12 +2388,14 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreLargeMessageConvertedToAMQPWhenTunnelingDisabled() throws Exception {
       doTestCoreLargeMessageHandlingBasedOnTunnelingState(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreLargeMessageNotConvertedToAMQPWhenTunnelingEnabled() throws Exception {
       doTestCoreLargeMessageHandlingBasedOnTunnelingState(true);
    }
@@ -2435,7 +2474,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationStartedTriggersRemoteDemandWithExistingAddressBindings() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.start();
@@ -2460,11 +2500,11 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
 
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
-         Wait.assertTrue(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         Wait.assertTrue(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
 
@@ -2529,8 +2569,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          // This should trigger the federation consumer to be shutdown as the statically defined queue
          // should be the only remaining demand on the address.
          logger.info("Removing Queues from federated address to eliminate demand");
-         server.destroyQueue(SimpleString.toSimpleString("test"));
-         Wait.assertFalse(() -> server.queueQuery(SimpleString.toSimpleString("test")).isExists());
+         server.destroyQueue(SimpleString.of("test"));
+         Wait.assertFalse(() -> server.queueQuery(SimpleString.of("test")).isExists());
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectClose();
@@ -2540,7 +2580,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationStartedTriggersRemoteDemandWithExistingAddressAndDivertBindings() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.start();
@@ -2574,8 +2615,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.start();
 
          // Configure addresses and divert for the test
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("target"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("target"), RoutingType.MULTICAST));
          server.deployDivert(divert);
 
          // Create demand on the addresses so that on start federation should happen
@@ -2648,7 +2689,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationStartTriggersFederationWithMultipleDivertsAndRemainsActiveAfterOneRemoved() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.start();
@@ -2689,10 +2731,10 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.start();
 
          // Configure addresses and divert for the test
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("target1"), RoutingType.MULTICAST));
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("target2"), RoutingType.MULTICAST));
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("target3"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("target1"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("target2"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("target3"), RoutingType.MULTICAST));
          server.deployDivert(divert1);
          server.deployDivert(divert2);
 
@@ -2750,12 +2792,12 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
-         server.destroyDivert(SimpleString.toSimpleString(divert1.getName()));
+         server.destroyDivert(SimpleString.of(divert1.getName()));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectDetach().respond();
 
-         server.destroyDivert(SimpleString.toSimpleString(divert2.getName()));
+         server.destroyDivert(SimpleString.of(divert2.getName()));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -2768,7 +2810,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationPluginCanLimitDemandToOnlyTheConfiguredDivert() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -2824,8 +2867,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.start();
 
          // Configure addresses and divert for the test
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("target"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("target"), RoutingType.MULTICAST));
          server.deployDivert(divert);
          server.registerBrokerPlugin(federationPlugin);
 
@@ -2865,7 +2908,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesEventSenderAndReceiverWhenLocalAndRemotePoliciesAdded() throws Exception {
       final MessageAnnotationsMatcher maMatcher = new MessageAnnotationsMatcher(true);
       maMatcher.withEntry(OPERATION_TYPE.toString(), Matchers.is(ADD_ADDRESS_POLICY));
@@ -2950,7 +2994,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationSendsRemotePolicyIfEventsSenderLinkRejected() throws Exception {
       final MessageAnnotationsMatcher maMatcher = new MessageAnnotationsMatcher(true);
       maMatcher.withEntry(OPERATION_TYPE.toString(), Matchers.is(ADD_ADDRESS_POLICY));
@@ -3019,7 +3064,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerSendsAddressAddedEventForInterestedPeer() throws Exception {
       final AddressSettings addressSettings = new AddressSettings();
       addressSettings.setAutoCreateQueues(false);
@@ -3073,8 +3119,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          peer.expectTransfer().withPayload(payloadMatcher).accept(); // Address added event
 
          // Manually add the address and a queue binding to create local demand.
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3089,7 +3135,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverInResponseToAddressAddedEvent() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3155,10 +3202,10 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          peer.remoteDetach().withClosed(true)
                             .withErrorCondition(AmqpError.NOT_FOUND.toString(), "Address not found")
                             .queue();
-         peer.expectFlow();
+         peer.expectFlow().optional();
          peer.expectDetach();
 
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3186,7 +3233,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressAddedEventIgnoredIfFederationConsumerAlreadyCreated() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3234,11 +3282,11 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          peer.remoteDetach().withClosed(true)
                             .withErrorCondition(AmqpError.NOT_FOUND.toString(), "Address not found")
                             .queue();
-         peer.expectFlow();
+         peer.expectFlow().optional();
          peer.expectDetach();
 
          // Triggers the initial attach based on demand.
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3265,10 +3313,11 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerClosesFederationReceiverAfterAddressRemoved() throws Exception {
       server.start();
-      server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+      server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
       try (ProtonTestClient peer = new ProtonTestClient()) {
          scriptFederationConnectToRemote(peer, "test", true, true);
@@ -3297,7 +3346,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          peer.expectDetach().withError(AmqpError.RESOURCE_DELETED.toString());
 
          // Force remove consumers from the address should indicate the resource was deleted.
-         server.removeAddressInfo(SimpleString.toSimpleString("test"), null, true);
+         server.removeAddressInfo(SimpleString.of("test"), null, true);
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -3315,14 +3364,14 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          // has been added once more and it could restore the previous federation state.
          peer.expectTransfer().withPayload(payloadMatcher).withSettled(true);
 
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
          // This time removing and restoring should generate no traffic as there was not
          // another federation receiver added.
-         server.removeAddressInfo(SimpleString.toSimpleString("test"), null, true);
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.removeAddressInfo(SimpleString.of("test"), null, true);
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          peer.expectClose();
@@ -3335,7 +3384,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationAddressDemandTrackedWhenRemoteRejectsInitialAttempts() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3369,7 +3419,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -3436,7 +3486,8 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationAddressDemandTrackedWhenPluginBlocksInitialAttempts() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3479,7 +3530,7 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.registerBrokerPlugin(federationPlugin);
          server.start();
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -3522,6 +3573,713 @@ public class AMQPFederationAddressPolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.close();
          }
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testBrokerAllowsAttachToPreviouslyNonExistentAddressAfterItIsAdded() throws Exception {
+      final AddressSettings addressSettings = new AddressSettings();
+      addressSettings.setAutoCreateAddresses(false);
+
+      server.getConfiguration().getAddressSettings().put("#", addressSettings);
+      server.start();
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE, false);
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withNullSource();
+         peer.expectDetach().respond();
+
+         // Connect to remote as if an queue had demand and matched our federation policy
+         // and expect a rejected attach as the address does not yet exist and auto create
+         // has been disabled.
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         server.addAddressInfo(new AddressInfo("test").addRoutingType(RoutingType.MULTICAST));
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Attempt attach again as if new address demand has been added and the policy manager reacts.
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectClose();
+         peer.remoteClose().now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testAddressPolicyCanOverridesZeroCreditsInFederationConfigurationAndFederateAddress() throws Exception {
+      try (ProtonTestServer peer = new ProtonTestServer()) {
+         peer.expectSASLAnonymousConnect();
+         peer.expectOpen().respond();
+         peer.expectBegin().respond();
+         peer.expectAttach().ofSender()
+                            .withDesiredCapability(FEDERATION_CONTROL_LINK.toString())
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_CONTROL_LINK.toString());
+         peer.expectAttach().ofReceiver()
+                            .withSource().withDynamic(true)
+                            .and()
+                            .withDesiredCapability(FEDERATION_EVENT_LINK.toString())
+                            .respondInKind()
+                            .withTarget().withAddress("test-dynamic-events");
+         peer.expectFlow().withLinkCredit(10);
+         peer.start();
+
+         final URI remoteURI = peer.getServerURI();
+         logger.info("Test started, peer listening on: {}", remoteURI);
+
+         final AMQPFederationAddressPolicyElement receiveFromAddress = new AMQPFederationAddressPolicyElement();
+         receiveFromAddress.setName("address-policy");
+         receiveFromAddress.addToIncludes("test");
+         receiveFromAddress.setAutoDelete(true);
+         receiveFromAddress.setAutoDeleteDelay(10_000L);
+         receiveFromAddress.setAutoDeleteMessageCount(-1L);
+         receiveFromAddress.addProperty(RECEIVER_CREDITS, 10);
+         receiveFromAddress.addProperty(RECEIVER_CREDITS_LOW, 3);
+
+         final AMQPFederatedBrokerConnectionElement element = new AMQPFederatedBrokerConnectionElement();
+         element.setName(getTestName());
+         element.addLocalAddressPolicy(receiveFromAddress);
+         element.addProperty(RECEIVER_CREDITS, 0);
+
+         final AMQPBrokerConnectConfiguration amqpConnection =
+            new AMQPBrokerConnectConfiguration(getTestName(), "tcp://" + remoteURI.getHost() + ":" + remoteURI.getPort());
+         amqpConnection.setReconnectAttempts(0);// No reconnects
+         amqpConnection.addElement(element);
+
+         server.getConfiguration().addAMQPConnection(amqpConnection);
+         server.start();
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+
+         final Map<String, Object> expectedSourceProperties = new HashMap<>();
+         expectedSourceProperties.put(ADDRESS_AUTO_DELETE, true);
+         expectedSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, 10_000L);
+         expectedSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, -1L);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofReceiver()
+                            .withDesiredCapability(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName(allOf(containsString(getTestName()),
+                                            containsString("test"),
+                                            containsString("address-receiver"),
+                                            containsString(server.getNodeID().toString())))
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), expectedSourceProperties)
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString());
+         peer.expectFlow().withLinkCredit(10);
+
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            session.createConsumer(session.createTopic("test"));
+
+            connection.start();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+            peer.close();
+         }
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteFederationReceiverCloseWhenDemandRemovedDoesNotTerminateRemoteConnection() throws Exception {
+      server.start();
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE, true);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, 1_000L);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, 1L);
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectTransfer().accept();
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createTopic("test"));
+
+            producer.send(session.createMessage());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectDetach();
+         peer.remoteDetach().now();  // simulate demand removed so consumer is closed.
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if new demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectClose();
+         peer.remoteClose().now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteFederationReceiverCloseWithErrorTerminateRemoteConnection() throws Exception {
+      server.start();
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE, true);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, 1_000L);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, 1L);
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectTransfer().accept();
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createTopic("test"));
+
+            producer.send(session.createMessage());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         // Under normal circumstances the federation source will never close one of its
+         // receivers with an error, so if that happens the remote will shutdown the connection
+         // and let the local rebuild.
+
+         peer.expectDetach();
+         peer.expectClose().withError(AmqpError.INTERNAL_ERROR.toString()).respond();
+
+         peer.remoteDetach().withErrorCondition(AmqpError.RESOURCE_DELETED.toString(), "error").now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteReceiverClosedWhenDemandRemovedCleansUpAddressBinding() throws Exception {
+      server.start();
+      server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE, false);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, 1_000L);
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, -1L);
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         // Precondition is that there were no bindings before the federation receiver attaches.
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectTransfer().accept();
+
+         // Federation consumer should be bound to the server's address
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1);
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createTopic("test"));
+
+            producer.send(session.createMessage());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectDetach();
+         peer.remoteDetach().now();  // simulate demand removed so consumer is closed.
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         // Federation consumer should no longer be bound to the server's address
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0);
+
+         peer.expectClose();
+         peer.remoteClose().now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteConnectionSuddenDropLeaveAddressBindingIntact() throws Exception {
+      server.start();
+      server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      remoteSourceProperties.put(ADDRESS_AUTO_DELETE, false);
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         // Precondition is that there were no bindings before the federation receiver attaches.
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectTransfer().withMessage().withHeader().also()
+                                            .withMessageAnnotations().also()
+                                            .withProperties().also()
+                                            .withValue("one").and()
+                                            .accept();
+
+         // Federation consumer should be bound to the server's address
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1);
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createTopic("test"));
+
+            producer.send(session.createTextMessage("one"));
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         // Unexpected connection drop should leave durable federation address subscription in place.
+         Wait.assertTrue(() -> server.getConnectionCount() == 0);
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1);
+      }
+
+      // Send a message to check that the federation binding holds onto sends while the remote is offline
+      // due to connectivity issues.
+      final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+      try (Connection connection = factory.createConnection()) {
+         final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+         final MessageProducer producer = session.createProducer(session.createTopic("test"));
+
+         producer.send(session.createTextMessage("two"));
+      }
+
+      // Reconnect again as if the remote has recovered from the unexpected connection drop
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         // Precondition is that there was still a binding from the previous federation whose connection dropped
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+         peer.expectTransfer().withMessage().withHeader().also()
+                                            .withMessageAnnotations().also()
+                                            .withProperties().also()
+                                            .withValue("two").and()
+                                            .accept();
+
+         // Connect again to remote as if local demand still matches our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectDetach();
+         peer.remoteDetach().now();  // simulate demand removed so consumer is closed.
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         // Federation consumer should no longer be bound to the server's address
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0);
+
+         peer.expectClose();
+         peer.remoteClose().now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testFederationAddressBindingCleanedUpAfterConnectionDroppedIfConfiguredTo() throws Exception {
+      doTestFederationAddressBindingAppliesAutoDeletePolicyToCreatedQueue(true);
+   }
+
+   @Test
+   @Timeout(20)
+   public void testFederationAddressBindingNotCleanedUpAfterConnectionDroppedIfConfiguredNotTo() throws Exception {
+      doTestFederationAddressBindingAppliesAutoDeletePolicyToCreatedQueue(false);
+   }
+
+   private void doTestFederationAddressBindingAppliesAutoDeletePolicyToCreatedQueue(boolean autoDelete) throws Exception {
+      server.getConfiguration().setAddressQueueScanPeriod(100);
+      server.start();
+      server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+
+      final Map<String, Object> remoteSourceProperties = new HashMap<>();
+      if (autoDelete) {
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE, true);
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, 200L);
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, -1L);
+      } else {
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE, false);
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE_DELAY, -1L);
+         remoteSourceProperties.put(ADDRESS_AUTO_DELETE_MSG_COUNT, -1L);
+      }
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         // Precondition is that there were no bindings before the federation receiver attaches.
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         peer.expectAttach().ofSender().withName("federation-address-receiver")
+                                       .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName("federation-address-receiver")
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withProperty(FEDERATED_ADDRESS_SOURCE_PROPERTIES.toString(), remoteSourceProperties)
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test")
+                                         .withCapabilities("topic")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         // Federation consumer should be bound to the server's address
+         Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1, 5_000, 500);
+
+         final SimpleString binding = server.bindingQuery(SimpleString.of("test")).getQueueNames().get(0);
+         assertNotNull(binding);
+         assertTrue(binding.startsWith(SimpleString.of("federation")));
+
+         final QueueQueryResult federationBinding = server.queueQuery(binding);
+         if (autoDelete) {
+            assertTrue(federationBinding.isAutoDelete());
+            assertEquals(200, federationBinding.getAutoDeleteDelay());
+            assertEquals(-1, federationBinding.getAutoDeleteMessageCount());
+         } else {
+            assertFalse(federationBinding.isAutoDelete());
+            assertEquals(-1, federationBinding.getAutoDeleteDelay());
+            assertEquals(-1, federationBinding.getAutoDeleteMessageCount());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         if (autoDelete) {
+            // Queue binding should eventually be auto deleted based on configuration
+            Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 0, 5_000, 100);
+         } else {
+            // Should still be there as it wasn't marked as auto delete as previously validated.
+            Wait.assertTrue(() -> server.bindingQuery(SimpleString.of("test")).getQueueNames().size() == 1, 1_000, 100);
+         }
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testNewFederationConsumerCreatedWhenDemandRemovedAndAddedWithDelayedPreviousDetach() throws Exception {
+      try (ProtonTestServer peer = new ProtonTestServer()) {
+         peer.expectSASLAnonymousConnect();
+         peer.expectOpen().respond();
+         peer.expectBegin().respond();
+         peer.expectAttach().ofSender()
+                            .withDesiredCapability(FEDERATION_CONTROL_LINK.toString())
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_CONTROL_LINK.toString());
+         peer.expectAttach().ofReceiver()
+                            .withSenderSettleModeSettled()
+                            .withSource().withDynamic(true)
+                            .and()
+                            .withDesiredCapability(FEDERATION_EVENT_LINK.toString())
+                            .respondInKind()
+                            .withTarget().withAddress("test-dynamic-events");
+         peer.expectFlow().withLinkCredit(10);
+         peer.start();
+
+         final URI remoteURI = peer.getServerURI();
+         logger.info("Test started, peer listening on: {}", remoteURI);
+
+         final AMQPFederationAddressPolicyElement receiveFromAddress = new AMQPFederationAddressPolicyElement();
+         receiveFromAddress.setName("address-policy");
+         receiveFromAddress.addToIncludes(getTestName());
+
+         final AMQPFederatedBrokerConnectionElement element = new AMQPFederatedBrokerConnectionElement();
+         element.setName(getTestName());
+         element.addLocalAddressPolicy(receiveFromAddress);
+
+         final AMQPBrokerConnectConfiguration amqpConnection =
+            new AMQPBrokerConnectConfiguration(getTestName(), "tcp://" + remoteURI.getHost() + ":" + remoteURI.getPort());
+         amqpConnection.setReconnectAttempts(0);// No reconnects
+         amqpConnection.addElement(element);
+
+         server.getConfiguration().addAMQPConnection(amqpConnection);
+         server.start();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofReceiver()
+                            .withDesiredCapability(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName(allOf(containsString(getTestName()),
+                                            containsString("address-receiver"),
+                                            containsString(server.getNodeID().toString())))
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString());
+         peer.expectFlow().withLinkCredit(1000);
+         peer.expectDetach().respond().afterDelay(40); // Defer the detach response for a bit
+
+         server.addAddressInfo(new AddressInfo(SimpleString.of(getTestName()), RoutingType.MULTICAST));
+
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         // Create demand on the address which creates a federation consumer then let it close which
+         // should shut down that federation consumer.
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageConsumer consumer = session.createConsumer(session.createTopic(getTestName()));
+
+            connection.start();
+
+            consumer.receiveNoWait();
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofReceiver()
+                            .withDesiredCapability(FEDERATION_ADDRESS_RECEIVER.toString())
+                            .withName(allOf(containsString(getTestName()),
+                                            containsString("address-receiver"),
+                                            containsString(server.getNodeID().toString())))
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_ADDRESS_RECEIVER.toString());
+         peer.expectFlow().withLinkCredit(1000);
+         peer.expectDetach().respond();
+
+         // Create demand on the address which creates a federation consumer again quickly which
+         // can trigger a new consumer before the previous one was fully closed with a Detach
+         // response and get stuck because it will steal the link in proton and not be treated
+         // as a new attach for this consumer.
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageConsumer consumer = session.createConsumer(session.createTopic(getTestName()));
+
+            connection.start();
+
+            consumer.receiveNoWait();
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectClose();
+         peer.remoteClose().now();
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
       }
    }
 

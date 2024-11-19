@@ -66,11 +66,18 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
          }
          standardMessage.setMessageAnnotations(messageAnnotations);
          standardMessage.setMessageID(messageID);
+         standardMessage.setPriority(getPriority());
+
          return standardMessage.toCore();
       } catch (Exception e) {
          logger.warn(e.getMessage(), e);
          throw new RuntimeException(e.getMessage(), e);
       }
+   }
+
+   @Override
+   public Message getMessage() {
+      return this;
    }
 
    private boolean reencoded = false;
@@ -194,7 +201,6 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
    }
 
    private void saveEncoding(ByteBuf buf) {
-
       WritableBuffer oldBuffer = TLSEncode.getEncoder().getBuffer();
 
       TLSEncode.getEncoder().setByteBuffer(new NettyWritable(buf));
@@ -236,6 +242,11 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
          encodedHeaderSize = buf.readInt();
          header = (Header)TLSEncode.getDecoder().readObject();
 
+         // Recover message priority from saved encoding as we store that separately
+         if (header != null && header.getPriority() != null) {
+            priority = (byte) Math.min(header.getPriority().byteValue(), MAX_MESSAGE_PRIORITY);
+         }
+
          deliveryAnnotationsPosition = buf.readInt();
          encodedDeliveryAnnotationsSize = buf.readInt();
 
@@ -259,16 +270,9 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
                expiration = System.currentTimeMillis() + header.getTtl().intValue();
             }
          }
-
-
       } finally {
          TLSEncode.getDecoder().setBuffer(oldBuffer);
       }
-   }
-
-   @Override
-   public void validateFile() throws ActiveMQException {
-      largeBody.validateFile();
    }
 
    public void setFileDurable(boolean value) {
@@ -322,7 +326,6 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
    }
 
    public void parseHeader(ReadableBuffer buffer) {
-
       DecoderImpl decoder = TLSEncode.getDecoder();
       decoder.setBuffer(buffer);
 
@@ -334,6 +337,9 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
                if (!expirationReload) {
                   expiration = System.currentTimeMillis() + header.getTtl().intValue();
                }
+            }
+            if (header.getPriority() != null) {
+               priority = (byte) Math.min(header.getPriority().intValue(), MAX_MESSAGE_PRIORITY);
             }
          }
       } finally {
@@ -440,7 +446,15 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
    @Override
    public void releaseResources(boolean sync, boolean sendEvent) {
       largeBody.releaseResources(sync, sendEvent);
+   }
 
+   @Override
+   public boolean isOpen() {
+      try {
+         return largeBody.getAppendFile().isOpen();
+      } catch (Throwable e) {
+         return false;
+      }
    }
 
    @Override
@@ -481,6 +495,9 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
       newMessage.setParentRef(this);
       newMessage.setFileDurable(this.isDurable());
       newMessage.reloadExpiration(this.expiration);
+      if (priority != AMQPMessage.DEFAULT_MESSAGE_PRIORITY) {
+         newMessage.setPriority(priority);
+      }
       return newMessage;
    }
 
@@ -494,6 +511,9 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
       try {
          AMQPLargeMessage copy = new AMQPLargeMessage(newID, messageFormat, null, coreMessageObjectPools, storageManager);
          copy.setDurable(this.isDurable());
+         if (priority != AMQPMessage.DEFAULT_MESSAGE_PRIORITY) {
+            copy.setPriority(priority);
+         }
 
          final AtomicInteger place = new AtomicInteger(0);
          ByteBuf bufferNewHeader = null;
@@ -577,6 +597,7 @@ public class AMQPLargeMessage extends AMQPMessage implements LargeServerMessage 
    public int getMemoryEstimate() {
       if (memoryEstimate == -1) {
          memoryEstimate = memoryOffset * 2 + (extraProperties != null ? extraProperties.getEncodeSize() : 0);
+         originalEstimate = memoryEstimate;
       }
       return memoryEstimate;
    }

@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.management;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.apache.activemq.artemis.api.core.ICoreMessage;
 import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.SimpleString;
@@ -38,8 +43,7 @@ import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.RandomUtil;
 import org.apache.activemq.artemis.utils.UUID;
 import org.apache.activemq.artemis.utils.UUIDGenerator;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ManagementServiceImplTest extends ActiveMQTestBase {
 
@@ -57,9 +61,9 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       CoreMessage message = new CoreMessage(1, 100);
       ManagementHelper.putOperationInvocation(message, ResourceNames.BROKER, "createQueue", queue, address);
 
-      Message reply = server.getManagementService().handleMessage(message);
+      Message reply = server.getManagementService().handleMessage(null, message);
 
-      Assert.assertTrue(ManagementHelper.hasOperationSucceeded(reply));
+      assertTrue(ManagementHelper.hasOperationSucceeded(reply));
    }
 
    @Test
@@ -73,10 +77,10 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       CoreMessage message = new CoreMessage(1, 100);
       ManagementHelper.putOperationInvocation(message, ResourceNames.BROKER, "thereIsNoSuchOperation");
 
-      ICoreMessage reply = server.getManagementService().handleMessage(message);
+      ICoreMessage reply = server.getManagementService().handleMessage(null, message);
 
-      Assert.assertFalse(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertNotNull(ManagementHelper.getResult(reply));
+      assertFalse(ManagementHelper.hasOperationSucceeded(reply));
+      assertNotNull(ManagementHelper.getResult(reply));
    }
 
    @Test
@@ -90,10 +94,10 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       ICoreMessage message = new CoreMessage(1, 100);
       ManagementHelper.putOperationInvocation(message, "Resouce.Does.Not.Exist", "toString");
 
-      ICoreMessage reply = server.getManagementService().handleMessage(message);
+      ICoreMessage reply = server.getManagementService().handleMessage(null, message);
 
-      Assert.assertFalse(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertNotNull(ManagementHelper.getResult(reply));
+      assertFalse(ManagementHelper.hasOperationSucceeded(reply));
+      assertNotNull(ManagementHelper.getResult(reply));
    }
 
    @Test
@@ -108,10 +112,10 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
 
       ManagementHelper.putAttribute(message, ResourceNames.BROKER, "started");
 
-      ICoreMessage reply = server.getManagementService().handleMessage(message);
+      ICoreMessage reply = server.getManagementService().handleMessage(null, message);
 
-      Assert.assertTrue(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertTrue((Boolean) ManagementHelper.getResult(reply));
+      assertTrue(ManagementHelper.hasOperationSucceeded(reply));
+      assertTrue((Boolean) ManagementHelper.getResult(reply));
    }
 
    @Test
@@ -126,10 +130,10 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
 
       ManagementHelper.putAttribute(message, ResourceNames.BROKER, "attribute.Does.Not.Exist");
 
-      ICoreMessage reply = server.getManagementService().handleMessage(message);
+      ICoreMessage reply = server.getManagementService().handleMessage(null, message);
 
-      Assert.assertFalse(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertNotNull(ManagementHelper.getResult(reply));
+      assertFalse(ManagementHelper.hasOperationSucceeded(reply));
+      assertNotNull(ManagementHelper.getResult(reply));
    }
 
    @Test
@@ -144,16 +148,16 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       managementService.registerQueue(queue, RandomUtil.randomSimpleString(), new FakeStorageManager());
 
       Object[] addresses = managementService.getResources(AddressControl.class);
-      Assert.assertEquals(1, addresses.length);
-      Assert.assertTrue(addresses[0] instanceof AddressControl);
+      assertEquals(1, addresses.length);
+      assertTrue(addresses[0] instanceof AddressControl);
       AddressControl addressControl = (AddressControl) addresses[0];
-      Assert.assertEquals(address.toString(), addressControl.getAddress());
+      assertEquals(address.toString(), addressControl.getAddress());
 
       Object[] queues = managementService.getResources(QueueControl.class);
-      Assert.assertEquals(1, queues.length);
-      Assert.assertTrue(queues[0] instanceof QueueControl);
+      assertEquals(1, queues.length);
+      assertTrue(queues[0] instanceof QueueControl);
       QueueControl queueControl = (QueueControl) queues[0];
-      Assert.assertEquals(queue.getName().toString(), queueControl.getName());
+      assertEquals(queue.getName().toString(), queueControl.getName());
    }
 
    @Test
@@ -172,9 +176,9 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       MessageUtil.setJMSCorrelationID(message, correlationID);
       ManagementHelper.putOperationInvocation(message, ResourceNames.BROKER, "createQueue", queue, address);
 
-      Message reply = server.getManagementService().handleMessage(message);
-      Assert.assertTrue(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertEquals(correlationID, MessageUtil.getJMSCorrelationID(reply));
+      Message reply = server.getManagementService().handleMessage(null, message);
+      assertTrue(ManagementHelper.hasOperationSucceeded(reply));
+      assertEquals(correlationID, MessageUtil.getJMSCorrelationID(reply));
    }
 
    @Test
@@ -193,9 +197,9 @@ public class ManagementServiceImplTest extends ActiveMQTestBase {
       message.setUserID(messageId);
       ManagementHelper.putOperationInvocation(message, ResourceNames.BROKER, "createQueue", queue, address);
 
-      Message reply = server.getManagementService().handleMessage(message);
-      Assert.assertTrue(ManagementHelper.hasOperationSucceeded(reply));
-      Assert.assertEquals(messageId.toString(), MessageUtil.getJMSCorrelationID(reply));
+      Message reply = server.getManagementService().handleMessage(null, message);
+      assertTrue(ManagementHelper.hasOperationSucceeded(reply));
+      assertEquals(messageId.toString(), MessageUtil.getJMSCorrelationID(reply));
    }
 
 

@@ -20,8 +20,8 @@ import javax.jms.BytesMessage;
 import javax.jms.JMSConsumer;
 import javax.jms.JMSContext;
 import javax.jms.JMSProducer;
-import javax.jms.MessageListener;
 import javax.naming.NamingException;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,18 +33,19 @@ import org.apache.activemq.artemis.core.server.cluster.impl.MessageLoadBalancing
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.logs.AssertionLoggerHandler;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class AutoDeleteDistributedTest extends ClusterTestBase {
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -106,12 +107,9 @@ public class AutoDeleteDistributedTest extends ClusterTestBase {
 
          final JMSConsumer client2JmsConsumer = client2JmsContext.createConsumer(client2JmsContext.createQueue("queues.myQueue"));
          final CountDownLatch onMessageReceived = new CountDownLatch(messageCount);
-         client2JmsConsumer.setMessageListener(new MessageListener() {
-            @Override
-            public void onMessage(final javax.jms.Message m) {
-               logger.debug("Message received. {}", m);
-               onMessageReceived.countDown();
-            }
+         client2JmsConsumer.setMessageListener(m -> {
+            logger.debug("Message received. {}", m);
+            onMessageReceived.countDown();
          });
 
         /*
@@ -145,14 +143,14 @@ public class AutoDeleteDistributedTest extends ClusterTestBase {
          }
 
          logger.debug("Waiting for message to be received...");
-         Assert.assertTrue(onMessageReceived.await(5, TimeUnit.SECONDS));
+         assertTrue(onMessageReceived.await(5, TimeUnit.SECONDS));
 
          client2JmsConsumer.close();
-         Assert.assertFalse(error.get());
+         assertFalse(error.get());
 
          Thread.sleep(100); // I couldn't make it to fail without a minimal sleep here
-         Assert.assertFalse(loggerHandler.findText("java.lang.IllegalStateException"));
-         Assert.assertFalse(loggerHandler.findText("Cannot find binding"));
+         assertFalse(loggerHandler.findText("java.lang.IllegalStateException"));
+         assertFalse(loggerHandler.findText("Cannot find binding"));
       }
    }
 

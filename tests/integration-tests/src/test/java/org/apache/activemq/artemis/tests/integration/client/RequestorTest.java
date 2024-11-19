@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.api.core.ActiveMQExceptionType;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
@@ -34,9 +38,8 @@ import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class RequestorTest extends ActiveMQTestBase {
 
@@ -48,14 +51,14 @@ public class RequestorTest extends ActiveMQTestBase {
    public void testRequest() throws Exception {
       final SimpleString key = RandomUtil.randomSimpleString();
       long value = RandomUtil.randomLong();
-      SimpleString requestAddress = new SimpleString("AdTest");
+      SimpleString requestAddress = SimpleString.of("AdTest");
       SimpleString requestQueue = RandomUtil.randomSimpleString();
 
       final ClientSession session = sf.createSession(false, true, true);
 
       session.start();
 
-      session.createQueue(new QueueConfiguration(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
+      session.createQueue(QueueConfiguration.of(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
 
       ClientConsumer requestConsumer = session.createConsumer(requestQueue);
       requestConsumer.setMessageHandler(new SimpleMessageHandler(key, session));
@@ -65,8 +68,8 @@ public class RequestorTest extends ActiveMQTestBase {
       request.putLongProperty(key, value);
 
       ClientMessage reply = requestor.request(request, 500);
-      Assert.assertNotNull("reply was not received", reply);
-      Assert.assertEquals(value, reply.getObjectProperty(key));
+      assertNotNull(reply, "reply was not received");
+      assertEquals(value, reply.getObjectProperty(key));
 
       Thread.sleep(5000);
       session.close();
@@ -80,13 +83,13 @@ public class RequestorTest extends ActiveMQTestBase {
       AddressSettings settings = new AddressSettings().setAddressFullMessagePolicy(AddressFullMessagePolicy.BLOCK).setMaxSizeBytes(1024);
       server.getAddressSettingsRepository().addMatch("#", settings);
 
-      SimpleString requestAddress = new SimpleString("RequestAddress");
+      SimpleString requestAddress = SimpleString.of("RequestAddress");
 
-      SimpleString requestQueue = new SimpleString("RequestAddress Queue");
+      SimpleString requestQueue = SimpleString.of("RequestAddress Queue");
 
       final ClientSession sessionRequest = sf.createSession(false, true, true);
 
-      sessionRequest.createQueue(new QueueConfiguration(requestQueue).setAddress(requestAddress));
+      sessionRequest.createQueue(QueueConfiguration.of(requestQueue).setAddress(requestAddress));
 
       sessionRequest.start();
 
@@ -103,9 +106,9 @@ public class RequestorTest extends ActiveMQTestBase {
          request.putLongProperty(key, value);
 
          ClientMessage reply = requestor.request(request, 5000);
-         Assert.assertNotNull("reply was not received", reply);
+         assertNotNull(reply, "reply was not received");
          reply.acknowledge();
-         Assert.assertEquals(value, reply.getObjectProperty(key));
+         assertEquals(value, reply.getObjectProperty(key));
          requestor.close();
          session.close();
       }
@@ -126,7 +129,7 @@ public class RequestorTest extends ActiveMQTestBase {
 
       session.start();
 
-      session.createQueue(new QueueConfiguration(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
+      session.createQueue(QueueConfiguration.of(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
 
       ClientConsumer requestConsumer = session.createConsumer(requestQueue);
       requestConsumer.setMessageHandler(new SimpleMessageHandler(key, session));
@@ -136,15 +139,15 @@ public class RequestorTest extends ActiveMQTestBase {
       request.putLongProperty(key, value);
 
       ClientMessage reply = requestor.request(request, 500);
-      Assert.assertNotNull("reply was not received", reply);
-      Assert.assertEquals(value, reply.getObjectProperty(key));
+      assertNotNull(reply, "reply was not received");
+      assertEquals(value, reply.getObjectProperty(key));
 
       request = session.createMessage(false);
       request.putLongProperty(key, value + 1);
 
       reply = requestor.request(request, 500);
-      Assert.assertNotNull("reply was not received", reply);
-      Assert.assertEquals(value + 1, reply.getObjectProperty(key));
+      assertNotNull(reply, "reply was not received");
+      assertEquals(value + 1, reply.getObjectProperty(key));
 
       session.close();
    }
@@ -159,22 +162,19 @@ public class RequestorTest extends ActiveMQTestBase {
 
       session.start();
 
-      session.createQueue(new QueueConfiguration(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
+      session.createQueue(QueueConfiguration.of(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
 
       ClientConsumer requestConsumer = session.createConsumer(requestQueue);
-      requestConsumer.setMessageHandler(new MessageHandler() {
-         // return a message with the negative request's value
-         @Override
-         public void onMessage(final ClientMessage request) {
-            // do nothing -> no reply
-         }
+      // return a message with the negative request's value
+      requestConsumer.setMessageHandler(request -> {
+         // do nothing -> no reply
       });
 
       ClientRequestor requestor = new ClientRequestor(session, requestAddress);
       ClientMessage request = session.createMessage(false);
 
       ClientMessage reply = requestor.request(request, 500);
-      Assert.assertNull(reply);
+      assertNull(reply);
 
       session.close();
    }
@@ -188,12 +188,7 @@ public class RequestorTest extends ActiveMQTestBase {
 
       session.close();
 
-      ActiveMQAction activeMQAction = new ActiveMQAction() {
-         @Override
-         public void run() throws Exception {
-            new ClientRequestor(session, requestAddress);
-         }
-      };
+      ActiveMQAction activeMQAction = () -> new ClientRequestor(session, requestAddress);
 
       ActiveMQTestBase.expectActiveMQException("ClientRequestor's session must not be closed", ActiveMQExceptionType.OBJECT_CLOSED, activeMQAction);
    }
@@ -210,7 +205,7 @@ public class RequestorTest extends ActiveMQTestBase {
 
       session.start();
 
-      session.createQueue(new QueueConfiguration(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
+      session.createQueue(QueueConfiguration.of(requestQueue).setAddress(requestAddress).setDurable(false).setTemporary(true));
 
       ClientConsumer requestConsumer = session.createConsumer(requestQueue);
       requestConsumer.setMessageHandler(new SimpleMessageHandler(key, session));
@@ -220,26 +215,21 @@ public class RequestorTest extends ActiveMQTestBase {
       request.putLongProperty(key, value);
 
       ClientMessage reply = requestor.request(request, 500);
-      Assert.assertNotNull("reply was not received", reply);
-      Assert.assertEquals(value, reply.getObjectProperty(key));
+      assertNotNull(reply, "reply was not received");
+      assertEquals(value, reply.getObjectProperty(key));
 
       request = session.createMessage(false);
       request.putLongProperty(key, value + 1);
 
       requestor.close();
 
-      ActiveMQAction activeMQAction = new ActiveMQAction() {
-         @Override
-         public void run() throws Exception {
-            requestor.request(session.createMessage(false), 500);
-         }
-      };
+      ActiveMQAction activeMQAction = () -> requestor.request(session.createMessage(false), 500);
 
       ActiveMQTestBase.expectActiveMQException("can not send a request on a closed ClientRequestor", ActiveMQExceptionType.OBJECT_CLOSED, activeMQAction);
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       server = createServer(false, createDefaultInVMConfig());

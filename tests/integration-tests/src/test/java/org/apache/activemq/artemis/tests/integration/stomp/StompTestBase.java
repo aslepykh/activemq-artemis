@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.stomp;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.BytesMessage;
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
@@ -25,12 +29,11 @@ import javax.jms.Queue;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.jms.Topic;
+import java.lang.invoke.MethodHandles;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -55,33 +58,18 @@ import org.apache.activemq.artemis.tests.integration.stomp.util.AbstractStompCli
 import org.apache.activemq.artemis.tests.integration.stomp.util.ClientStompFrame;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnection;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.apache.activemq.artemis.utils.RetryRule;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
 
-@RunWith(Parameterized.class)
 public abstract class StompTestBase extends ActiveMQTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-   @Parameterized.Parameter
    public String scheme;
 
-   @Rule
-   public RetryRule retryRule = new RetryRule(2);
-
    protected URI uri;
-
-   @Parameterized.Parameters(name = "{0}")
-   public static Collection<Object[]> data() {
-      return Arrays.asList(new Object[][]{{"ws+v10.stomp"}, {"tcp+v10.stomp"}});
-   }
 
    protected String hostname = "127.0.0.1";
 
@@ -102,6 +90,10 @@ public abstract class StompTestBase extends ActiveMQTestBase {
    protected String defUser = "brianm";
 
    protected String defPass = "wombats";
+
+   public StompTestBase(String scheme) {
+      this.scheme = scheme;
+   }
 
    // Implementation methods
    // -------------------------------------------------------------------------
@@ -134,7 +126,7 @@ public abstract class StompTestBase extends ActiveMQTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -161,20 +153,24 @@ public abstract class StompTestBase extends ActiveMQTestBase {
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
-      if (connection != null) {
-         connection.close();
+      try {
+         if (connection != null) {
+            connection.close();
+         }
+      } finally {
+         try {
+            tearDownConnections();
+         } finally {
+            super.tearDown();
+         }
       }
-      super.tearDown();
    }
 
-
-   @After
    public void tearDownConnections() {
       AbstractStompClientConnection.tearDownConnections();
    }
-
 
    /**
     * @return
@@ -194,7 +190,7 @@ public abstract class StompTestBase extends ActiveMQTestBase {
                                                 .addAcceptorConfiguration("stomp", stompAcceptorURI)
                                                 .addAcceptorConfiguration(new TransportConfiguration(InVMAcceptorFactory.class.getName()))
                                                 .setConnectionTtlCheckInterval(500)
-                                                .addQueueConfiguration(new QueueConfiguration(getQueueName()).setRoutingType(RoutingType.ANYCAST))
+                                                .addQueueConfiguration(QueueConfiguration.of(getQueueName()).setRoutingType(RoutingType.ANYCAST))
                                                 .addAddressConfiguration(new CoreAddressConfiguration().setName(getTopicName()).addRoutingType(RoutingType.MULTICAST));
 
       if (getIncomingInterceptors() != null) {
@@ -214,7 +210,7 @@ public abstract class StompTestBase extends ActiveMQTestBase {
 
          final String role = "testRole";
          securityManager.getConfiguration().addRole(defUser, role);
-         config.getSecurityRoles().put("#", new HashSet<Role>(Set.of(new Role(role, true, true, true, true, true, true, true, true, true, true))));
+         config.getSecurityRoles().put("#", new HashSet<Role>(Set.of(new Role(role, true, true, true, true, true, true, true, true, true, true, false, false))));
       }
 
       return activeMQServer;
@@ -525,7 +521,7 @@ public abstract class StompTestBase extends ActiveMQTestBase {
       }
 
       if (receipt) {
-         assertNotNull("Requested receipt, but response is null", frame);
+         assertNotNull(frame, "Requested receipt, but response is null");
          assertTrue(frame.getHeader(Stomp.Headers.Response.RECEIPT_ID).equals(uuid));
       }
 

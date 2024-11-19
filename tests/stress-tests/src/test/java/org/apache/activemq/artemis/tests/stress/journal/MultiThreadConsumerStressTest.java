@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.stress.journal;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 
@@ -32,9 +35,8 @@ import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.JournalType;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * A MultiThreadConsumerStressTest
@@ -44,16 +46,16 @@ import org.junit.Test;
 public class MultiThreadConsumerStressTest extends ActiveMQTestBase {
 
 
-   final SimpleString ADDRESS = new SimpleString("SomeAddress");
+   final SimpleString ADDRESS = SimpleString.of("SomeAddress");
 
-   final SimpleString QUEUE = new SimpleString("SomeQueue");
+   final SimpleString QUEUE = SimpleString.of("SomeQueue");
 
    private ActiveMQServer server;
 
    private ClientSessionFactory sf;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       setupServer(JournalType.NIO);
@@ -70,7 +72,7 @@ public class MultiThreadConsumerStressTest extends ActiveMQTestBase {
       int commitIntervalConsume = 100;
 
       ClientSession session = sf.createSession(false, false);
-      session.createQueue(new QueueConfiguration("compact-queue").setAddress("compact"));
+      session.createQueue(QueueConfiguration.of("compact-queue").setAddress("compact"));
 
       ClientProducer producer = session.createProducer("compact");
 
@@ -126,7 +128,7 @@ public class MultiThreadConsumerStressTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numberOfMessagesExpected; i++) {
          ClientMessage msg = consumer.receive(5000);
-         Assert.assertNotNull(msg);
+         assertNotNull(msg);
 
          if (i % 1000 == 0) {
             System.out.println("Received #" + i + "  on thread before end");
@@ -134,7 +136,7 @@ public class MultiThreadConsumerStressTest extends ActiveMQTestBase {
          msg.acknowledge();
       }
 
-      Assert.assertNull(consumer.receiveImmediate());
+      assertNull(consumer.receiveImmediate());
 
       sess.close();
 
@@ -154,7 +156,7 @@ public class MultiThreadConsumerStressTest extends ActiveMQTestBase {
       ClientSession sess = sf.createSession();
 
       try {
-         sess.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS));
+         sess.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS));
       } catch (Exception ignored) {
       }
 

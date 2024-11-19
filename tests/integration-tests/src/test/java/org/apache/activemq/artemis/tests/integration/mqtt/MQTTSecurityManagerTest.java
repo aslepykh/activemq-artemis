@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.mqtt;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.security.auth.Subject;
 import java.util.Map;
 import java.util.Set;
@@ -30,13 +34,15 @@ import org.apache.activemq.artemis.spi.core.protocol.ProtocolManager;
 import org.apache.activemq.artemis.spi.core.protocol.RemotingConnection;
 import org.apache.activemq.artemis.spi.core.remoting.Acceptor;
 import org.apache.activemq.artemis.spi.core.security.ActiveMQSecurityManager5;
+import org.apache.activemq.artemis.spi.core.security.jaas.UserPrincipal;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.tests.util.Wait;
 import org.fusesource.mqtt.client.BlockingConnection;
 import org.fusesource.mqtt.client.MQTT;
 import org.fusesource.mqtt.client.MQTTException;
 import org.fusesource.mqtt.codec.CONNACK;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class MQTTSecurityManagerTest extends MQTTTestSupport {
 
@@ -61,7 +67,9 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
                throw new InvalidClientIdException();
             }
             remotingConnection.setClientID(clientID);
-            return new Subject();
+            Subject subject = new Subject();
+            subject.getPrincipals().add(new UserPrincipal(user));
+            return subject;
          }
 
          @Override
@@ -83,7 +91,8 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
       server.getConfiguration().setAuthorizationCacheSize(0);
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testSecurityManagerModifyClientID() throws Exception {
       BlockingConnection connection = null;
       try {
@@ -94,7 +103,7 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
          connection = mqtt.blockingConnection();
          connection.connect();
          BlockingConnection finalConnection = connection;
-         assertTrue("Should be connected", Wait.waitFor(() -> finalConnection.isConnected(), 5000, 100));
+         assertTrue(Wait.waitFor(() -> finalConnection.isConnected(), 5000, 100), "Should be connected");
          Map<String, MQTTSessionState> sessionStates = null;
          Acceptor acceptor = server.getRemotingService().getAcceptor("MQTT");
          if (acceptor instanceof AbstractAcceptor) {
@@ -113,7 +122,8 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testSecurityManagerModifyClientIDAndStealConnection() throws Exception {
       BlockingConnection connection1 = null;
       BlockingConnection connection2 = null;
@@ -126,7 +136,7 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
          connection1 = mqtt.blockingConnection();
          connection1.connect();
          final BlockingConnection finalConnection = connection1;
-         assertTrue("Should be connected", Wait.waitFor(() -> finalConnection.isConnected(), 5000, 100));
+         assertTrue(Wait.waitFor(() -> finalConnection.isConnected(), 5000, 100), "Should be connected");
          Map<String, MQTTSessionState> sessionStates = null;
          Acceptor acceptor = server.getRemotingService().getAcceptor("MQTT");
          if (acceptor instanceof AbstractAcceptor) {
@@ -144,7 +154,7 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
          connection2 = mqtt.blockingConnection();
          connection2.connect();
          final BlockingConnection finalConnection2 = connection2;
-         assertTrue("Should be connected", Wait.waitFor(() -> finalConnection2.isConnected(), 5000, 100));
+         assertTrue(Wait.waitFor(() -> finalConnection2.isConnected(), 5000, 100), "Should be connected");
          Wait.assertFalse(() -> finalConnection.isConnected(), 5000, 100);
          assertEquals(1, sessionStates.size());
          assertTrue(sessionStates.keySet().contains(clientID));
@@ -156,7 +166,8 @@ public class MQTTSecurityManagerTest extends MQTTTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testSecurityManagerRejectClientID() throws Exception {
       rejectClientId = true;
       BlockingConnection connection = null;

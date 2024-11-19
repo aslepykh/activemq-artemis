@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.largemessage;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -52,17 +56,16 @@ import org.apache.activemq.artemis.tests.integration.security.SecurityTest;
 import org.apache.activemq.artemis.tests.unit.core.journal.impl.fakes.FakeSequentialFileFactory;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.critical.EmptyCriticalAnalyzer;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ServerLargeMessageTest extends ActiveMQTestBase {
 
 
    String originalPath;
 
-   @Before
+   @BeforeEach
    public void setupProperty() {
       originalPath = System.getProperty("java.security.auth.login.config");
       if (originalPath == null) {
@@ -74,7 +77,7 @@ public class ServerLargeMessageTest extends ActiveMQTestBase {
       }
    }
 
-   @After
+   @AfterEach
    public void clearProperty() {
       if (originalPath == null) {
          System.clearProperty("java.security.auth.login.config");
@@ -112,7 +115,7 @@ public class ServerLargeMessageTest extends ActiveMQTestBase {
 
          fileMessage.releaseResources(false, true);
 
-         session.createQueue(new QueueConfiguration("A").setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of("A").setRoutingType(RoutingType.ANYCAST));
 
          ClientProducer prod = session.createProducer("A");
 
@@ -128,12 +131,12 @@ public class ServerLargeMessageTest extends ActiveMQTestBase {
 
          ClientMessage msg = cons.receive(5000);
 
-         Assert.assertNotNull(msg);
+         assertNotNull(msg);
 
-         Assert.assertEquals(msg.getBodySize(), 2 * ActiveMQClient.DEFAULT_MIN_LARGE_MESSAGE_SIZE);
+         assertEquals(msg.getBodySize(), 2 * ActiveMQClient.DEFAULT_MIN_LARGE_MESSAGE_SIZE);
 
          for (int i = 0; i < 2 * ActiveMQClient.DEFAULT_MIN_LARGE_MESSAGE_SIZE; i++) {
-            Assert.assertEquals(ActiveMQTestBase.getSamplebyte(i), msg.getBodyBuffer().readByte());
+            assertEquals(ActiveMQTestBase.getSamplebyte(i), msg.getBodyBuffer().readByte());
          }
 
          msg.acknowledge();
@@ -153,7 +156,7 @@ public class ServerLargeMessageTest extends ActiveMQTestBase {
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultInVMConfig().setSecurityEnabled(true), ManagementFactory.getPlatformMBeanServer(), securityManager, false));
       server.getConfiguration().setPopulateValidatedUser(true);
 
-      Role role = new Role("programmers", true, true, true, true, true, true, true, true, true, true);
+      Role role = new Role("programmers", true, true, true, true, true, true, true, true, true, true, false, false);
       Set<Role> roles = new HashSet<>();
       roles.add(role);
       server.getSecurityRepository().addMatch("#", roles);
@@ -167,7 +170,7 @@ public class ServerLargeMessageTest extends ActiveMQTestBase {
          ClientMessage clientMessage = session.createMessage(false);
          clientMessage.setBodyInputStream(ActiveMQTestBase.createFakeLargeStream(ActiveMQClient.DEFAULT_MIN_LARGE_MESSAGE_SIZE));
 
-         session.createQueue(new QueueConfiguration("A").setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of("A").setRoutingType(RoutingType.ANYCAST));
 
          ClientProducer prod = session.createProducer("A");
          prod.send(clientMessage);

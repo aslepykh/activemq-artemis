@@ -41,14 +41,18 @@ import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPF
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.TRANSFORMER_CLASS_NAME;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.TRANSFORMER_PROPERTIES_MAP;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.POLICY_PROPERTIES_MAP;
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConstants.PULL_RECEIVER_BATCH_SIZE;
 import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationPolicySupport.DEFAULT_QUEUE_RECEIVER_PRIORITY_ADJUSTMENT;
-import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationQueueConsumer.DEFAULT_PULL_CREDIT_BATCH_SIZE;
+import static org.apache.activemq.artemis.protocol.amqp.connect.federation.AMQPFederationConfiguration.DEFAULT_PULL_CREDIT_BATCH_SIZE;
 import static org.apache.activemq.artemis.protocol.amqp.proton.AMQPTunneledMessageConstants.AMQP_TUNNELED_CORE_MESSAGE_FORMAT;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.invoke.MethodHandles;
 import java.net.URI;
@@ -103,6 +107,7 @@ import org.apache.activemq.artemis.protocol.amqp.federation.FederationReceiveFro
 import org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport;
 import org.apache.activemq.artemis.tests.integration.amqp.AmqpClientTestSupport;
 import org.apache.activemq.artemis.tests.util.CFUtil;
+import org.apache.activemq.artemis.utils.Wait;
 import org.apache.qpid.proton.amqp.transport.AmqpError;
 import org.apache.qpid.proton.amqp.transport.LinkError;
 import org.apache.qpid.protonj2.test.driver.ProtonTestClient;
@@ -116,7 +121,8 @@ import org.apache.qpid.protonj2.test.driver.matchers.transport.TransferPayloadCo
 import org.apache.qpid.protonj2.test.driver.matchers.types.EncodedAmqpValueMatcher;
 import org.hamcrest.Matchers;
 import org.jgroups.util.UUID;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -142,12 +148,14 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       return createServer(AMQP_PORT, false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkForQueueMatchAnycast() throws Exception {
       doTestFederationCreatesQueueReceiverLinkForQueueMatch(RoutingType.ANYCAST);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkForQueueMatchMulticast() throws Exception {
       doTestFederationCreatesQueueReceiverLinkForQueueMatch(RoutingType.MULTICAST);
    }
@@ -186,7 +194,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(routingType)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(routingType)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -221,7 +229,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationQueueReceiverCarriesConfiguredQueueFilter() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -255,7 +264,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setFilterString("color='red'")
                                                           .setAutoCreated(false));
@@ -287,7 +296,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationQueueReceiverCarriesConsumerQueueFilter() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -321,7 +331,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setFilterString("color='red' OR color = 'blue'")
                                                           .setAutoCreated(false));
@@ -390,7 +400,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationQueueReceiverCanIgnoreConsumerQueueFilter() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -425,7 +436,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setFilterString("color='red' OR color = 'blue'")
                                                           .setAutoCreated(false));
@@ -461,7 +472,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkForQueueMatchUsingPolicyCredit() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -497,7 +509,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -529,7 +541,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationClosesQueueReceiverWhenDemandIsRemovedFromQueue() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -562,7 +575,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -593,7 +606,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationHandlesQueueDeletedAndConsumerRecreates() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -626,7 +640,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -651,7 +665,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.expectDetach().respond();
 
-            server.destroyQueue(SimpleString.toSimpleString("test"), null, false, true);
+            server.destroyQueue(SimpleString.of("test"), null, false, true);
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
          }
@@ -681,7 +695,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testSecondQueueConsumerDoesNotGenerateAdditionalFederationReceiver() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -714,7 +729,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -746,7 +761,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testLinkCreatedForEachDistinctQueueMatchInSameConfiguredPolicy() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -780,10 +796,10 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.1").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.1").setRoutingType(RoutingType.ANYCAST)
                                                             .setAddress("addr1")
                                                             .setAutoCreated(false));
-         server.createQueue(new QueueConfiguration("test.2").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.2").setRoutingType(RoutingType.ANYCAST)
                                                             .setAddress("addr2")
                                                             .setAutoCreated(false));
 
@@ -827,7 +843,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationReceiverCreatedWhenWildcardPolicyMatchesConsumerQueue() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -860,7 +877,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -891,7 +908,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteCloseOfQueueReceiverRespondsToDetach() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -924,7 +942,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -958,7 +976,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRejectedQueueReceiverAttachWhenLocalMatchingQueueNotFoundIsHandled() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -991,7 +1010,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -1042,12 +1061,14 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteCloseQueueReceiverWhenRemoteResourceIsDeletedIsHandled() throws Exception {
       doTestRemoteCloseQueueReceiverForExpectedConditionsIsHandled("amqp:resource-deleted");
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteCloseQueueReceiverWhenRemoteReceiverIsForcedToDetachIsHandled() throws Exception {
       doTestRemoteCloseQueueReceiverForExpectedConditionsIsHandled("amqp:link:detach-forced");
    }
@@ -1084,7 +1105,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -1133,7 +1154,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testUnhandledRemoteReceiverCloseConditionCausesConnectionRebuild() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1167,7 +1189,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -1228,7 +1250,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testInboundMessageRoutedToReceiverOnLocalQueue() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1261,7 +1284,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.queue").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.queue").setRoutingType(RoutingType.ANYCAST)
                                                                 .setAddress("test")
                                                                 .setAutoCreated(false));
 
@@ -1304,17 +1327,20 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkWithDefaultPrioirty() throws Exception {
       doTestFederationCreatesQueueReceiverLinkWithAdjustedPriority(0);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkWithIncreasedPriority() throws Exception {
       doTestFederationCreatesQueueReceiverLinkWithAdjustedPriority(5);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkWithDecreasedPriority() throws Exception {
       doTestFederationCreatesQueueReceiverLinkWithAdjustedPriority(-5);
    }
@@ -1353,7 +1379,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -1384,12 +1410,14 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkConsumerPriorityOffset() throws Exception {
       doTestFederationCreatesQueueReceiverWithCorrectPriorityOffset(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkIngoringConsumerPriorityOffset() throws Exception {
       doTestFederationCreatesQueueReceiverWithCorrectPriorityOffset(true);
    }
@@ -1434,7 +1462,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -1468,7 +1496,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testLinkCreatedForEachDistinctQueueMatchInSameConfiguredPolicyWithSameAddressMatch() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -1504,13 +1533,13 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test.1").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.1").setRoutingType(RoutingType.ANYCAST)
                                                             .setAddress("addr")
                                                             .setAutoCreated(false));
-         server.createQueue(new QueueConfiguration("test.2").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.2").setRoutingType(RoutingType.ANYCAST)
                                                             .setAddress("addr")
                                                             .setAutoCreated(false));
-         server.createQueue(new QueueConfiguration("test.3").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test.3").setRoutingType(RoutingType.ANYCAST)
                                                             .setAddress("addr")
                                                             .setAutoCreated(false));
 
@@ -1567,7 +1596,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAcceptsQueuePolicyFromControlLink() throws Exception {
       server.start();
 
@@ -1602,7 +1632,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAcceptsQueuePolicyFromControlLinkWithTransformerConfiguration() throws Exception {
       server.start();
 
@@ -1646,7 +1677,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesQueueWhenDemandIsApplied() throws Exception {
       server.start();
 
@@ -1708,7 +1740,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesQueueWhenDemandIsAppliedUsingControllerDefinedLinkCredit() throws Exception {
       server.start();
 
@@ -1771,7 +1804,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesQueueWhenDemandIsAppliedUsingPolicyDefinedLinkCredit() throws Exception {
       server.start();
 
@@ -1839,7 +1873,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteFederatesQueueAndAppliesTransformerWhenDemandIsApplied() throws Exception {
       server.start();
 
@@ -1912,10 +1947,11 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerAnswersAttachOfFederationReceiverProperly() throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -1955,10 +1991,11 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerRoutesInboundMessageToFederatedReceiver() throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -2022,7 +2059,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerCanFailLinkAttachIfQueueDoesNotExistWithoutClosingTheConnection() throws Exception {
       server.start();
 
@@ -2054,7 +2092,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
                                        .withSource().withAddress("test::test");
 
          // Now create it and try again
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -2085,12 +2123,13 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerCanFailLinkAttachIfQueueDoesNotMatchFullExpectationWithoutClosingTheConnection() throws Exception {
       server.start();
 
       // Now create it and try again
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -2148,7 +2187,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteConnectionCannotAttachQueueFederationLinkWithoutControlLink() throws Exception {
       server.start();
 
@@ -2193,10 +2233,11 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerRoutesInboundMessageToFederatedReceiverWithFilterApplied() throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -2272,7 +2313,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testBrokerDoesNotFederateQueueIfOnlyDemandIsFromAnotherBrokerFederationSubscription() throws Exception {
       try (ProtonTestServer target = new ProtonTestServer()) {
          target.expectSASLAnonymousConnect();
@@ -2307,7 +2349,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -2381,7 +2423,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testBrokerCanFederateQueueIfOnlyDemandIsFromAnotherBrokerFederationSubscription() throws Exception {
       try (ProtonTestServer target = new ProtonTestServer()) {
          target.expectSASLAnonymousConnect();
@@ -2416,7 +2459,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -2433,7 +2476,6 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
                                            .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString());
          // Should get a flow but if the link goes away quick enough the broker won't get to this before detaching.
          target.expectFlow().withLinkCredit(1000).optional();
-         target.expectDetach().respond();
 
          // Simulate another broker connecting as a federation instance that will create demand on
          // queue "test::test" and should generate demand to the server the broker connected to
@@ -2465,21 +2507,26 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
             client.remoteFlow().withLinkCredit(10).now();
             client.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
+            // Now force close the federation link in an unexpected way which should cause the target to
+            // react and close the federation connection and trigger a rebuild of state, federation links
+            // should normally never be deleted by user management but if it is the state needs to be
+            // rebuilt in order for proper demand tracking.
+            target.waitForScriptToComplete(5, TimeUnit.SECONDS);
+            target.expectDetach().respond();
+
             client.expectDetach();
+            client.expectClose().respond();
             client.remoteDetach().withErrorCondition("amqp:resource-deleted", "Resource deleted").later(30);
             client.waitForScriptToComplete(5, TimeUnit.SECONDS);
          }
-
-         target.waitForScriptToComplete(5, TimeUnit.SECONDS);
-         target.expectClose();
-         target.remoteClose().now();
 
          target.waitForScriptToComplete(5, TimeUnit.SECONDS);
          target.close();
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testTransformInboundFederatedMessageBeforeDispatch() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -2521,7 +2568,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -2564,8 +2611,34 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
-   public void testPullQueueConsumerGrantsCreditOnEmptyQueue() throws Exception {
+   @Test
+   @Timeout(20)
+   public void testPullQueueConsumerGrantsDefaultCreditOnEmptyQueue() throws Exception {
+      doTestPullConsumerGrantsConfiguredCreditOnEmptyQueue(0, false, 0, false, DEFAULT_PULL_CREDIT_BATCH_SIZE);
+   }
+
+   @Test
+   @Timeout(20)
+   public void testPullQueueConsumerGrantsReceiverConfiguredCreditOnEmptyQueue() throws Exception {
+      doTestPullConsumerGrantsConfiguredCreditOnEmptyQueue(0, false, 10, true, 10);
+   }
+
+   @Test
+   @Timeout(20)
+   public void testPullQueueConsumerGrantsFederationConfiguredCreditOnEmptyQueue() throws Exception {
+      doTestPullConsumerGrantsConfiguredCreditOnEmptyQueue(20, true, 0, false, 20);
+   }
+
+   @Test
+   @Timeout(20)
+   public void testPullQueueConsumerGrantsReceiverConfiguredCreditOverFederationConfiguredOnEmptyQueue() throws Exception {
+      doTestPullConsumerGrantsConfiguredCreditOnEmptyQueue(20, true, 10, true, 10);
+   }
+
+   private void doTestPullConsumerGrantsConfiguredCreditOnEmptyQueue(int globalBatch, boolean setGlobal,
+                                                                     int receiverBatch, boolean setReceiver,
+                                                                     int expected) throws Exception {
+
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
          peer.expectOpen().respond();
@@ -2585,20 +2658,26 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          final AMQPFederationQueuePolicyElement receiveFromQueue = new AMQPFederationQueuePolicyElement();
          receiveFromQueue.setName("queue-policy");
          receiveFromQueue.addToIncludes("test", "test");
+         receiveFromQueue.addProperty(RECEIVER_CREDITS, 0);
+         if (setReceiver) {
+            receiveFromQueue.addProperty(PULL_RECEIVER_BATCH_SIZE, receiverBatch);
+         }
 
          final AMQPFederatedBrokerConnectionElement element = new AMQPFederatedBrokerConnectionElement();
          element.setName(getTestName());
          element.addLocalQueuePolicy(receiveFromQueue);
+         if (setGlobal) {
+            element.addProperty(PULL_RECEIVER_BATCH_SIZE, globalBatch);
+         }
 
          final AMQPBrokerConnectConfiguration amqpConnection =
-            new AMQPBrokerConnectConfiguration(
-               getTestName(), "tcp://" + remoteURI.getHost() + ":" + remoteURI.getPort() + "?amqpCredits=0");
+            new AMQPBrokerConnectConfiguration(getTestName(), "tcp://" + remoteURI.getHost() + ":" + remoteURI.getPort());
          amqpConnection.setReconnectAttempts(0);// No reconnects
          amqpConnection.addElement(element);
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -2610,7 +2689,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
                                             containsString("queue-receiver"),
                                             containsString(server.getNodeID().toString())))
                             .respondInKind();
-         peer.expectFlow().withLinkCredit(DEFAULT_PULL_CREDIT_BATCH_SIZE);
+         peer.expectFlow().withLinkCredit(expected);
 
          final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
 
@@ -2627,7 +2706,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPullQueueConsumerGrantsCreditOnlyWhenPendingMessageIsConsumed() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -2703,8 +2783,33 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 30000)
+   @Test
+   @Timeout(30)
    public void testPullQueueConsumerBatchCreditTopUpAfterEachBacklogDrain() throws Exception {
+      doTestPullConsumerCreditTopUpAfterEachBacklogDrain(0, false, 0, false, DEFAULT_PULL_CREDIT_BATCH_SIZE);
+   }
+
+   @Test
+   @Timeout(30)
+   public void testPullQueueConsumerBatchCreditTopUpAfterEachBacklogDrainFederationConfigured() throws Exception {
+      doTestPullConsumerCreditTopUpAfterEachBacklogDrain(10, true, 0, false, 10);
+   }
+
+   @Test
+   @Timeout(30)
+   public void testPullQueueConsumerBatchCreditTopUpAfterEachBacklogDrainPolicyConfigured() throws Exception {
+      doTestPullConsumerCreditTopUpAfterEachBacklogDrain(0, false, 20, true, 20);
+   }
+
+   @Test
+   @Timeout(30)
+   public void testPullQueueConsumerBatchCreditTopUpAfterEachBacklogDrainBothConfigured() throws Exception {
+      doTestPullConsumerCreditTopUpAfterEachBacklogDrain(100, true, 20, true, 20);
+   }
+
+   private void doTestPullConsumerCreditTopUpAfterEachBacklogDrain(int globalBatch, boolean setGlobal,
+                                                                   int receiverBatch, boolean setReceiver,
+                                                                   int expected) throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
          peer.expectOpen().respond();
@@ -2718,16 +2823,24 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          peer.expectFlow().withLinkCredit(10);
          peer.start();
 
+         final SimpleString queueName = SimpleString.of("test");
+
          final URI remoteURI = peer.getServerURI();
          logger.info("Test started, peer listening on: {}", remoteURI);
 
          final AMQPFederationQueuePolicyElement receiveFromQueue = new AMQPFederationQueuePolicyElement();
          receiveFromQueue.setName("queue-policy");
          receiveFromQueue.addToIncludes("test", "test");
+         if (setReceiver) {
+            receiveFromQueue.addProperty(PULL_RECEIVER_BATCH_SIZE, receiverBatch);
+         }
 
          final AMQPFederatedBrokerConnectionElement element = new AMQPFederatedBrokerConnectionElement();
          element.setName(getTestName());
          element.addLocalQueuePolicy(receiveFromQueue);
+         if (setGlobal) {
+            element.addProperty(PULL_RECEIVER_BATCH_SIZE, globalBatch);
+         }
 
          final AMQPBrokerConnectConfiguration amqpConnection =
             new AMQPBrokerConnectConfiguration(
@@ -2766,7 +2879,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
             connection.start();
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
-            peer.expectFlow().withLinkCredit(DEFAULT_PULL_CREDIT_BATCH_SIZE);
+            peer.expectFlow().withLinkCredit(expected);
 
             // Remove the backlog and credit should be offered to the remote
             assertNotNull(consumer.receiveNoWait());
@@ -2774,7 +2887,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(20, TimeUnit.SECONDS);
 
             // Consume all the credit that was presented in the batch
-            for (int i = 0; i < DEFAULT_PULL_CREDIT_BATCH_SIZE; ++i) {
+            for (int i = 0; i < expected; ++i) {
                peer.expectDisposition().withState().accepted();
                peer.remoteTransfer().withBody().withString("test-message")
                                     .also()
@@ -2782,17 +2895,19 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
                                     .now();
             }
 
+            Wait.assertTrue(() -> server.queueQuery(queueName).getMessageCount() == expected, 10_000);
+
             // Consume all the newly received message from the remote except one
             // which should leave the queue with a pending message so no credit
             // should be offered.
-            for (int i = 0; i < DEFAULT_PULL_CREDIT_BATCH_SIZE - 1; ++i) {
+            for (int i = 0; i < expected - 1; ++i) {
                assertNotNull(consumer.receiveNoWait());
             }
 
             // We should not get a new batch yet as there is still one pending
             // message on the local queue we have not consumed.
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
-            peer.expectFlow().withLinkCredit(DEFAULT_PULL_CREDIT_BATCH_SIZE);
+            peer.expectFlow().withLinkCredit(expected);
 
             // Remove the backlog and credit should be offered to the remote again
             assertNotNull(consumer.receiveNoWait());
@@ -2808,19 +2923,21 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageConvertedToAMQPWhenTunnelingDisabled() throws Exception {
       doTestCoreMessageHandlingBasedOnTunnelingState(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreMessageNotConvertedToAMQPWhenTunnelingEnabled() throws Exception {
       doTestCoreMessageHandlingBasedOnTunnelingState(true);
    }
 
    private void doTestCoreMessageHandlingBasedOnTunnelingState(boolean tunneling) throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -2887,19 +3004,21 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreLargeMessageConvertedToAMQPWhenTunnelingDisabled() throws Exception {
       doTestCoreLargeMessageHandlingBasedOnTunnelingState(false);
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testCoreLargeMessageNotConvertedToAMQPWhenTunnelingEnabled() throws Exception {
       doTestCoreLargeMessageHandlingBasedOnTunnelingState(true);
    }
 
    private void doTestCoreLargeMessageHandlingBasedOnTunnelingState(boolean tunneling) throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -2973,7 +3092,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesQueueReceiverLinkForQueueAfterBrokerConnectionStarted() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.start();
@@ -2997,7 +3117,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3064,7 +3184,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesEventSenderAndReceiverWhenLocalAndRemotePoliciesAdded() throws Exception {
       final MessageAnnotationsMatcher maMatcher = new MessageAnnotationsMatcher(true);
       maMatcher.withEntry(OPERATION_TYPE.toString(), Matchers.is(ADD_QUEUE_POLICY));
@@ -3144,7 +3265,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationSendsRemotePolicyIfEventsSenderLinkRejected() throws Exception {
       final MessageAnnotationsMatcher maMatcher = new MessageAnnotationsMatcher(true);
       maMatcher.withEntry(OPERATION_TYPE.toString(), Matchers.is(ADD_QUEUE_POLICY));
@@ -3209,7 +3331,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerSendsQueueAddedEventForInterestedPeer() throws Exception {
       final AddressSettings addressSettings = new AddressSettings();
       addressSettings.setAutoCreateQueues(false);
@@ -3259,8 +3382,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          peer.expectTransfer().withPayload(payloadMatcher).accept(); // Address added event
 
          // Manually add the address and a queue binding to create local demand.
-         server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("test"), RoutingType.MULTICAST));
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.MULTICAST)
+         server.addAddressInfo(new AddressInfo(SimpleString.of("test"), RoutingType.MULTICAST));
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.MULTICAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3275,7 +3398,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationCreatesAddressReceiverInResponseToAddressAddedEvent() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3333,7 +3457,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          peer.remoteDetach().withClosed(true)
                             .withErrorCondition(AmqpError.NOT_FOUND.toString(), "Queue not found")
                             .queue();
-         peer.expectFlow();
+         peer.expectFlow().optional();
          peer.expectDetach();
 
          final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
@@ -3366,7 +3490,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testAddressAddedEventIgnoredIfFederationConsumerAlreadyCreated() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3415,7 +3540,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          peer.remoteDetach().withClosed(true)
                             .withErrorCondition(AmqpError.NOT_FOUND.toString(), "Queue not found")
                             .queue();
-         peer.expectFlow();
+         peer.expectFlow().optional();
          peer.expectDetach();
 
          final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
@@ -3444,10 +3569,11 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testRemoteBrokerClosesFederationReceiverAfterQueueRemoved() throws Exception {
       server.start();
-      server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                        .setAddress("test")
                                                        .setAutoCreated(false));
 
@@ -3479,7 +3605,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          peer.expectDetach().withError(AmqpError.RESOURCE_DELETED.toString());
 
          // Force remove consumers from the queue should indicate the resource was deleted.
-         server.destroyQueue(SimpleString.toSimpleString("test"), null, false, true);
+         server.destroyQueue(SimpleString.of("test"), null, false, true);
 
          peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
 
@@ -3498,7 +3624,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          // has been added once more and it could restore the previous federation state.
          peer.expectTransfer().withPayload(payloadMatcher).withSettled(true);
 
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3506,8 +3632,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          // This time removing and restoring should generate no traffic as there was not
          // another federation receiver added.
-         server.destroyQueue(SimpleString.toSimpleString("test"), null, false, true);
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.destroyQueue(SimpleString.of("test"), null, false, true);
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3522,7 +3648,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationQueueDemandTrackedWhenRemoteRejectsInitialAttempts() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3556,7 +3683,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
 
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3626,7 +3753,8 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
       }
    }
 
-   @Test(timeout = 20000)
+   @Test
+   @Timeout(20)
    public void testFederationQueueDemandTrackedWhenPluginBlocksInitialAttempts() throws Exception {
       try (ProtonTestServer peer = new ProtonTestServer()) {
          peer.expectSASLAnonymousConnect();
@@ -3668,7 +3796,7 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
          server.getConfiguration().addAMQPConnection(amqpConnection);
          server.registerBrokerPlugin(federationPlugin);
          server.start();
-         server.createQueue(new QueueConfiguration("test").setRoutingType(RoutingType.ANYCAST)
+         server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
                                                           .setAddress("test")
                                                           .setAutoCreated(false));
 
@@ -3713,6 +3841,253 @@ public class AMQPFederationQueuePolicyTest extends AmqpClientTestSupport {
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
             peer.close();
          }
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteFederationReceiverCloseWhenDemandRemovedDoesNotTerminateRemoteConnection() throws Exception {
+      server.start();
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
+                                                      .setAddress("test")
+                                                      .setAutoCreated(false));
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofSender().withName("federation-queue-receiver")
+                                       .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test::test")
+                                                    .withCapabilities("queue");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                            .withName("federation-queue-receiver")
+                            .withProperty(FEDERATION_RECEIVER_PRIORITY.toString(), DEFAULT_QUEUE_RECEIVER_PRIORITY_ADJUSTMENT)
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test::test")
+                                         .withCapabilities("queue")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectTransfer().accept();
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createQueue("test"));
+
+            producer.send(session.createMessage());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectDetach();
+         peer.remoteDetach().now();  // simulate demand removed so consumer is closed.
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofSender().withName("federation-queue-receiver")
+                                       .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test::test")
+                                                    .withCapabilities("queue");
+
+         // Connect to remote as if new demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                            .withName("federation-queue-receiver")
+                            .withProperty(FEDERATION_RECEIVER_PRIORITY.toString(), DEFAULT_QUEUE_RECEIVER_PRIORITY_ADJUSTMENT)
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test::test")
+                                         .withCapabilities("queue")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectClose();
+         peer.remoteClose().now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testRemoteFederationReceiverCloseWithErrorTerminateRemoteConnection() throws Exception {
+      server.start();
+      server.createQueue(QueueConfiguration.of("test").setRoutingType(RoutingType.ANYCAST)
+                                                      .setAddress("test")
+                                                      .setAutoCreated(false));
+
+      try (ProtonTestClient peer = new ProtonTestClient()) {
+         scriptFederationConnectToRemote(peer, "test");
+         peer.connect("localhost", AMQP_PORT);
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofSender().withName("federation-queue-receiver")
+                                       .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                                       .withTarget().also()
+                                       .withSource().withAddress("test::test")
+                                                    .withCapabilities("queue");
+
+         // Connect to remote as if some demand had matched our federation policy
+         peer.remoteAttach().ofReceiver()
+                            .withDesiredCapabilities(FEDERATION_QUEUE_RECEIVER.toString())
+                            .withName("federation-queue-receiver")
+                            .withProperty(FEDERATION_RECEIVER_PRIORITY.toString(), DEFAULT_QUEUE_RECEIVER_PRIORITY_ADJUSTMENT)
+                            .withSenderSettleModeUnsettled()
+                            .withReceivervSettlesFirst()
+                            .withSource().withDurabilityOfNone()
+                                         .withExpiryPolicyOnLinkDetach()
+                                         .withAddress("test::test")
+                                         .withCapabilities("queue")
+                                         .and()
+                            .withTarget().and()
+                            .now();
+         peer.remoteFlow().withLinkCredit(10).now();
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectTransfer().accept();
+
+         // Federate a message to check link is attached properly
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageProducer producer = session.createProducer(session.createQueue("test"));
+
+            producer.send(session.createMessage());
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+
+         // Under normal circumstances the federation source will never close one of its
+         // receivers with an error, so if that happens the remote will shutdown the connection
+         // and let the local rebuild.
+
+         peer.expectDetach();
+         peer.expectClose().withError(AmqpError.INTERNAL_ERROR.toString()).respond();
+
+         peer.remoteDetach().withErrorCondition(AmqpError.RESOURCE_DELETED.toString(), "error").now();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
+
+         server.stop();
+      }
+   }
+
+   @Test
+   @Timeout(20)
+   public void testNewFederationConsumerCreatedWhenDemandRemovedAndAddedWithDelayedPreviousDetach() throws Exception {
+      try (ProtonTestServer peer = new ProtonTestServer()) {
+         peer.expectSASLAnonymousConnect();
+         peer.expectOpen().respond();
+         peer.expectBegin().respond();
+         peer.expectAttach().ofSender()
+                            .withDesiredCapability(FEDERATION_CONTROL_LINK.toString())
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_CONTROL_LINK.toString());
+         peer.expectAttach().ofReceiver()
+                            .withSenderSettleModeSettled()
+                            .withSource().withDynamic(true)
+                            .and()
+                            .withDesiredCapability(FEDERATION_EVENT_LINK.toString())
+                            .respondInKind()
+                            .withTarget().withAddress("test-dynamic-events");
+         peer.expectFlow().withLinkCredit(10);
+         peer.start();
+
+         final URI remoteURI = peer.getServerURI();
+         logger.info("Test started, peer listening on: {}", remoteURI);
+
+         final AMQPFederationQueuePolicyElement receiveFromQueue = new AMQPFederationQueuePolicyElement();
+         receiveFromQueue.setName("queue-policy");
+         receiveFromQueue.addToIncludes(getTestName(), getTestName());
+
+         final AMQPFederatedBrokerConnectionElement element = new AMQPFederatedBrokerConnectionElement();
+         element.setName(getTestName());
+         element.addLocalQueuePolicy(receiveFromQueue);
+
+         final AMQPBrokerConnectConfiguration amqpConnection =
+            new AMQPBrokerConnectConfiguration(getTestName(), "tcp://" + remoteURI.getHost() + ":" + remoteURI.getPort());
+         amqpConnection.setReconnectAttempts(0);// No reconnects
+         amqpConnection.addElement(element);
+
+         server.getConfiguration().addAMQPConnection(amqpConnection);
+         server.start();
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofReceiver()
+                            .withDesiredCapability(FEDERATION_QUEUE_RECEIVER.toString())
+                            .withName(allOf(containsString(getTestName()),
+                                            containsString("queue-receiver"),
+                                            containsString(server.getNodeID().toString())))
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString());
+         peer.expectFlow().withLinkCredit(1000);
+         peer.expectDetach().respond().afterDelay(40); // Defer the detach response for a bit
+
+         server.createQueue(QueueConfiguration.of(getTestName()).setRoutingType(RoutingType.ANYCAST)
+                                                                .setAddress(getTestName())
+                                                                .setAutoCreated(false));
+
+         final ConnectionFactory factory = CFUtil.createConnectionFactory("AMQP", "tcp://localhost:" + AMQP_PORT);
+
+         // Create demand on the queue which creates a federation consumer then let it close which
+         // should shut down that federation consumer.
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageConsumer consumer = session.createConsumer(session.createQueue(getTestName()));
+
+            connection.start();
+
+            consumer.receiveNoWait();
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectAttach().ofReceiver()
+                            .withDesiredCapability(FEDERATION_QUEUE_RECEIVER.toString())
+                            .withName(allOf(containsString(getTestName()),
+                                            containsString("queue-receiver"),
+                                            containsString(server.getNodeID().toString())))
+                            .respond()
+                            .withOfferedCapabilities(FEDERATION_QUEUE_RECEIVER.toString());
+         peer.expectFlow().withLinkCredit(1000);
+         peer.expectDetach().respond();
+
+         try (Connection connection = factory.createConnection()) {
+            final Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
+            final MessageConsumer consumer = session.createConsumer(session.createQueue(getTestName()));
+
+            connection.start();
+
+            consumer.receiveNoWait();
+         }
+
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.expectClose();
+         peer.remoteClose().now();
+         peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+         peer.close();
       }
    }
 

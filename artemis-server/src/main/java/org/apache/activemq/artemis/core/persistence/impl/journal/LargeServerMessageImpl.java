@@ -76,7 +76,7 @@ public final class LargeServerMessageImpl extends CoreMessage implements CoreLar
       if (logger.isDebugEnabled()) {
          logger.debug("asLargeMessage create largeMessage with id={}", id);
       }
-      LargeServerMessage lsm = storageManager.createLargeMessage(id, coreMessage);
+      LargeServerMessage lsm = storageManager.createCoreLargeMessage(id, coreMessage);
       ActiveMQBuffer messageBodyBuffer = coreMessage.getReadOnlyBodyBuffer();
       final int readableBytes = messageBodyBuffer.readableBytes();
 
@@ -172,6 +172,11 @@ public final class LargeServerMessageImpl extends CoreMessage implements CoreLar
    public LargeServerMessageImpl setMessageID(long messageID) {
       super.setMessageID(messageID);
       checkDebug();
+      return this;
+   }
+
+   @Override
+   public Message getMessage() {
       return this;
    }
 
@@ -294,6 +299,18 @@ public final class LargeServerMessageImpl extends CoreMessage implements CoreLar
    }
 
    @Override
+   public boolean isOpen() {
+      synchronized (largeBody) {
+         try {
+            return largeBody.getAppendFile().isOpen();
+         } catch (Throwable e) {
+            return false;
+         }
+      }
+   }
+
+
+   @Override
    public void referenceOriginalMessage(final Message original, final SimpleString originalQueue) {
 
       super.referenceOriginalMessage(original, originalQueue);
@@ -327,7 +344,7 @@ public final class LargeServerMessageImpl extends CoreMessage implements CoreLar
          if (logger.isDebugEnabled()) {
             logger.debug("Copy large message id={} as newID={}", this.getMessageID(), newID);
          }
-         LargeServerMessage newMessage = storageManager.createLargeMessage(newID, this);
+         LargeServerMessage newMessage = storageManager.createCoreLargeMessage(newID, this);
          largeBody.copyInto(newMessage);
          newMessage.releaseResources(true, true);
          return newMessage.toMessage();
@@ -361,17 +378,4 @@ public final class LargeServerMessageImpl extends CoreMessage implements CoreLar
          return "LargeServerMessage[messageID=" + messageID + "]";
       }
    }
-
-   @Override
-   public void validateFile() throws ActiveMQException {
-      this.ensureFileExists(true);
-   }
-
-   public void ensureFileExists(boolean toOpen) throws ActiveMQException {
-      synchronized (largeBody) {
-         largeBody.ensureFileExists(toOpen);
-      }
-   }
-
-
 }

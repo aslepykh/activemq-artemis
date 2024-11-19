@@ -20,7 +20,6 @@ import javax.jms.Connection;
 import javax.jms.DeliveryMode;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
 import javax.jms.QueueBrowser;
 import javax.jms.Session;
@@ -28,8 +27,8 @@ import javax.jms.TextMessage;
 import java.util.Enumeration;
 
 import org.apache.activemq.artemis.jms.tests.util.ProxyAssertSupport;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Various use cases, added here while trying things or fixing forum issues.
@@ -37,7 +36,7 @@ import org.junit.Test;
 public class MiscellaneousTest extends JMSTestCase {
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       removeAllMessages(queue1.getQueueName(), true);
 
@@ -102,16 +101,13 @@ public class MiscellaneousTest extends JMSTestCase {
       Connection conn = createConnection();
       Session s = conn.createSession(false, Session.AUTO_ACKNOWLEDGE);
       final MessageConsumer cons = s.createConsumer(queue1);
-      cons.setMessageListener(new MessageListener() {
-         @Override
-         public void onMessage(final Message m) {
-            // close the connection on the same thread that processed the message
-            try {
-               cons.close();
-               result.setSuccess();
-            } catch (Exception e) {
-               result.setFailure(e);
-            }
+      cons.setMessageListener(m -> {
+         // close the connection on the same thread that processed the message
+         try {
+            cons.close();
+            result.setSuccess();
+         } catch (Exception e) {
+            result.setFailure(e);
          }
       });
 
@@ -154,16 +150,13 @@ public class MiscellaneousTest extends JMSTestCase {
       Connection conn = createConnection();
       Session s = conn.createSession(true, Session.SESSION_TRANSACTED);
       final MessageConsumer cons = s.createConsumer(queue1);
-      cons.setMessageListener(new MessageListener() {
-         @Override
-         public void onMessage(final Message m) {
-            // close the connection on the same thread that processed the message
-            try {
-               cons.close();
-               result.setSuccess();
-            } catch (Exception e) {
-               result.setFailure(e);
-            }
+      cons.setMessageListener(m -> {
+         // close the connection on the same thread that processed the message
+         try {
+            cons.close();
+            result.setSuccess();
+         } catch (Exception e) {
+            result.setFailure(e);
          }
       });
 

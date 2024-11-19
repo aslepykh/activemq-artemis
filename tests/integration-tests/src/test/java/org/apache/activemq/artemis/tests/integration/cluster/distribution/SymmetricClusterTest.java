@@ -24,8 +24,8 @@ import org.apache.activemq.artemis.core.server.cluster.impl.MessageLoadBalancing
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +39,7 @@ public class SymmetricClusterTest extends ClusterTestBase {
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -251,7 +251,7 @@ public class SymmetricClusterTest extends ClusterTestBase {
       }
 
       for (int i = 0; i < 5; i++) {
-         servers[i].addAddressInfo(new AddressInfo(SimpleString.toSimpleString("queues.testaddress"), RoutingType.MULTICAST));
+         servers[i].addAddressInfo(new AddressInfo(SimpleString.of("queues.testaddress"), RoutingType.MULTICAST));
          createQueue(i, "queues.testaddress", "queue0", null, false);
       }
 

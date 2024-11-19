@@ -28,10 +28,16 @@ import org.apache.activemq.artemis.spi.core.security.ActiveMQJAASSecurityManager
 import org.apache.activemq.artemis.tests.integration.stomp.util.ClientStompFrame;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnection;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnectionFactory;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StompWithSecurityPerAcceptorTest extends StompTestBase {
+
+   public StompWithSecurityPerAcceptorTest() {
+      super("tcp+v10.stomp");
+   }
 
    static {
       String path = System.getProperty("java.security.auth.login.config");
@@ -50,7 +56,7 @@ public class StompWithSecurityPerAcceptorTest extends StompTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       uri = new URI(scheme + "://" + hostname + ":" + port);
 

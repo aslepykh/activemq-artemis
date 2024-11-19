@@ -17,6 +17,9 @@
 
 package org.apache.activemq.artemis.tests.smoke.clusteredLargeMessage;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.MessageConsumer;
@@ -32,15 +35,14 @@ import org.apache.activemq.artemis.tests.smoke.common.SmokeTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.util.ServerUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ClusteredLargeMessageTest extends SmokeTestBase {
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
 
       File server0Location = getFileServerLocation(SERVER_NAME_0);
@@ -49,14 +51,14 @@ public class ClusteredLargeMessageTest extends SmokeTestBase {
       deleteDirectory(server0Location);
 
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setRole("amq").setUser("artemis").setPassword("artemis").setAllowAnonymous(true).setNoWeb(true).
             setArtemisInstance(server0Location).setClustered(true).
                setStaticCluster("tcp://localhost:61716").setArgs("--name", "cluster1", "--max-hops", "1", "--queues", "testQueue");
          cliCreateServer.createServer();
       }
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setRole("amq").setUser("artemis").setPassword("artemis").setAllowAnonymous(true).setNoWeb(true).setPortOffset(100).
             setArtemisInstance(server1Location).setClustered(true).
                setStaticCluster("tcp://localhost:61616").setArgs("--name", "cluster2", "--max-hops", "1", "--queues", "testQueue");
@@ -72,7 +74,7 @@ public class ClusteredLargeMessageTest extends SmokeTestBase {
    Process server0Process;
    Process server1Process;
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       cleanupData(SERVER_NAME_0);
       cleanupData(SERVER_NAME_1);
@@ -132,8 +134,8 @@ public class ClusteredLargeMessageTest extends SmokeTestBase {
 
       for (int i = 0; i < 10; i++) {
          TextMessage message = (TextMessage) consumer2.receive(5000);
-         Assert.assertNotNull(message);
-         Assert.assertEquals(largeBody, message.getText());
+         assertNotNull(message);
+         assertEquals(largeBody, message.getText());
       }
 
       connection1.close();
@@ -207,8 +209,8 @@ public class ClusteredLargeMessageTest extends SmokeTestBase {
 
          for (int i = 0; i < NMESSAGES; i++) {
             TextMessage message = (TextMessage) consumer2.receive(5000);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(largeBody, message.getText());
+            assertNotNull(message);
+            assertEquals(largeBody, message.getText());
          }
       }
    }

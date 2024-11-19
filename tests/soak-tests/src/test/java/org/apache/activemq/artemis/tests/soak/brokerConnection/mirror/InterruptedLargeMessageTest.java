@@ -17,6 +17,10 @@
 
 package org.apache.activemq.artemis.tests.soak.brokerConnection.mirror;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.MessageConsumer;
@@ -27,8 +31,6 @@ import javax.jms.TextMessage;
 import java.io.File;
 import java.io.StringWriter;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -43,12 +45,13 @@ import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.tests.soak.SoakTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.util.ServerUtil;
+import org.apache.activemq.artemis.utils.FileUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,18 +85,18 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
    private static void createServer(String serverName,
                                     String connectionName,
                                     String mirrorURI,
-                                    int porOffset) throws Exception {
+                                    int portOffset) throws Exception {
       File serverLocation = getFileServerLocation(serverName);
       deleteDirectory(serverLocation);
 
-      HelperCreate cliCreateServer = new HelperCreate();
+      HelperCreate cliCreateServer = helperCreate();
       cliCreateServer.setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(serverLocation);
       cliCreateServer.setMessageLoadBalancing("ON_DEMAND");
       cliCreateServer.setClustered(false);
       cliCreateServer.setNoWeb(true);
       cliCreateServer.setArgs("--no-stomp-acceptor", "--no-hornetq-acceptor", "--no-mqtt-acceptor", "--no-amqp-acceptor", "--max-hops", "1", "--name", DC1_NODE_A);
       cliCreateServer.addArgs("--queues", QUEUE_NAME);
-      cliCreateServer.setPortOffset(porOffset);
+      cliCreateServer.setPortOffset(portOffset);
       cliCreateServer.createServer();
 
       Properties brokerProperties = new Properties();
@@ -105,11 +108,6 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
       File brokerPropertiesFile = new File(serverLocation, "broker.properties");
       saveProperties(brokerProperties, brokerPropertiesFile);
 
-      Path configPath = new File(getServerLocation(serverName), "./etc/broker.xml").toPath();
-
-      String brokerXML = Files.readString(configPath);
-
-      // the SimpleMetricsPlugin needs to be added throught the XML
       String insert;
       {
          StringWriter insertWriter = new StringWriter();
@@ -130,33 +128,27 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
          insert = insertWriter.toString();
       }
 
-      brokerXML = brokerXML.replace("</core>", insert);
-      Assert.assertTrue(brokerXML.contains("SimpleMetricsPlugin"));
-
-      Files.writeString(configPath, brokerXML);
+      assertTrue(FileUtil.findReplace(new File(getServerLocation(serverName), "./etc/broker.xml"), "</core>", insert));
    }
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
       createServer(DC1_NODE_A, "mirror", DC2_NODEA_URI, 0);
       createServer(DC2_NODE_A, "mirror", DC1_NODEA_URI, 2);
    }
 
-   @Before
+   @BeforeEach
    public void cleanupServers() {
       cleanupData(DC1_NODE_A);
       cleanupData(DC2_NODE_A);
    }
 
-   @Test(timeout = 240_000L)
-   public void testAMQP() throws Exception {
-      testInterrupt("AMQP");
+   @Test
+   @Timeout(240)
+   public void testRandomProtocol() throws Exception {
+      testInterrupt(randomProtocol());
    }
 
-   @Test(timeout = 240_000L)
-   public void testCORE() throws Exception {
-      testInterrupt("CORE");
-   }
 
    private void preCreateInternalQueues(String serverLocation) throws Exception {
       Configuration configuration = createDefaultConfig(0, false);
@@ -169,7 +161,7 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
       server.start();
       try {
          server.addAddressInfo(new AddressInfo(SNF_QUEUE).addRoutingType(RoutingType.ANYCAST).setInternal(false));
-         server.createQueue(new QueueConfiguration(SNF_QUEUE).setRoutingType(RoutingType.ANYCAST).setAddress(SNF_QUEUE).setDurable(true).setInternal(false));
+         server.createQueue(QueueConfiguration.of(SNF_QUEUE).setRoutingType(RoutingType.ANYCAST).setAddress(SNF_QUEUE).setDurable(true).setInternal(false));
       } catch (Throwable error) {
          logger.warn(error.getMessage(), error);
       }
@@ -255,8 +247,8 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
          MessageConsumer consumer = session.createConsumer(session.createQueue(QUEUE_NAME));
          for (int i = 0; i < numberOfMessages; i++) {
             TextMessage message = (TextMessage) consumer.receive(5000);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(i, message.getIntProperty("id"));
+            assertNotNull(message);
+            assertEquals(i, message.getIntProperty("id"));
             if (i % 10 == 0) {
                session.commit();
                logger.debug("Received {} messages", i);
@@ -265,10 +257,10 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
          session.commit();
       }
 
-      Wait.assertEquals(0, () -> getCount(simpleManagementDC1A, SNF_QUEUE));
-      Wait.assertEquals(0, () -> getCount(simpleManagementDC2A, SNF_QUEUE));
-      Wait.assertEquals(0, () -> getCount(simpleManagementDC2A, QUEUE_NAME));
-      Wait.assertEquals(0, () -> getCount(simpleManagementDC1A, QUEUE_NAME));
+      Wait.assertEquals(0, () -> getMessageCount(simpleManagementDC1A, SNF_QUEUE));
+      Wait.assertEquals(0, () -> getMessageCount(simpleManagementDC2A, SNF_QUEUE));
+      Wait.assertEquals(0, () -> getMessageCount(simpleManagementDC2A, QUEUE_NAME));
+      Wait.assertEquals(0, () -> getMessageCount(simpleManagementDC1A, QUEUE_NAME));
 
       Wait.assertEquals(0, () -> getNumberOfLargeMessages(DC1_NODE_A), 5000);
       Wait.assertEquals(0, () -> getNumberOfLargeMessages(DC2_NODE_A), 5000);
@@ -276,7 +268,7 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
 
    int getNumberOfLargeMessages(String serverName) throws Exception {
       File lmFolder = new File(getServerLocation(serverName) + "/data/large-messages");
-      Assert.assertTrue(lmFolder.exists());
+      assertTrue(lmFolder.exists());
       return lmFolder.list().length;
    }
 
@@ -287,22 +279,16 @@ public class InterruptedLargeMessageTest extends SoakTestBase {
 
    private void stopDC1() throws Exception {
       processDC1_node_A.destroyForcibly();
-      Assert.assertTrue(processDC1_node_A.waitFor(10, TimeUnit.SECONDS));
+      assertTrue(processDC1_node_A.waitFor(10, TimeUnit.SECONDS));
    }
 
    private void stopDC2() throws Exception {
       processDC2_node_A.destroyForcibly();
-      Assert.assertTrue(processDC2_node_A.waitFor(10, TimeUnit.SECONDS));
+      assertTrue(processDC2_node_A.waitFor(10, TimeUnit.SECONDS));
    }
 
    private void startDC2() throws Exception {
       processDC2_node_A = startServer(DC2_NODE_A, -1, -1, new File(getServerLocation(DC2_NODE_A), "broker.properties"));
       ServerUtil.waitForServerToStart(2, 10_000);
-   }
-
-   public long getCount(SimpleManagement simpleManagement, String queue) throws Exception {
-      long value = simpleManagement.getMessageCountOnQueue(queue);
-      logger.debug("count on queue {} is {}", queue, value);
-      return value;
    }
 }

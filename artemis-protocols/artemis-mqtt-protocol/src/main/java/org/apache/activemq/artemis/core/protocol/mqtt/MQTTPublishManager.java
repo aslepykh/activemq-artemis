@@ -130,13 +130,13 @@ public class MQTTPublishManager {
    }
 
    private SimpleString createManagementAddress() {
-      return new SimpleString(MQTTUtil.MANAGEMENT_QUEUE_PREFIX + session.getState().getClientId());
+      return SimpleString.of(MQTTUtil.MANAGEMENT_QUEUE_PREFIX + session.getState().getClientId());
    }
 
    private void createManagementQueue() throws Exception {
       Queue q = session.getServer().locateQueue(managementAddress);
       if (q == null) {
-         session.getServer().createQueue(new QueueConfiguration(managementAddress)
+         session.getServer().createQueue(QueueConfiguration.of(managementAddress)
                                             .setRoutingType(RoutingType.ANYCAST)
                                             .setDurable(MQTTUtil.DURABLE_MESSAGES));
       }
@@ -217,7 +217,7 @@ public class MQTTPublishManager {
             }
          }
          String coreAddress = MQTTUtil.getCoreAddressFromMqttTopic(topic, session.getWildcardConfiguration());
-         SimpleString address = SimpleString.toSimpleString(coreAddress, session.getCoreMessageObjectPools().getAddressStringSimpleStringPool());
+         SimpleString address = SimpleString.of(coreAddress, session.getCoreMessageObjectPools().getAddressStringSimpleStringPool());
          Message serverMessage = MQTTUtil.createServerMessageFromByteBuf(session, address, message);
          int qos = message.fixedHeader().qosLevel().value();
          if (qos > 0) {
@@ -480,7 +480,7 @@ public class MQTTPublishManager {
          for (SimpleString propertyName : message.getPropertyNames()) {
             if (propertyName.startsWith(MQTT_USER_PROPERTY_KEY_PREFIX_SIMPLE)) {
                SimpleString[] split = propertyName.split('.');
-               int position = Integer.valueOf(split[4].toString());
+               int position = Integer.parseInt(split[4].toString());
                String key = propertyName.subSeq(MQTT_USER_PROPERTY_KEY_PREFIX_SIMPLE.length() + split[4].length() + 1, propertyName.length()).toString();
                orderedProperties[position] = new MqttProperties.StringPair(key, message.getStringProperty(propertyName));
             }

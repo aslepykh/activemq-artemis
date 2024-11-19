@@ -101,7 +101,7 @@ public class ScaleDownHandler {
       ActiveMQServerLogger.LOGGER.infoScaledDownMessages(num);
       scaleDownTransactions(sessionFactory, resourceManager, clusterControl.getClusterUser(), clusterControl.getClusterPassword());
       scaleDownDuplicateIDs(duplicateIDMap, sessionFactory, managementAddress, clusterControl.getClusterUser(), clusterControl.getClusterPassword());
-      clusterControl.announceScaleDown(new SimpleString(this.targetNodeId), nodeManager.getNodeId());
+      clusterControl.announceScaleDown(SimpleString.of(this.targetNodeId), nodeManager.getNodeId());
       return num;
    }
 
@@ -359,7 +359,7 @@ public class ScaleDownHandler {
                   }
                   Pair<List<Long>, List<Long>> queueIds = queuesToSendTo.get(message);
                   if (queueIds == null) {
-                     queueIds = new Pair<List<Long>, List<Long>>(new ArrayList<Long>(), new ArrayList<Long>());
+                     queueIds = new Pair<>(new ArrayList<>(), new ArrayList<>());
                      queuesToSendTo.put(message, queueIds);
                   }
                   queueIds.getA().add(queueID);
@@ -381,7 +381,7 @@ public class ScaleDownHandler {
                   }
                   Pair<List<Long>, List<Long>> queueIds = queuesToSendTo.get(message);
                   if (queueIds == null) {
-                     queueIds = new Pair<List<Long>, List<Long>>(new ArrayList<Long>(), new ArrayList<Long>());
+                     queueIds = new Pair<>(new ArrayList<>(), new ArrayList<>());
                      queuesToSendTo.put(message, queueIds);
                   }
                   queueIds.getA().add(queueID);
@@ -447,7 +447,7 @@ public class ScaleDownHandler {
                                                               RoutingType routingType) throws Exception {
       long queueID = getQueueID(session, queue.getName());
       if (queueID == -1) {
-         session.createQueue(new QueueConfiguration(queue.getName()).setAddress(addressName).setRoutingType(routingType).setFilterString(queue.getFilter() == null ? null : queue.getFilter().getFilterString()).setDurable(queue.isDurable()));
+         session.createQueue(QueueConfiguration.of(queue.getName()).setAddress(addressName).setRoutingType(routingType).setFilterString(queue.getFilter() == null ? null : queue.getFilter().getFilterString()).setDurable(queue.isDurable()));
          if (logger.isDebugEnabled()) {
             logger.debug("Failed to get queue ID, creating queue [addressName={}, queueName={}, routingType={}, filter={}, durable={}]",
                       addressName, queue.getName(), queue.getRoutingType(), (queue.getFilter() == null ? "" : queue.getFilter().getFilterString()), queue.isDurable());

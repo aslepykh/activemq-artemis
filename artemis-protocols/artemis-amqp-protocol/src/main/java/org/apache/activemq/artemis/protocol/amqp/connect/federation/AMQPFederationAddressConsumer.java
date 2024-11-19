@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -98,7 +99,12 @@ public class AMQPFederationAddressConsumer implements FederationConsumerInternal
 
    // Redefined because AMQPMessage uses SimpleString in its annotations API for some reason.
    private static final SimpleString MESSAGE_HOPS_ANNOTATION =
-      new SimpleString(AMQPFederationPolicySupport.MESSAGE_HOPS_ANNOTATION.toString());
+      SimpleString.of(AMQPFederationPolicySupport.MESSAGE_HOPS_ANNOTATION.toString());
+
+   // Sequence ID value used to keep links that would otherwise have the same name from overlapping
+   // this generally occurs when a remote link detach is delayed and new demand is added before it
+   // arrives resulting in an unintended link stealing scenario in the proton engine.
+   private static final AtomicLong LINK_SEQUENCE_ID = new AtomicLong();
 
    private static final Symbol[] DEFAULT_OUTCOMES = new Symbol[]{Accepted.DESCRIPTOR_SYMBOL, Rejected.DESCRIPTOR_SYMBOL,
                                                                  Released.DESCRIPTOR_SYMBOL, Modified.DESCRIPTOR_SYMBOL};
@@ -255,7 +261,8 @@ public class AMQPFederationAddressConsumer implements FederationConsumerInternal
    private String generateLinkName() {
       return "federation-" + federation.getName() +
              "-address-receiver-" + consumerInfo.getAddress() +
-             "-" + federation.getServer().getNodeID();
+             "-" + federation.getServer().getNodeID() +
+             "-" + LINK_SEQUENCE_ID.incrementAndGet();
    }
 
    private void asyncCreateReceiver() {
@@ -321,11 +328,11 @@ public class AMQPFederationAddressConsumer implements FederationConsumerInternal
             final ScheduledFuture<?> openTimeoutTask;
             final AtomicBoolean openTimedOut = new AtomicBoolean(false);
 
-            if (federation.getLinkAttachTimeout() > 0) {
+            if (configuration.getLinkAttachTimeout() > 0) {
                openTimeoutTask = federation.getServer().getScheduledPool().schedule(() -> {
                   openTimedOut.set(true);
                   federation.signalResourceCreateError(ActiveMQAMQPProtocolMessageBundle.BUNDLE.brokerConnectionTimeout());
-               }, federation.getLinkAttachTimeout(), TimeUnit.SECONDS);
+               }, configuration.getLinkAttachTimeout(), TimeUnit.SECONDS);
             } else {
                openTimeoutTask = null;
             }
@@ -431,7 +438,7 @@ public class AMQPFederationAddressConsumer implements FederationConsumerInternal
       AMQPFederatedAddressDeliveryReceiver(AMQPSessionContext session, FederationConsumerInfo consumerInfo, Receiver receiver) {
          super(session.getSessionSPI(), session.getAMQPConnectionContext(), session, receiver);
 
-         this.cachedAddress = SimpleString.toSimpleString(consumerInfo.getAddress());
+         this.cachedAddress = SimpleString.of(consumerInfo.getAddress());
       }
 
       @Override
@@ -484,7 +491,7 @@ public class AMQPFederationAddressConsumer implements FederationConsumerInternal
             throw new ActiveMQAMQPInternalErrorException("Remote should have sent an valid Target but we got: " + target);
          }
 
-         address = SimpleString.toSimpleString(target.getAddress());
+         address = SimpleString.of(target.getAddress());
          defRoutingType = getRoutingType(target.getCapabilities(), address);
 
          try {

@@ -17,6 +17,9 @@
 
 package org.apache.activemq.artemis.tests.soak.interruptlm;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.MessageConsumer;
@@ -40,11 +43,10 @@ import org.apache.activemq.artemis.api.core.management.QueueControl;
 import org.apache.activemq.artemis.tests.soak.SoakTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,13 +56,13 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
    public static final String SERVER_NAME_0 = "lmbroker1";
    public static final String SERVER_NAME_1 = "lmbroker2";
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
       {
          File serverLocation = getFileServerLocation(SERVER_NAME_0);
          deleteDirectory(serverLocation);
 
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setRole("amq").setUser("artemis").setPassword("artemis").setAllowAnonymous(true).setNoWeb(false).setArtemisInstance(serverLocation).
             setConfiguration("./src/main/resources/servers/lmbroker1");
          cliCreateServer.setArgs("--java-options", "-Djava.rmi.server.hostname=localhost", "--clustered", "--static-cluster", "tcp://localhost:61716", "--queues", "ClusteredLargeMessageInterruptTest", "--name", "lmbroker1");
@@ -71,7 +73,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
          File serverLocation = getFileServerLocation(SERVER_NAME_1);
          deleteDirectory(serverLocation);
 
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setRole("amq").setUser("artemis").setPassword("artemis").setAllowAnonymous(true).setNoWeb(false).setArtemisInstance(serverLocation).
             setConfiguration("./src/main/resources/servers/lmbroker2").setPortOffset(100);
          cliCreateServer.setArgs("--java-options", "-Djava.rmi.server.hostname=localhost", "--clustered", "--static-cluster", "tcp://localhost:61616", "--queues", "ClusteredLargeMessageInterruptTest", "--name", "lmbroker2");
@@ -108,23 +110,17 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
    Process serverProcess2;
 
    public ConnectionFactory createConnectionFactory(int broker, String protocol) {
+
+      int portUsed = 61616 + broker * 100;
+
       if (protocol.equals("CORE")) {
-         switch (broker) {
-            // I need the connections stable in the selected server
-            case 0:
-               return new org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory("tcp://localhost:61616?ha=false&useTopologyForLoadBalancing=false&callTimeout=1000");
-            case 1:
-               return new org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory("tcp://localhost:61716?ha=false&useTopologyForLoadBalancing=false&callTimeout=1000");
-            default:
-               logger.warn("undefined argument {}", broker);
-               throw new IllegalArgumentException("undefined");
-         }
+         return new org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory("tcp://localhost:" + portUsed + "?ha=false&useTopologyForLoadBalancing=false&callTimeout=1000");
       } else {
-         return CFUtil.createConnectionFactory(protocol, "tcp://localhost:" + (61616 + broker * 100) + "?ha=false");
+         return CFUtil.createConnectionFactory(protocol, "tcp://localhost:" + portUsed);
       }
    }
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       cleanupData(SERVER_NAME_0);
       cleanupData(SERVER_NAME_1);
@@ -143,52 +139,27 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
 
    @Test
    public void testLargeMessageAMQPTX() throws Throwable {
-      testInterrupt("AMQP", true, false);
-   }
-
-   @Test
-   public void testLargeMessageAMQPTXKill() throws Throwable {
-      testInterrupt("AMQP", true, true);
+      testInterrupt("AMQP", true);
    }
 
    @Test
    public void testInterruptAMQPNonTX() throws Throwable {
-      testInterrupt("AMQP", false, false);
-   }
-
-   @Test
-   public void testInterruptAMQPNonTXKill() throws Throwable {
-      testInterrupt("AMQP", false, true);
+      testInterrupt("AMQP", false);
    }
 
    @Test
    public void testInterruptCORETX() throws Throwable {
-      testInterrupt("CORE", true, false);
-   }
-
-   @Test
-   public void testInterruptCORETXKill() throws Throwable {
-      testInterrupt("CORE", true, true);
+      testInterrupt("CORE", true);
    }
 
    @Test
    public void testInterruptOPENWIRETX() throws Throwable {
-      testInterrupt("OPENWIRE", true, false);
-   }
-
-   @Test
-   public void testInterruptOPENWIRETXKill() throws Throwable {
-      testInterrupt("OPENWIRE", true, true);
+      testInterrupt("OPENWIRE", true);
    }
 
    @Test
    public void testInterruptCORENonTX() throws Throwable {
-      testInterrupt("CORE", false, false);
-   }
-
-   @Test
-   public void testInterruptCORENonTXKill() throws Throwable {
-      testInterrupt("CORE", false, true);
+      testInterrupt("CORE", false);
    }
 
    private CountDownLatch startSendingThreads(Executor executor, String protocol, int broker, int threads, boolean tx, String queueName) {
@@ -240,8 +211,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
       for (int i = 0; i < threads; i++) {
          executor.execute(() -> {
             int numberOfMessages = 0;
-            try {
-               Connection connection = factory.createConnection();
+            try (Connection connection = factory.createConnection()) {
                connection.start();
                Session session = connection.createSession(tx, tx ? Session.SESSION_TRANSACTED : Session.AUTO_ACKNOWLEDGE);
                MessageConsumer consumer = session.createConsumer(session.createQueue(queueName));
@@ -263,6 +233,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
                   }
                }
             } catch (Exception e) {
+               logger.warn(e.getMessage(), e);
             } finally {
                logger.info("Done sending");
                done.countDown();
@@ -277,7 +248,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
 
    // this test has sleeps as the test will send while still active
    // we keep sending all the time.. so the testInterruptLM acts like a controller telling the threads when to stop
-   private void testInterrupt(String protocol, boolean tx, boolean useKill) throws Throwable {
+   private void testInterrupt(String protocol, boolean tx) throws Throwable {
       final int SENDING_THREADS = 10;
       final int CONSUMING_THREADS = 10;
       final AtomicInteger errors = new AtomicInteger(0); // I don't expect many errors since this test is disconnecting and reconnecting the server
@@ -287,58 +258,53 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
       ExecutorService executorService = Executors.newFixedThreadPool(SENDING_THREADS + CONSUMING_THREADS);
       runAfter(executorService::shutdownNow);
 
-      CountDownLatch sendDone = startSendingThreads(executorService, protocol, 0, SENDING_THREADS, tx, queueName);
-      CountDownLatch receiverDone = startConsumingThreads(executorService, protocol, 0, CONSUMING_THREADS, tx, queueName);
-
-      Thread.sleep(2000);
-
-      killProcess(serverProcess, useKill);
-      runningSend = false;
-      runningConsumer = false;
-      Assert.assertTrue(serverProcess.waitFor(10, TimeUnit.SECONDS));
-      Assert.assertTrue(receiverDone.await(10, TimeUnit.SECONDS));
-      Assert.assertTrue(sendDone.await(10, TimeUnit.SECONDS));
-
-      logger.info("All receivers and senders are done!!!");
-
-      serverProcess = startServer0();
-
-      Thread.sleep(2000);
-
-      sendDone = startSendingThreads(executorService, protocol, 1, SENDING_THREADS, tx, queueName);
-      receiverDone = startConsumingThreads(executorService, protocol, 1, CONSUMING_THREADS, tx, queueName);
-
-      killProcess(serverProcess2, useKill);
-      Assert.assertTrue(serverProcess2.waitFor(10, TimeUnit.SECONDS));
-      runningSend = false;
-      runningConsumer = false;
-      Assert.assertTrue(sendDone.await(1, TimeUnit.MINUTES));
-      Assert.assertTrue(receiverDone.await(10, TimeUnit.SECONDS));
-
-      serverProcess2 = startServer1();
-
-      sendDone = startSendingThreads(executorService, protocol, 1, SENDING_THREADS, tx, queueName);
-      receiverDone = startConsumingThreads(executorService, protocol, 1, CONSUMING_THREADS, tx, queueName);
-
-      Thread.sleep(2000);
-      runningSend = false;
-      Assert.assertTrue(sendDone.await(10, TimeUnit.SECONDS));
-
-      QueueControl queueControl1 = getQueueControl(server1URI, builderServer1, queueName, queueName, RoutingType.ANYCAST, 5000);
-      QueueControl queueControl2 = getQueueControl(server2URI, builderServer2, queueName, queueName, RoutingType.ANYCAST, 5000);
-
       File lmFolder = new File(getServerLocation(SERVER_NAME_0) + "/data/large-messages");
       File lmFolder2 = new File(getServerLocation(SERVER_NAME_1) + "/data/large-messages");
 
-      Wait.waitFor(() -> queueControl1.getMessageCount() == 0 && queueControl2.getMessageCount() == 0 && lmFolder.listFiles().length == 0 && lmFolder2.listFiles().length == 0);
+      {
+         CountDownLatch sendDone = startSendingThreads(executorService, protocol, 0, SENDING_THREADS, tx, queueName);
+         CountDownLatch receiverDone = startConsumingThreads(executorService, protocol, 1, CONSUMING_THREADS, tx, queueName);
 
-      runningConsumer = false;
-      Assert.assertTrue(receiverDone.await(10, TimeUnit.SECONDS));
+         // let it producing for a while
+         Thread.sleep(2000);
 
-      // no need to use wait here, the previous check should have checked that already
-      Assert.assertEquals(0, lmFolder.listFiles().length);
-      Assert.assertEquals(0, lmFolder2.listFiles().length);
-      Assert.assertEquals(0, errors.get());
+         runningSend = false;
+         assertTrue(sendDone.await(1, TimeUnit.MINUTES));
+
+         killProcess(serverProcess);
+         assertTrue(serverProcess.waitFor(1, TimeUnit.MINUTES));
+         serverProcess = startServer0();
+         runningConsumer = false;
+         assertTrue(receiverDone.await(1, TimeUnit.MINUTES));
+
+         long timeout = System.currentTimeMillis() + 60_000;
+
+         ConnectionFactory factory = createConnectionFactory(1, protocol);
+
+         // This will flush all messages, making sure everything is consumed.
+         try (Connection connection = factory.createConnection()) {
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            MessageConsumer consumer = session.createConsumer(session.createQueue(queueName));
+            connection.start();
+            while (System.currentTimeMillis() < timeout) {
+               TextMessage message = (TextMessage)consumer.receive(100);
+               if (message == null) {
+                  if (lmFolder.listFiles().length == 0 && lmFolder2.listFiles().length == 0) {
+                     break;
+                  }
+               } else {
+                  assertTrue(message.getText().startsWith(largebody));
+               }
+            }
+         }
+
+      }
+
+      logger.info("All receivers and senders are done!!!");
+
+      assertEquals(0, lmFolder.listFiles().length);
+      assertEquals(0, lmFolder2.listFiles().length);
+      assertEquals(0, errors.get());
    }
 
    @Test
@@ -351,12 +317,8 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
       testInterruptFailOnBridge("CORE", false);
    }
 
-   private void killProcess(Process process, boolean useKill) throws Exception {
-      if (useKill) {
-         Runtime.getRuntime().exec("kill -SIGINT " + process.pid());
-      } else {
-         process.destroyForcibly();
-      }
+   private void killProcess(Process process) throws Exception {
+      process.destroyForcibly();
    }
 
 
@@ -373,26 +335,25 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
       ExecutorService executorService = Executors.newFixedThreadPool(SENDING_THREADS + CONSUMING_THREADS);
       runAfter(executorService::shutdownNow);
 
-      // only start the sender for a while
       CountDownLatch sendDone = startSendingThreads(executorService, protocol, 0, SENDING_THREADS, tx, queueName);
 
       Thread.sleep(2000);
 
       runningSend = runningConsumer = false;
 
-      killProcess(serverProcess, false);
-      Assert.assertTrue(serverProcess.waitFor(10, TimeUnit.MINUTES));
-      Assert.assertTrue(sendDone.await(10, TimeUnit.SECONDS));
+      killProcess(serverProcess);
+      assertTrue(serverProcess.waitFor(1, TimeUnit.MINUTES));
+      assertTrue(sendDone.await(1, TimeUnit.MINUTES));
 
       sendDone = startSendingThreads(executorService, protocol, 1, SENDING_THREADS, tx, queueName);
       CountDownLatch receiverDone = startConsumingThreads(executorService, protocol, 1, CONSUMING_THREADS, tx, queueName);
-      killProcess(serverProcess, false);
-      Assert.assertTrue(serverProcess.waitFor(10, TimeUnit.SECONDS));
+      killProcess(serverProcess);
+      assertTrue(serverProcess.waitFor(1, TimeUnit.MINUTES));
       serverProcess = startServer0();
 
       Thread.sleep(5000);
       runningSend = false;
-      Assert.assertTrue(sendDone.await(10, TimeUnit.SECONDS));
+      assertTrue(sendDone.await(1, TimeUnit.MINUTES));
 
       QueueControl queueControl1 = getQueueControl(server1URI, builderServer1, queueName, queueName, RoutingType.ANYCAST, 5000);
       QueueControl queueControl2 = getQueueControl(server2URI, builderServer2, queueName, queueName, RoutingType.ANYCAST, 5000);
@@ -403,7 +364,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
       Wait.assertTrue(() -> queueControl1.getMessageCount() == 0 && queueControl2.getMessageCount() == 0);
 
       runningConsumer = false;
-      Assert.assertTrue(receiverDone.await(10, TimeUnit.SECONDS));
+      assertTrue(receiverDone.await(1, TimeUnit.MINUTES));
 
 
       Wait.assertEquals(0, () -> lmFolder.listFiles().length);
@@ -411,7 +372,7 @@ public class ClusteredLargeMessageInterruptTest extends SoakTestBase {
          logger.info("queueControl2.count={}", queueControl2.getMessageCount());
          return lmFolder2.listFiles().length;
       });
-      Assert.assertEquals(0, errors.get());
+      assertEquals(0, errors.get());
 
    }
 

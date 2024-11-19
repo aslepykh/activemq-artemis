@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import java.util.Arrays;
 
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
@@ -31,8 +34,7 @@ import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.tests.util.SpawnedTestBase;
 import org.apache.activemq.artemis.utils.SpawnedVMSupport;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class JournalCrashTest extends SpawnedTestBase {
 
@@ -48,7 +50,7 @@ public class JournalCrashTest extends SpawnedTestBase {
 
    private ClientSessionFactory factory;
 
-   private final SimpleString QUEUE = new SimpleString("queue");
+   private final SimpleString QUEUE = SimpleString.of("queue");
 
    private ServerLocator locator;
 
@@ -90,7 +92,7 @@ public class JournalCrashTest extends SpawnedTestBase {
       try (ClientSession session = factory.createSession(false, false)) {
 
          try {
-            session.createQueue(new QueueConfiguration(QUEUE));
+            session.createQueue(QueueConfiguration.of(QUEUE));
          } catch (Exception ignored) {
          }
 
@@ -98,7 +100,7 @@ public class JournalCrashTest extends SpawnedTestBase {
 
          for (int i = start; i < end; i++) {
             ClientMessage msg = session.createMessage(true);
-            msg.putIntProperty(new SimpleString("key"), i);
+            msg.putIntProperty(SimpleString.of("key"), i);
             msg.getBodyBuffer().writeUTF("message " + i);
             prod.send(msg);
          }
@@ -124,11 +126,11 @@ public class JournalCrashTest extends SpawnedTestBase {
          for (int i = 0; i < JournalCrashTest.FOURTH_RUN; i++) {
             ClientMessage msg = consumer.receive(5000);
 
-            Assert.assertNotNull("Msg at " + i, msg);
+            assertNotNull(msg, "Msg at " + i);
 
             msg.acknowledge();
 
-            Assert.assertEquals(i, msg.getObjectProperty(new SimpleString("key")));
+            assertEquals(i, msg.getObjectProperty(SimpleString.of("key")));
          }
       }
    }
@@ -140,7 +142,7 @@ public class JournalCrashTest extends SpawnedTestBase {
    private void runExternalProcess(final String tempDir, final int start, final int end) throws Exception {
       Process process = SpawnedVMSupport.spawnVM(this.getClass().getCanonicalName(), "-Xms128m", "-Xmx128m", new String[]{}, true, true, tempDir, Integer.toString(start), Integer.toString(end));
 
-      Assert.assertEquals(100, process.waitFor());
+      assertEquals(100, process.waitFor());
    }
 
 }

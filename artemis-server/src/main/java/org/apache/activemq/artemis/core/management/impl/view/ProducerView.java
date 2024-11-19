@@ -16,18 +16,16 @@
  */
 package org.apache.activemq.artemis.core.management.impl.view;
 
-import org.apache.activemq.artemis.json.JsonObjectBuilder;
-
-import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.core.management.impl.view.predicate.ProducerFilterPredicate;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ServerProducer;
 import org.apache.activemq.artemis.core.server.ServerSession;
+import org.apache.activemq.artemis.json.JsonObjectBuilder;
 import org.apache.activemq.artemis.utils.JsonLoader;
 
 public class ProducerView extends ActiveMQAbstractView<ServerProducer> {
 
-   private static final String defaultSortColumn = ProducerField.CREATION_TIME.getName();
+   private static final String defaultSortField = ProducerField.CREATION_TIME.getName();
 
    private final ActiveMQServer server;
 
@@ -51,17 +49,11 @@ public class ProducerView extends ActiveMQAbstractView<ServerProducer> {
          return null;
       }
 
-      String sessionClientID = session.getRemotingConnection().getClientID();
-      //for the special case for JMS
-      if (sessionClientID == null && session.getMetaData(ClientSession.JMS_SESSION_IDENTIFIER_PROPERTY) != null) {
-         sessionClientID = session.getMetaData(ClientSession.JMS_SESSION_CLIENT_ID_PROPERTY);
-      }
-
       JsonObjectBuilder obj = JsonLoader.createObjectBuilder()
          .add(ProducerField.ID.getName(), toString(producer.getID()))
          .add(ProducerField.NAME.getName(), toString(producer.getName()))
          .add(ProducerField.SESSION.getName(), toString(session.getName()))
-         .add(ProducerField.CLIENT_ID.getName(), toString(sessionClientID))
+         .add(ProducerField.CLIENT_ID.getName(), toString(session.getRemotingConnection().getClientID()))
          .add(ProducerField.USER.getName(), toString(session.getUsername()))
          .add(ProducerField.VALIDATED_USER.getName(), toString(session.getValidatedUser()))
          .add(ProducerField.PROTOCOL.getName(), toString(session.getRemotingConnection().getProtocolName()))
@@ -114,6 +106,6 @@ public class ProducerView extends ActiveMQAbstractView<ServerProducer> {
 
    @Override
    public String getDefaultOrderColumn() {
-      return defaultSortColumn;
+      return defaultSortField;
    }
 }

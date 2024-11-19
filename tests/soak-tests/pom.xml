@@ -21,7 +21,7 @@
    <parent>
       <groupId>org.apache.activemq.tests</groupId>
       <artifactId>artemis-tests-pom</artifactId>
-      <version>2.33.0-SNAPSHOT</version>
+      <version>2.39.0-SNAPSHOT</version>
    </parent>
 
    <artifactId>soak-tests</artifactId>
@@ -48,6 +48,11 @@
       <dependency>
          <groupId>org.apache.activemq</groupId>
          <artifactId>artemis-mqtt-protocol</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.activemq</groupId>
+         <artifactId>artemis-stomp-protocol</artifactId>
          <scope>test</scope>
       </dependency>
       <dependency>
@@ -128,8 +133,14 @@
          <scope>test</scope>
       </dependency>
       <dependency>
-         <groupId>junit</groupId>
-         <artifactId>junit</artifactId>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-api</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-engine</artifactId>
+         <scope>test</scope>
       </dependency>
       <dependency>
          <groupId>jakarta.transaction</groupId>

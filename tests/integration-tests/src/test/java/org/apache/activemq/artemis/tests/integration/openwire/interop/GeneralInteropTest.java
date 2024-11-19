@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.openwire.interop;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.BytesMessage;
 import javax.jms.Connection;
 import javax.jms.MapMessage;
@@ -52,8 +57,8 @@ import org.apache.activemq.artemis.utils.Wait;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.transport.TransportListener;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * This test covers interactions between core clients and
@@ -62,7 +67,7 @@ import org.junit.Test;
  */
 public class GeneralInteropTest extends BasicOpenWireTest {
 
-   @Before
+   @BeforeEach
    @Override
    public void setUp() throws Exception {
       super.setUp();
@@ -101,9 +106,9 @@ public class GeneralInteropTest extends BasicOpenWireTest {
       assertEquals((byte) 5, bytes[1]);
       assertEquals('a', mapMessage.getChar("achar"));
       Double doubleVal = mapMessage.getDouble("adouble");
-      assertTrue(doubleVal.equals(Double.valueOf(4.4)));
+      assertTrue(doubleVal.equals(4.4));
       Float floatVal = mapMessage.getFloat("afloat");
-      assertTrue(floatVal.equals(Float.valueOf(4.5F)));
+      assertTrue(floatVal.equals(4.5F));
       assertEquals(40, mapMessage.getInt("aint"));
       assertEquals(80L, mapMessage.getLong("along"));
       assertEquals(65, mapMessage.getShort("ashort"));
@@ -138,9 +143,9 @@ public class GeneralInteropTest extends BasicOpenWireTest {
 
       assertEquals('b', streamMessage.readChar());
       Double streamDouble = streamMessage.readDouble();
-      assertTrue(streamDouble.equals(Double.valueOf(6.5)));
+      assertTrue(streamDouble.equals(6.5));
       Float streamFloat = streamMessage.readFloat();
-      assertTrue(streamFloat.equals(Float.valueOf(93.9F)));
+      assertTrue(streamFloat.equals(93.9F));
       assertEquals(7657, streamMessage.readInt());
       assertEquals(239999L, streamMessage.readLong());
       assertEquals((short) 34222, streamMessage.readShort());
@@ -155,7 +160,7 @@ public class GeneralInteropTest extends BasicOpenWireTest {
       bytesMessage.readBytes(rawBytes);
 
       for (int i = 0; i < bytesData.length; i++) {
-         assertEquals("failed at " + i, bytesData[i], rawBytes[i]);
+         assertEquals(bytesData[i], rawBytes[i], "failed at " + i);
       }
       assertTrue(bytesMessage.readBoolean());
       assertEquals(99999L, bytesMessage.readLong());
@@ -212,9 +217,9 @@ public class GeneralInteropTest extends BasicOpenWireTest {
       final String text = "HelloWorld";
       final int prefetchSize = 10;
 
-      SimpleString dla = new SimpleString("DLA");
-      SimpleString dlq = new SimpleString("DLQ1");
-      server.createQueue(new QueueConfiguration(dlq).setAddress(dla).setDurable(false));
+      SimpleString dla = SimpleString.of("DLA");
+      SimpleString dlq = SimpleString.of("DLQ1");
+      server.createQueue(QueueConfiguration.of(dlq).setAddress(dla).setDurable(false));
       server.getAddressSettingsRepository().addMatch(queueName, new AddressSettings().setDeadLetterAddress(dla));
 
       sendMultipleTextMessagesUsingCoreJms(queueName, text, 100);
@@ -627,9 +632,9 @@ public class GeneralInteropTest extends BasicOpenWireTest {
          assertEquals((byte) 5, bytes[1]);
          assertEquals('a', mapMessage.getChar("achar"));
          Double doubleVal = mapMessage.getDouble("adouble");
-         assertTrue(doubleVal.equals(Double.valueOf(4.4)));
+         assertTrue(doubleVal.equals(4.4));
          Float floatVal = mapMessage.getFloat("afloat");
-         assertTrue(floatVal.equals(Float.valueOf(4.5F)));
+         assertTrue(floatVal.equals(4.5F));
          assertEquals(40, mapMessage.getInt("aint"));
          assertEquals(80L, mapMessage.getLong("along"));
          assertEquals(65, mapMessage.getShort("ashort"));
@@ -666,9 +671,9 @@ public class GeneralInteropTest extends BasicOpenWireTest {
 
          assertEquals('b', streamMessage.readChar());
          Double streamDouble = streamMessage.readDouble();
-         assertTrue(streamDouble.equals(Double.valueOf(6.5)));
+         assertTrue(streamDouble.equals(6.5));
          Float streamFloat = streamMessage.readFloat();
-         assertTrue(streamFloat.equals(Float.valueOf(93.9F)));
+         assertTrue(streamFloat.equals(93.9F));
          assertEquals(7657, streamMessage.readInt());
          assertEquals(239999L, streamMessage.readLong());
          assertEquals((short) 34222, streamMessage.readShort());

@@ -75,6 +75,7 @@ diverts) can be created or destroyed using the management operations `createBrid
 +
 Diverts can be updated using the management operation `updateDivert()`.
 
+[#force_failover]
 * It is possible to stop the server and force failover to occur with any currently attached clients.
 +
 To do this use the `forceFailover()` operation.
@@ -189,7 +190,7 @@ The acceptors parameters can be retrieved using the `AcceptorControl` attributes
 * Diverts
 +
 They can be started or stopped using the `start()` or `stop()` method on the `DivertControl` interface.
-Diverts parameters can be retrieved using the `DivertControl` attributes (see xref:diverts.adoc#diverting-and-splitting-message-flows[Diverting and Splitting Message Flows)])
+Diverts parameters can be retrieved using the `DivertControl` attributes (see xref:diverts.adoc#diverting-and-splitting-message-flows[Diverting and Splitting Message Flows])
 
 * Bridges
 +
@@ -250,11 +251,14 @@ It can be disabled by setting `jmx-management-enabled` to `false` in `broker.xml
 
 ==== Role Based Authorisation for JMX
 
-Although by default Artemis uses the Java Virtual Machine's `Platform MBeanServer` this is guarded using role based authorisation that leverages the broker's JAAS plugin support.
-This is configured via the `authorisation` element in the `management.xml` configuration file and can be used to restrict access to attributes and methods on MBeans.
+Artemis uses the Java Virtual Machine's `Platform MBeanServer` by default. This is guarded using role based authorisation that leverages the broker's JAAS plugin support.
+
+The RBAC used to restrict access to Mbeans and their operations can be configured in `one` of two ways. Via security-settings in broker.xml, described in xref:management.adoc#jmx-authorization-in-broker-xml[JMX authorization in broker.xml], or via the `authorization` element in the `management.xml` that is described below.
+
+===== JMX authorisation in management.xml
 
 There are 3 elements within the `authorisation` element, `allowlist`, `default-access` and `role-access`.
-Lets discuss each in turn.
+Let's discuss each in turn.
 
 Allowlist contains a list of MBeans that will bypass the authorisation, this is typically used for any MBeans that are needed by the console to run etc.
 The default configuration is:
@@ -301,7 +305,7 @@ The default configuration looks like:
 This contains 1 match and will be applied to any MBean that has the domain `org.apache.activemq.artemis`.
 Any access to any MBeans that have this domain are controlled by the `access` elements which contain a method and a set of roles.
 The method being invoked will be used to pick the closest matching method and the roles for this will be applied for access.
-For instance if you try the invoke a method called `listMessages` on an MBean with the `org.apache.activemq.artemis` domain then this would match the `access` with the method of `list*`.
+For instance if you try to invoke a method called `listMessages` on an MBean with the `org.apache.activemq.artemis` domain then this would match the `access` with the method of `list*`.
 You could also explicitly configure this by using the full method name, like so:
 
 [,xml]
@@ -357,10 +361,65 @@ You can also use wildcards for the MBean properties so the following would also 
 In case of multiple matches, the exact matches have higher priority than the wildcard matches and the longer wildcard matches have higher priority than the shorter wildcard matches.
 
 Access to JMX MBean attributes are converted to method calls so these are controlled via the `set*`, `get*` and `is*`.
-The `*` access is the catch all for everything other method that isn't specifically matched.
+The `*` access is the catch-all for everything other method that isn't specifically matched.
 
-The `default-access` element is basically the catch all for every method call that isn't handled via the `role-access` configuration.
+The `default-access` element is basically the catch-all for every method call that isn't handled via the `role-access` configuration.
 This has the same semantics as a `match` element.
+
+
+==== JMX authorization in broker.xml
+The existing xref:security.adoc#role-based-security-for-addresses[security-settings] in broker.xml can be used for JMX RBAC.
+
+Using the `view` and `edit` permissions on matches in security-settings provides an alternative to the authorization section in management.xml.
+Using a single security model based on addresses, with reloadable configuration, simplifies operation.
+
+An xref:management.adoc#artemis_rbac_mbean_server_guard[MBeanServer interceptor] that delegates to the broker security manager must be configured with a JVM system property that allows it to be added to all MBeanServers in the JVM.
+
+This is configured via a system property as follows:
+
+[,sh]
+----
+ java -Djavax.management.builder.initial=org.apache.activemq.artemis.core.server.management.ArtemisRbacMBeanServerBuilder
+----
+IMPORTANT: When this property is provided, the authorization section of management.xml *_MUST_* be omitted/removed as that depends on an alternative MBeanServer interceptor and builder.
+
+The security-settings match addresses used for JMX RBAC use the `mops.` (shorthand for management operations) xref:configuration-index.adoc#management-rbac-prefix[prefix].
+
+The MBeanServer guard maps JMX MBean ObjectNames to a hierarchical address of the general form:
+
+     mops<.jmx domain><.type><.component><.name>[.operation]
+
+NOTE: for the broker domain, the domain is omitted.
+
+
+For example, to give the `admin` role `view` and `edit` permissions on all MBeans, use the following security-setting:
+
+[,xml]
+----
+<security-setting match="mops.#">
+   <permission type="view" roles="admin"/>
+   <permission type="edit" roles="admin"/>
+</security-setting>
+----
+
+To grant the `managerRole` role `view` permission to just the `activemq.management` address, target the `address` component with name `activemq.management` and with `.*` to include all operations.
+
+[,xml]
+----
+<security-setting match="mops.address.activemq.management.*">
+   <permission type="view" roles="managerRole"/>
+</security-setting>
+----
+
+
+To ensure no user has permission to xref:management.adoc#force_failover[force a failover] using the broker (server control) MBean, use the following that defines the empty roles set for a particular mutating operation on the `broker` component:
+[,xml]
+----
+<security-setting match="mops.broker.forceFailover">
+   <permission type="edit" roles=""/>
+</security-setting>
+----
+
 
 ==== Local JMX Access with JConsole
 
@@ -370,7 +429,7 @@ In order to use JConsole the user will either have to disable authorisation by c
 
 ==== Remote JMX Access
 
-By default remote JMX access to Artemis is disabled for security reasons.
+By default, remote JMX access to Artemis is disabled for security reasons.
 
 Artemis has a JMX agent which allows access to JMX MBeans remotely.
 This is configured via the `connector` element in the `management.xml` configuration file.
@@ -471,22 +530,29 @@ See the xref:examples.adoc#jmx-management[JMX Management Example] which shows ho
 
 === Exposing JMX using Jolokia
 
-The default Broker configuration ships with the https://jolokia.org[Jolokia] HTTP agent deployed as a web application.
+The default broker configuration ships with the https://jolokia.org[Jolokia] HTTP agent deployed as a web application.
 Jolokia is a remote JMX-over-HTTP bridge that exposes MBeans.
-For a full guide as to how to use it refer to https://jolokia.org/documentation.html[Jolokia Documentation], however a simple example to query the broker's version would be to use a `curl` command like this:
+For a full guide as to how to use it refer to https://jolokia.org/reference/html/manual/jolokia_protocol.html[Jolokia documentation].
+
+==== Reading an Attribute
+
+A simple example to check whether a broker is active would be to use a `curl` command like this:
+
 [,console]
 ----
-$ curl -v -H "Origin: http://localhost" -u myUser:myPass http://localhost:8161/console/jolokia/read/org.apache.activemq.artemis:broker=\"0.0.0.0\"/Active
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass http://localhost:8161/console/jolokia/read/org.apache.activemq.artemis:broker=\"0.0.0.0\"/Active
 ----
-Or you could send a JSON formatted request instead of using the URL
+
+Or you could send a JSON formatted `POST` request instead of using the URL
+
 [,console]
 ----
-$ curl -v -H "Origin: http://localhost" -u myUser:myPass --header "Content-type: application/json" --request POST --data '{"attribute": "Active", "mbean": "org.apache.activemq.artemis:broker=\"0.0.0.0\"", "type": "read"}' http://localhost:8161/console/jolokia
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass --header "Content-type: application/json" --request POST --data '{"attribute": "Active", "mbean": "org.apache.activemq.artemis:broker=\"0.0.0.0\"", "type": "read"}' http://localhost:8161/console/jolokia
 ----
 
-By default it's necessary to pass the `Origin` header due to the CORS checking which is configured in `etc/jolokia-access.xml`.
+By default it's necessary to pass the `Origin` header due to the https://en.wikipedia.org/wiki/Cross-origin_resource_sharing[CORS] checking which is configured in `etc/jolokia-access.xml`.
 
-Such a `curl` command would give you back something like the following (after formatting):
+Either such `curl` command would give you back something like the following (after formatting):
 
 [,json]
 ----
@@ -496,22 +562,358 @@ Such a `curl` command would give you back something like the following (after fo
     "attribute": "Version",
     "type": "read"
   },
-  "value": "2.24.0",
+  "value": "true",
   "timestamp": 1663086398,
   "status": 200
 }
 ----
 
+The value of the attribute is contained in `value` (i.e. `true`).
+You could easily parse this JSON data with a tool like https://jqlang.github.io/jq/[`jq`] which is available in most Linux distributions, e.g.:
+
+[,console]
+----
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass --header "Content-type: application/json" --request POST --data '{"attribute": "Active", "mbean": "org.apache.activemq.artemis:broker=\"0.0.0.0\"", "type": "read"}' http://localhost:8161/console/jolokia | jq -r '.value'
+----
+
+This command would simply return:
+
+[,console]
+----
+true
+----
+
+See more details on Jolokia's `read` functionality in the https://jolokia.org/reference/html/manual/jolokia_protocol.html#read[Jolokia documentation].
+
+==== Executing an Operation
+
+Aside from reading an attribute the next most common task is executing an operation.
+For example, you can list the connections to the broker with `curl` and parse the output with `jq` like this:
+
+[,console]
+----
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass "http://localhost:8161/console/jolokia/exec/org.apache.activemq.artemis:broker=\"0.0.0.0\"/listConnections/\"\"/-1/-1" | jq '.value | fromjson'
+----
+
+Or you could send a JSON formatted `POST` request instead of using the URL
+
+[,console]
+----
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass --header "Content-type: application/json" --request POST --data '{"operation": "listConnections", "mbean": "org.apache.activemq.artemis:broker=\"0.0.0.0\"", "type": "exec", "arguments": [ "", -1, -1 ] }' http://localhost:8161/console/jolokia | jq '.value | fromjson'
+----
+
+Either such command would give you back something like the following (after formatting):
+
+[,json]
+----
+{
+  "data": [
+    {
+      "connectionID": "bd8d4635",
+      "remoteAddress": "127.0.0.1:55754",
+      "users": "",
+      "creationTime": "Wed Jan 1 12:00:00 CDT 2020",
+      "implementation": "RemotingConnectionImpl",
+      "protocol": "CORE",
+      "clientID": "",
+      "localAddress": "tcp:///127.0.0.1:61616",
+      "sessionCount": 2
+    },
+    {
+      "connectionID": "2a7ac661",
+      "remoteAddress": "127.0.0.1:54394",
+      "users": "",
+      "creationTime": "Wed Jan 1 12:00:00 CDT 2020",
+      "implementation": "OpenWireConnection",
+      "protocol": "OPENWIRE",
+      "clientID": "ID:myMachine-34439-1727292626395-0:1",
+      "localAddress": "tcp:///127.0.0.1:61616",
+      "sessionCount": 3
+    }
+  ],
+  "count": 2
+}
+----
+
+You could also leverage the <<management-method-option-syntax>> to get more specific results.
+
+[,console]
+----
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass "http://localhost:8161/console/jolokia/exec/org.apache.activemq.artemis:broker=\"0.0.0.0\"/listConnections/\{\"field\":\"protocol\",\"operation\":\"EQUALS\",\"value\":\"OPENWIRE\"\}/-1/-1" | jq '.value | fromjson'
+----
+
+Or you could send a JSON formatted `POST` request instead of using the URL
+
+[,console]
+----
+$ curl -s -H "Origin: http://localhost" -u myUser:myPass --header "Content-type: application/json" --request POST --data '{"operation": "listConnections", "mbean": "org.apache.activemq.artemis:broker=\"0.0.0.0\"", "type": "exec", "arguments": [ "{\"field\":\"protocol\",\"operation\":\"EQUALS\",\"value\":\"OPENWIRE\"}", -1, -1 ] }' http://localhost:8161/console/jolokia | jq '.value | fromjson'
+----
+
+Either such command would give you back something like the following (after formatting):
+
+[,json]
+----
+{
+  "data": [
+    {
+      "connectionID": "2a7ac661",
+      "remoteAddress": "127.0.0.1:54394",
+      "users": "",
+      "creationTime": "Wed Jan 1 12:00:00 CDT 2020",
+      "implementation": "OpenWireConnection",
+      "protocol": "OPENWIRE",
+      "clientID": "ID:myMachine-34439-1727292626395-0:1",
+      "localAddress": "tcp:///127.0.0.1:61616",
+      "sessionCount": 3
+    }
+  ],
+  "count": 1
+}
+----
+
+See more details on Jolokia's `exec` functionality in the https://jolokia.org/reference/html/manual/jolokia_protocol.html#exec[Jolokia documentation].
+
+=== Management Method Option Syntax
+
+When there are lots of these resources to manage it can sometimes be difficult to find a particular resource.
+For example, if there are 1,000 connections to the broker and you just want to manage one particular connection that is using a specific client ID.
+A handful of management operations support a special JSON syntax to filter results based on the following inputs:
+
+* `field` (see the list of fields for each management operation below)
+* `operation`
+** `CONTAINS`
+** `NOT_CONTAINS`
+** `EQUALS`
+** `NOT_EQUALS`
+** `GREATER_THAN`
+** `LESS_THAN`
+* `value`
+* `sortField` (optional)
+* `sortOrder` (optional)
+** `asc`
+** `desc`
+
+Here are the methods which support this syntax along with the available fields:
+
+listConnections::
+* `connectionID`
+* `clientID`
+* `users`
+* `protocol`
+* `sessionCount`
+* `remoteAddress`
+* `localAddress`
+* `sessionID`
+* `creationTime`
+* `implementation`
+* Example:
++
+[,json]
+----
+{
+  "field": "protocol",
+  "operation": "EQUALS",
+  "value": "OPENWIRE"
+}
+----
+
+listSessions::
+* `id`
+* `connectionID`
+* `consumerCount`
+* `producerCount`
+* `user`
+* `validatedUser`
+* `protocol`
+* `clientID`
+* `localAddress`
+* `remoteAddress`
+* `creationTime`
+* Example:
++
+[,json]
+----
+{
+  "field": "remoteAddress",
+  "operation": "CONTAINS",
+  "value": "127.0.0.1"
+}
+----
+
+listAddresses::
+* `id`
+* `name`
+* `routingTypes`
+* `producerId`
+* `queueCount`
+* `internal`
+* Example:
++
+[,json]
+----
+{
+  "field": "name",
+  "operation": "CONTAINS",
+  "value": "shipping"
+}
+----
+
+listQueues::
+* `id`
+* `name`
+* `consumerID`
+* `address`
+* `maxConsumers`
+* `filter`
+* `messageCount`
+* `consumerCount`
+* `deliveringCount`
+* `messagesAdded`
+* `messagesAcked`
+* `messagesExpired`
+* `routingType`
+* `user`
+* `autoCreated`
+* `durable`
+* `paused`
+* `temporary`
+* `purgeOnNoConsumers`
+* `messagesKilled`
+* `directDeliver`
+* `lastValue`
+* `exclusive`
+* `scheduledCount`
+* `lastValueKey`
+* `groupRebalance`
+* `groupRebalancePauseDispatch`
+* `groupBuckets`
+* `groupFirstKey`
+* `enabled`
+* `ringSize`
+* `consumersBeforeDispatch`
+* `delayBeforeDispatch`
+* `autoDelete`
+* `internalQueue`
+* Example:
++
+[,json]
+----
+{
+  "field": "consumerCount",
+  "operation": "GREATER_THAN",
+  "value": "7"
+}
+----
+
+listConsumers::
+* `id` or `consumerID`
+* `sequentialId` or `sequentialId`
+* `session` or `sessionID`
+* `connection` or `connectionID`
+* `queue` or `queueName`
+* `filter`
+* `address`
+* `user`
+* `validatedUser`
+* `protocol`
+* `clientID`
+* `localAddress`
+* `remoteAddress`
+* `queueType`
+* `browseOnly`
+* `creationTime`
+* `messagesInTransit` or `deliveringCount`
+* `messagesInTransitSize`
+* `messagesDelivered`
+* `messagesDeliveredSize`
+* `messagesAcknowledged`
+* `messagesAcknowledgedAwaitingCommit`
+* `lastDeliveredTime`
+* `lastAcknowledgedTime`
+* `status`
+* Example:
++
+[,json]
+----
+{
+  "field": "messagesAcknowledged",
+  "operation": "LESS_THAN",
+  "value": "10"
+}
+----
+
+listProducers::
+* `id`
+* `name`
+* `session` or `sessionID`
+* `connectionID`
+* `address` or `destination`
+* `user`
+* `validatedUser`
+* `protocol`
+* `clientID`
+* `localAddress`
+* `remoteAddress`
+* `creationTime`
+* `msgSent`
+* `msgSizeSent`
+* `lastProducedMessageID`
+* Example:
++
+[,json]
+----
+{
+  "field": "validatedUser",
+  "operation": "EQUALS",
+  "value": "bob"
+}
+----
+
+==== Sorting
+
+Results can be sorted by any field in either ascending (`asc`) or descending (`desc`) order.
+For example, use something like this in a call to `listConnections` to get all the AMQP connections with the newest connections first.
+
+[,json]
+----
+{
+  "field": "protocol",
+  "operation": "EQUALS",
+  "value": "AMQP",
+  "sortField": "creationTime",
+  "sortOrder": "desc"
+}
+----
+
+==== Pagination
+
+These methods also support _pagination_.
+In other words, the results can be divided into groups and then iterated through.
+The second parameter is the "page number" (i.e. which page to inspect) and the third parameter is the "page size" (i.e. how many results to return on each page).
+This is how, for example, the web console displays paginated results.
+
+To disable pagination pass `-1` for either page number of page size (or both).
+
 === JMX and the Web Console
 
 The web console that ships with Artemis uses Jolokia under the covers which in turn uses JMX.
-This will use the authentication configuration in the `management.xml` file as described in the previous section.
+This will use the authentication configuration as described in the xref:management.adoc#role-based-authorisation-for-jmx[Role Based Authorisation for JMX section].
 This means that when MBeans are accessed via the console the credentials used to log into the console and the roles associated with them.
-By default access to the console is only allow via users with the `amq` role.
+By default, access to the console is only allow via users with the `amq` role.
 This is configured in the `artemis.profile` via the system property `-Dhawtio.role=amq`.
 You can configure multiple roles by changing this to `-Dhawtio.roles=amq,view,update`.
 
 If a user doesn't have the correct role to invoke a specific operation then this will display an authorisation exception in the console.
+
+
+[#artemis_rbac_mbean_server_guard]
+==== ArtemisRbacMBeanServerBuilder and ArtemisRbacInvocationHandler
+The ArtemisRbacMBeanServerBuilder class, when configured as value for the system property `javax.management.builder.initial` will cause the ArtemisRbacInvocationHandler to be installed on every JMX MBeanServer in the JVM.
+The ArtemisRbacInvocationHandler intercepts all operations on the MBeanServer and chooses to guard a subsection of those operations.
+
+For guarded operations the `view` or `edit` permissions are required to make an invocation. If the current authenticated subject does not have the required roles to grant those permissions, a security exception is thrown.
+
+For query operations on the MBeanServer, the results of the query are limited to entries that have the required `view` permission.
 
 == Using Management Message API
 
@@ -585,7 +987,43 @@ This is also configured in broker.xml:
 </security-setting>
 ----
 
-=== Example
+=== Fine grained RBAC on management messages
+There is optional RBAC on the content of management messages sent to the management address.
+RBAC is enabled through configuration by setting the attribute xref:configuration-index.adoc#management-message-rbac[management-message-rbac] to `true`.
+
+NOTE: The `manage` permission is required to execute management operations via messages. The `view` and `edit` permissions must be used in conjunction with the `manage` permission.
+
+When enabled, more fine-grained permissions on the content of management messages sent to the management address can be configured through the security-settings.
+
+The security-settings match addresses used for RBAC follow the general hierarchical form of: xref:configuration-index.adoc#management-rbac-prefix[management-rbac-prefix], component type, component name, operation. Where the values are extracted from the management message headers.
+
+  <management-rbac-prefix>.<resource type>.<resource name>.<operation>
+
+xref:configuration-index.adoc#view-permission-method-match-pattern[Immutable operations and attribute access] will require the `view` permission, all other operations will require the `edit` permission.
+
+
+In the following example the `dataImport` role can only access the id attribute of queues, which is the only management operation that is required by the xref:using-cli.adoc#command-line-interface[data import] command line tool.
+
+[,xml]
+----
+<security-setting match="mops.queue.*.getID">
+   <permission type="view" roles="dataImport" />
+   <permission type="manage" roles="dataImport" />
+</security-setting>
+----
+
+If you want the `admin` role to have full access, use a wildcard after the management-rbac-prefix and grant both the `view` and `edit` permissions:
+
+[,xml]
+----
+<security-setting match="mops.#">
+   <permission type="view" roles="admin" />
+   <permission type="update" roles="admin" />
+   <permission type="manage" roles="admin" />
+</security-setting>
+----
+
+=== Management Example
 
 See the xref:examples.adoc#management[Management Example] which shows how to use JMS messages to manage the Apache ActiveMQ Artemis server.
 

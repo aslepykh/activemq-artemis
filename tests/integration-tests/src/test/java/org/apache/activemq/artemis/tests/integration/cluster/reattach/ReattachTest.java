@@ -30,6 +30,7 @@ import org.apache.activemq.artemis.api.core.ActiveMQNotConnectedException;
 import org.apache.activemq.artemis.api.core.ActiveMQObjectClosedException;
 import org.apache.activemq.artemis.api.core.Interceptor;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
+import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ClientConsumer;
 import org.apache.activemq.artemis.api.core.client.ClientMessage;
@@ -39,27 +40,31 @@ import org.apache.activemq.artemis.api.core.client.ServerLocator;
 import org.apache.activemq.artemis.api.core.client.SessionFailureListener;
 import org.apache.activemq.artemis.core.client.impl.ClientSessionFactoryInternal;
 import org.apache.activemq.artemis.core.client.impl.ClientSessionInternal;
-import org.apache.activemq.artemis.core.protocol.core.Packet;
 import org.apache.activemq.artemis.core.protocol.core.impl.wireformat.SessionProducerCreditsMessage;
 import org.apache.activemq.artemis.core.remoting.impl.invm.InVMConnector;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
-import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.core.server.ServerSession;
 import org.apache.activemq.artemis.jms.client.ActiveMQTextMessage;
 import org.apache.activemq.artemis.spi.core.protocol.RemotingConnection;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class ReattachTest extends ActiveMQTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-   private static final SimpleString ADDRESS = new SimpleString("FailoverTestAddress");
+   private static final SimpleString ADDRESS = SimpleString.of("FailoverTestAddress");
    private ActiveMQServer server;
    private ServerLocator locator;
 
@@ -80,7 +85,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       final int numIterations = 10;
 
@@ -91,7 +96,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
          for (int i = 0; i < numMessages; i++) {
             ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-            message.putIntProperty(new SimpleString("count"), i);
+            message.putIntProperty(SimpleString.of("count"), i);
             message.getBodyBuffer().writeString("aardvarks");
             producer.send(message);
          }
@@ -107,18 +112,18 @@ public class ReattachTest extends ActiveMQTestBase {
          for (int i = 0; i < numMessages; i++) {
             ClientMessage message = consumer.receive(500);
 
-            Assert.assertNotNull(message);
+            assertNotNull(message);
 
-            Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+            assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-            Assert.assertEquals(i, message.getObjectProperty(new SimpleString("count")));
+            assertEquals(i, message.getObjectProperty(SimpleString.of("count")));
 
             message.acknowledge();
          }
 
          ClientMessage message = consumer.receiveImmediate();
 
-         Assert.assertNull(message);
+         assertNull(message);
 
          producer.close();
 
@@ -206,20 +211,16 @@ public class ReattachTest extends ActiveMQTestBase {
 
       final AtomicInteger count = new AtomicInteger(0);
 
-      Interceptor intercept = new Interceptor() {
+      Interceptor intercept = (packet, connection) -> {
+         if (packet instanceof SessionProducerCreditsMessage) {
+            SessionProducerCreditsMessage credit = (SessionProducerCreditsMessage) packet;
 
-         @Override
-         public boolean intercept(Packet packet, RemotingConnection connection) throws ActiveMQException {
-            if (packet instanceof SessionProducerCreditsMessage) {
-               SessionProducerCreditsMessage credit = (SessionProducerCreditsMessage) packet;
-
-               if (count.incrementAndGet() == 2) {
-                  connection.fail(new ActiveMQException(ActiveMQExceptionType.UNSUPPORTED_PACKET, "bye"));
-                  return false;
-               }
+            if (count.incrementAndGet() == 2) {
+               connection.fail(new ActiveMQException(ActiveMQExceptionType.UNSUPPORTED_PACKET, "bye"));
+               return false;
             }
-            return true;
          }
+         return true;
       };
 
       locator.addIncomingInterceptor(intercept);
@@ -228,7 +229,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -236,7 +237,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeBytes(new byte[5000]);
          producer.send(message);
       }
@@ -264,7 +265,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -272,7 +273,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -283,17 +284,14 @@ public class ReattachTest extends ActiveMQTestBase {
 
       RemotingConnection conn = ((ClientSessionInternal) session).getConnection();
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(retryInterval * 3);
-            } catch (InterruptedException ignore) {
-            }
-
-            InVMConnector.failOnCreateConnection = false;
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(retryInterval * 3);
+         } catch (InterruptedException ignore) {
          }
-      };
+
+         InVMConnector.failOnCreateConnection = false;
+      });
 
       t.start();
 
@@ -304,18 +302,18 @@ public class ReattachTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getIntProperty("count").intValue());
+         assertEquals(i, message.getIntProperty("count").intValue());
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       session.close();
 
@@ -366,7 +364,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       session2.addFailureListener(listener);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -374,7 +372,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -388,41 +386,38 @@ public class ReattachTest extends ActiveMQTestBase {
 
       final RemotingConnection conn2 = ((ClientSessionInternal) session2).getConnection();
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(asyncFailDelay);
-            } catch (InterruptedException ignore) {
-            }
-
-            conn2.fail(new ActiveMQNotConnectedException("Did not receive pong from server"));
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(asyncFailDelay);
+         } catch (InterruptedException ignore) {
          }
-      };
+
+         conn2.fail(new ActiveMQNotConnectedException("Did not receive pong from server"));
+      });
 
       t.start();
 
       conn.fail(new ActiveMQNotConnectedException());
 
-      Assert.assertTrue(listener.failed);
+      assertTrue(listener.failed);
 
       session.start();
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getIntProperty("count").intValue());
+         assertEquals(i, message.getIntProperty("count").intValue());
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       session.close();
 
@@ -447,7 +442,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -455,7 +450,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -468,17 +463,14 @@ public class ReattachTest extends ActiveMQTestBase {
 
       // Sleep for longer than max retries so should fail to reconnect
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(retryInterval * (reconnectAttempts + 1));
-            } catch (InterruptedException ignore) {
-            }
-
-            InVMConnector.failOnCreateConnection = false;
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(retryInterval * (reconnectAttempts + 1));
+         } catch (InterruptedException ignore) {
          }
-      };
+
+         InVMConnector.failOnCreateConnection = false;
+      });
 
       t.start();
 
@@ -489,7 +481,7 @@ public class ReattachTest extends ActiveMQTestBase {
       try {
          session.start();
 
-         Assert.fail("Should throw exception");
+         fail("Should throw exception");
       } catch (ActiveMQObjectClosedException oce) {
          //ok
       } catch (ActiveMQException e) {
@@ -646,17 +638,14 @@ public class ReattachTest extends ActiveMQTestBase {
 
       // Sleep 3 times retryInterval, so it should at least have 3 retries
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(retryInterval * 3);
-            } catch (InterruptedException ignore) {
-            }
-
-            InVMConnector.failOnCreateConnection = false;
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(retryInterval * 3);
+         } catch (InterruptedException ignore) {
          }
-      };
+
+         InVMConnector.failOnCreateConnection = false;
+      });
 
       waitForLatch(alignLatch);
 
@@ -705,22 +694,19 @@ public class ReattachTest extends ActiveMQTestBase {
 
       conn.fail(new ActiveMQNotConnectedException());
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(retryInterval * 3);
-            } catch (InterruptedException ignore) {
-            }
-
-            InVMConnector.failOnCreateConnection = false;
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(retryInterval * 3);
+         } catch (InterruptedException ignore) {
          }
-      };
+
+         InVMConnector.failOnCreateConnection = false;
+      });
 
       t.start();
 
       for (int i = 0; i < 10; i++) {
-         session.createQueue(new QueueConfiguration("queue" + i).setAddress("address").setRoutingType(RoutingType.ANYCAST));
+         session.createQueue(QueueConfiguration.of("queue" + i).setAddress("address").setRoutingType(RoutingType.ANYCAST));
       }
 
       //
@@ -761,7 +747,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -769,7 +755,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -788,18 +774,18 @@ public class ReattachTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getIntProperty("count").intValue());
+         assertEquals(i, message.getIntProperty("count").intValue());
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       session.close();
 
@@ -820,7 +806,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -828,7 +814,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -841,16 +827,13 @@ public class ReattachTest extends ActiveMQTestBase {
 
       long start = System.currentTimeMillis();
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               Thread.sleep(retryInterval / 2);
-            } catch (InterruptedException ignore) {
-            }
-            InVMConnector.failOnCreateConnection = false;
+      Thread t = new Thread(() -> {
+         try {
+            Thread.sleep(retryInterval / 2);
+         } catch (InterruptedException ignore) {
          }
-      };
+         InVMConnector.failOnCreateConnection = false;
+      });
 
       t.start();
 
@@ -861,22 +844,22 @@ public class ReattachTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getIntProperty("count").intValue());
+         assertEquals(i, message.getIntProperty("count").intValue());
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       long end = System.currentTimeMillis();
 
-      Assert.assertTrue(end - start >= retryInterval);
+      assertTrue(end - start >= retryInterval);
 
       session.close();
 
@@ -899,7 +882,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -907,7 +890,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -928,24 +911,24 @@ public class ReattachTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getObjectProperty(new SimpleString("count")));
+         assertEquals(i, message.getObjectProperty(SimpleString.of("count")));
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       long end = System.currentTimeMillis();
 
       double wait = retryInterval + retryMultiplier * retryInterval + retryMultiplier * retryMultiplier * retryInterval;
 
-      Assert.assertTrue(end - start >= wait);
+      assertTrue(end - start >= wait);
 
       session.close();
 
@@ -968,7 +951,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       ClientSession session = sf.createSession(false, true, true);
 
-      session.createQueue(new QueueConfiguration(ReattachTest.ADDRESS).setDurable(false));
+      session.createQueue(QueueConfiguration.of(ReattachTest.ADDRESS).setDurable(false));
 
       ClientProducer producer = session.createProducer(ReattachTest.ADDRESS);
 
@@ -976,7 +959,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = session.createMessage(ActiveMQTextMessage.TYPE, false, 0, System.currentTimeMillis(), (byte) 1);
-         message.putIntProperty(new SimpleString("count"), i);
+         message.putIntProperty(SimpleString.of("count"), i);
          message.getBodyBuffer().writeString("aardvarks");
          producer.send(message);
       }
@@ -997,26 +980,26 @@ public class ReattachTest extends ActiveMQTestBase {
       for (int i = 0; i < numMessages; i++) {
          ClientMessage message = consumer.receive(500);
 
-         Assert.assertNotNull(message);
+         assertNotNull(message);
 
-         Assert.assertEquals("aardvarks", message.getBodyBuffer().readString());
+         assertEquals("aardvarks", message.getBodyBuffer().readString());
 
-         Assert.assertEquals(i, message.getIntProperty("count").intValue());
+         assertEquals(i, message.getIntProperty("count").intValue());
 
          message.acknowledge();
       }
 
       ClientMessage message = consumer.receiveImmediate();
 
-      Assert.assertNull(message);
+      assertNull(message);
 
       long end = System.currentTimeMillis();
 
       double wait = retryInterval + retryMultiplier * 2 * retryInterval + retryMultiplier;
 
-      Assert.assertTrue(end - start >= wait);
+      assertTrue(end - start >= wait);
 
-      Assert.assertTrue(end - start < wait + 500);
+      assertTrue(end - start < wait + 500);
 
       session.close();
 
@@ -1026,7 +1009,7 @@ public class ReattachTest extends ActiveMQTestBase {
 
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -1038,7 +1021,7 @@ public class ReattachTest extends ActiveMQTestBase {
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       InVMConnector.resetFailures();
 

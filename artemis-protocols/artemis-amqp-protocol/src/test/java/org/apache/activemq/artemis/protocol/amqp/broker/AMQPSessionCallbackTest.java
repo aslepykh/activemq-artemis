@@ -16,6 +16,13 @@
  */
 package org.apache.activemq.artemis.protocol.amqp.broker;
 
+import static org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport.AMQP_CREDITS_DEFAULT;
+import static org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport.AMQP_LOW_CREDITS_DEFAULT;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
+
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
@@ -29,27 +36,16 @@ import org.apache.activemq.artemis.protocol.amqp.proton.AMQPSessionContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.ProtonServerReceiverContext;
 import org.apache.activemq.artemis.spi.core.remoting.Connection;
 import org.apache.qpid.proton.engine.Receiver;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import org.mockito.quality.Strictness;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport.AMQP_CREDITS_DEFAULT;
-import static org.apache.activemq.artemis.protocol.amqp.proton.AmqpSupport.AMQP_LOW_CREDITS_DEFAULT;
-import static org.junit.Assert.assertNotNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.never;
-
+@ExtendWith(MockitoExtension.class)
 public class AMQPSessionCallbackTest {
-
-   @Rule
-   public MockitoRule rule = MockitoJUnit.rule().strictness(Strictness.STRICT_STUBS);
 
    @Mock
    private AMQPConnectionCallback protonSPI;
@@ -73,7 +69,7 @@ public class AMQPSessionCallbackTest {
    private PagingStore pagingStore;
 
 
-   @Before
+   @BeforeEach
    public void setRule() {
       Mockito.when(connection.isHandler()).thenReturn(true);
    }
@@ -155,7 +151,7 @@ public class AMQPSessionCallbackTest {
       // Credit is above threshold
       Mockito.when(receiver.getCredit()).thenReturn(AMQP_LOW_CREDITS_DEFAULT + 1);
 
-      session.flow(new SimpleString("test"), ProtonServerReceiverContext.createCreditRunnable(AMQP_CREDITS_DEFAULT, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
+      session.flow(SimpleString.of("test"), ProtonServerReceiverContext.createCreditRunnable(AMQP_CREDITS_DEFAULT, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
 
       // Run the credit refill code.
       Mockito.verify(pagingStore).checkMemory(argument.capture(), Mockito.isA(Consumer.class));
@@ -186,7 +182,7 @@ public class AMQPSessionCallbackTest {
       // Credit is at threshold
       Mockito.when(receiver.getCredit()).thenReturn(AMQP_LOW_CREDITS_DEFAULT);
 
-      session.flow(new SimpleString("test"), ProtonServerReceiverContext.createCreditRunnable(AMQP_CREDITS_DEFAULT, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
+      session.flow(SimpleString.of("test"), ProtonServerReceiverContext.createCreditRunnable(AMQP_CREDITS_DEFAULT, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
 
       // Run the credit refill code.
       Mockito.verify(pagingStore).checkMemory(argument.capture(), Mockito.isA(Consumer.class));
@@ -247,7 +243,7 @@ public class AMQPSessionCallbackTest {
       // Credit is at threshold
       Mockito.when(receiver.getCredit()).thenReturn(AMQP_LOW_CREDITS_DEFAULT);
 
-      session.flow(new SimpleString("test"), ProtonServerReceiverContext.createCreditRunnable(1, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
+      session.flow(SimpleString.of("test"), ProtonServerReceiverContext.createCreditRunnable(1, AMQP_LOW_CREDITS_DEFAULT, receiver, connection));
 
       // Run the credit refill code.
       Mockito.verify(pagingStore).checkMemory(argument.capture(), Mockito.isA(Consumer.class));

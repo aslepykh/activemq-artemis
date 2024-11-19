@@ -200,28 +200,35 @@ public class RemotingConnectionImpl extends AbstractRemotingConnection implement
       }
 
       if (!(me instanceof ActiveMQRemoteDisconnectException) && !(me instanceof ActiveMQRoutingException) && !(me instanceof ActiveMQDisconnectedException)) {
-         ActiveMQClientLogger.LOGGER.connectionFailureDetected(transportConnection.getRemoteAddress(), me.getMessage(), me.getType());
+         ActiveMQClientLogger.LOGGER.connectionFailureDetected(transportConnection.getProtocolConnection().getProtocolName(), transportConnection.getRemoteAddress(), me.getMessage(), me.getType());
       } else if (me instanceof ActiveMQDisconnectedException) {
          ActiveMQClientLogger.LOGGER.connectionClosureDetected(transportConnection.getRemoteAddress(), me.getMessage(), me.getType());
       }
 
+      // Then call the listeners
+      callFailureListeners(me, scaleDownTargetNodeID);
+
+      close();
+
+      for (Channel channel : channels.values()) {
+         channel.returnBlocking(me);
+      }
+   }
+
+
+   @Override
+   public void close() {
       try {
          transportConnection.forceClose();
       } catch (Throwable e) {
          ActiveMQClientLogger.LOGGER.failedForceClose(e);
       }
 
-      // Then call the listeners
-      callFailureListeners(me, scaleDownTargetNodeID);
-
       callClosingListeners();
 
       internalClose();
-
-      for (Channel channel : channels.values()) {
-         channel.returnBlocking(me);
-      }
    }
+
 
    @Override
    public void destroy() {
@@ -281,7 +288,7 @@ public class RemotingConnectionImpl extends AbstractRemotingConnection implement
       Packet disconnect;
 
       if (channel0.supports(PacketImpl.DISCONNECT_V3)) {
-         disconnect = new DisconnectMessage_V3(nodeID, reason, SimpleString.toSimpleString(targetNodeID), targetConnector);
+         disconnect = new DisconnectMessage_V3(nodeID, reason, SimpleString.of(targetNodeID), targetConnector);
       } else if (channel0.supports(PacketImpl.DISCONNECT_V2)) {
          disconnect = new DisconnectMessage_V2(nodeID, reason.isScaleDown() ? targetNodeID : null);
       } else {

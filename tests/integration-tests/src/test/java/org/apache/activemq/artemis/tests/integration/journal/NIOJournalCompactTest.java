@@ -17,7 +17,7 @@
 package org.apache.activemq.artemis.tests.integration.journal;
 
 import java.io.File;
-import java.io.FilenameFilter;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -56,17 +56,21 @@ import org.apache.activemq.artemis.tests.unit.core.journal.impl.fakes.SimpleEnco
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.ActiveMQThreadFactory;
 import org.apache.activemq.artemis.utils.IDGenerator;
+import org.apache.activemq.artemis.utils.SimpleIDGenerator;
 import org.apache.activemq.artemis.utils.TokenBucketLimiter;
 import org.apache.activemq.artemis.utils.TokenBucketLimiterImpl;
 import org.apache.activemq.artemis.utils.actors.OrderedExecutorFactory;
-import org.apache.activemq.artemis.utils.SimpleIDGenerator;
 import org.apache.activemq.artemis.utils.critical.EmptyCriticalAnalyzer;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class NIOJournalCompactTest extends JournalImplTestBase {
 
@@ -107,31 +111,31 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
       ArrayList<Pair<String, String>> renamesRead = new ArrayList<>();
 
-      Assert.assertNotNull(JournalCompactor.readControlFile(fileFactory, strDataFiles, strNewFiles, renamesRead));
+      assertNotNull(JournalCompactor.readControlFile(fileFactory, strDataFiles, strNewFiles, renamesRead));
 
-      Assert.assertEquals(dataFiles.size(), strDataFiles.size());
-      Assert.assertEquals(newFiles.size(), strNewFiles.size());
-      Assert.assertEquals(renames.size(), renamesRead.size());
+      assertEquals(dataFiles.size(), strDataFiles.size());
+      assertEquals(newFiles.size(), strNewFiles.size());
+      assertEquals(renames.size(), renamesRead.size());
 
       Iterator<String> iterDataFiles = strDataFiles.iterator();
       for (JournalFile file : dataFiles) {
-         Assert.assertEquals(file.getFile().getFileName(), iterDataFiles.next());
+         assertEquals(file.getFile().getFileName(), iterDataFiles.next());
       }
-      Assert.assertFalse(iterDataFiles.hasNext());
+      assertFalse(iterDataFiles.hasNext());
 
       Iterator<String> iterNewFiles = strNewFiles.iterator();
       for (JournalFile file : newFiles) {
-         Assert.assertEquals(file.getFile().getFileName(), iterNewFiles.next());
+         assertEquals(file.getFile().getFileName(), iterNewFiles.next());
       }
-      Assert.assertFalse(iterNewFiles.hasNext());
+      assertFalse(iterNewFiles.hasNext());
 
       Iterator<Pair<String, String>> iterRename = renames.iterator();
       for (Pair<String, String> rename : renamesRead) {
          Pair<String, String> original = iterRename.next();
-         Assert.assertEquals(original.getA(), rename.getA());
-         Assert.assertEquals(original.getB(), rename.getB());
+         assertEquals(original.getA(), rename.getA());
+         assertEquals(original.getB(), rename.getB());
       }
-      Assert.assertFalse(iterNewFiles.hasNext());
+      assertFalse(iterNewFiles.hasNext());
 
    }
 
@@ -280,11 +284,11 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
       journal.testCompact();
       int cnt = loggerHandler.countText("must be");
-      Assert.assertTrue(cnt > 0);
-      Assert.assertFalse(failed.get());
+      assertTrue(cnt > 0);
+      assertFalse(failed.get());
 
       journal.testCompact();
-      Assert.assertEquals(cnt, loggerHandler.countText("must be")); // the invalid records should be cleared during a compact
+      assertEquals(cnt, loggerHandler.countText("must be")); // the invalid records should be cleared during a compact
    }
 
    @Test
@@ -397,7 +401,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       journal.appendAddRecord(idGenerator.generateID(), recordType, "test".getBytes(), true);
 
       running.set(false);
-      Assert.assertTrue(latchDone.await(10, TimeUnit.SECONDS));
+      assertTrue(latchDone.await(10, TimeUnit.SECONDS));
 
       recordId = idGenerator.generateID();
       journal.appendAddRecord(recordId, recordType, "test".getBytes(), true);
@@ -441,9 +445,9 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       });
 
 
-      Assert.assertEquals(2, count.get());
+      assertEquals(2, count.get());
 
-      Assert.assertFalse(failed.get());
+      assertFalse(failed.get());
 
    }
 
@@ -793,16 +797,13 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
       journal.forceMoveNextFile();
 
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            try {
-               journal.testCompact();
-            } catch (Exception e) {
-               e.printStackTrace();
-            }
+      Thread t = new Thread(() -> {
+         try {
+            journal.testCompact();
+         } catch (Exception e) {
+            e.printStackTrace();
          }
-      };
+      });
 
       t.start();
 
@@ -941,9 +942,9 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       loadAndCheck();
 
       if (createControlFile) {
-         Assert.assertEquals(0, criticalErrors.get());
+         assertEquals(0, criticalErrors.get());
       } else {
-         Assert.assertEquals(1, criticalErrors.get());
+         assertEquals(1, criticalErrors.get());
       }
 
    }
@@ -1015,14 +1016,11 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       load();
 
       AtomicBoolean running = new AtomicBoolean(true);
-      Thread t = new Thread() {
-         @Override
-         public void run() {
-            while (running.get()) {
-               journal.testCompact();
-            }
+      Thread t = new Thread(() -> {
+         while (running.get()) {
+            journal.testCompact();
          }
-      };
+      });
       t.start();
 
 
@@ -1039,7 +1037,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       t.join(50000);
       if (t.isAlive()) {
          t.interrupt();
-         Assert.fail("supposed to join thread");
+         fail("supposed to join thread");
       }
 
       stopJournal();
@@ -1555,11 +1553,11 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
       JournalFile[] files2 = journal.getDataFiles();
 
-      Assert.assertEquals(files.length, files2.length);
+      assertEquals(files.length, files2.length);
 
       for (int i = 0; i < files.length; i++) {
-         Assert.assertEquals(expectedSizes.get(i).intValue(), files[i].getLiveSize());
-         Assert.assertEquals(expectedSizes.get(i).intValue(), files2[i].getLiveSize());
+         assertEquals(expectedSizes.get(i).intValue(), files[i].getLiveSize());
+         assertEquals(expectedSizes.get(i).intValue(), files2[i].getLiveSize());
       }
 
       for (long id : listToDelete) {
@@ -1571,7 +1569,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       JournalFile[] files3 = journal.getDataFiles();
 
       for (JournalFile file : files3) {
-         Assert.assertEquals(0, file.getLiveSize());
+         assertEquals(0, file.getLiveSize());
       }
 
       stopJournal();
@@ -1582,7 +1580,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       files3 = journal.getDataFiles();
 
       for (JournalFile file : files3) {
-         Assert.assertEquals(0, file.getLiveSize());
+         assertEquals(0, file.getLiveSize());
       }
 
    }
@@ -1944,11 +1942,11 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
       JournalFile[] files2 = journal.getDataFiles();
 
-      Assert.assertEquals(files.length, files2.length);
+      assertEquals(files.length, files2.length);
 
       for (int i = 0; i < files.length; i++) {
-         Assert.assertEquals(expectedSizes.get(i).intValue(), files[i].getLiveSize());
-         Assert.assertEquals(expectedSizes.get(i).intValue(), files2[i].getLiveSize());
+         assertEquals(expectedSizes.get(i).intValue(), files[i].getLiveSize());
+         assertEquals(expectedSizes.get(i).intValue(), files2[i].getLiveSize());
       }
 
       long tx = idGenerator.generateID();
@@ -1962,7 +1960,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       JournalFile[] files3 = journal.getDataFiles();
 
       for (JournalFile file : files3) {
-         Assert.assertEquals(0, file.getLiveSize());
+         assertEquals(0, file.getLiveSize());
       }
 
       stopJournal();
@@ -1973,7 +1971,7 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
       files3 = journal.getDataFiles();
 
       for (JournalFile file : files3) {
-         Assert.assertEquals(0, file.getLiveSize());
+         assertEquals(0, file.getLiveSize());
       }
 
    }
@@ -2009,90 +2007,81 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
          ((JournalImpl) storage.getMessageJournal()).setAutoReclaim(false);
          final LinkedList<Long> survivingMsgs = new LinkedList<>();
 
-         Runnable producerRunnable = new Runnable() {
-            @Override
-            public void run() {
-               TokenBucketLimiter limiter = new TokenBucketLimiterImpl(5000, true);
-               try {
-                  while (running.get()) {
-                     limiter.limit();
-                     final long[] values = new long[100];
-                     long tx = seqGenerator.incrementAndGet();
+         Runnable producerRunnable = () -> {
+            TokenBucketLimiter limiter = new TokenBucketLimiterImpl(5000, true);
+            try {
+               while (running.get()) {
+                  limiter.limit();
+                  final long[] values = new long[100];
+                  long tx = seqGenerator.incrementAndGet();
 
-                     OperationContextImpl ctx = new OperationContextImpl(executor);
-                     storage.setContext(ctx);
+                  OperationContextImpl ctx = new OperationContextImpl(executor);
+                  storage.setContext(ctx);
 
-                     for (int i = 0; i < 100; i++) {
-                        long id = seqGenerator.incrementAndGet();
-                        values[i] = id;
+                  for (int i = 0; i < 100; i++) {
+                     long id = seqGenerator.incrementAndGet();
+                     values[i] = id;
 
-                        CoreMessage message = new CoreMessage(id, 100);
+                     CoreMessage message = new CoreMessage(id, 100);
 
-                        message.getBodyBuffer().writeBytes(new byte[1024]);
+                     message.getBodyBuffer().writeBytes(new byte[1024]);
 
-                        storage.storeMessageTransactional(tx, message);
-                     }
-                     CoreMessage message = new CoreMessage(seqGenerator.incrementAndGet(), 100);
-
-                     survivingMsgs.add(message.getMessageID());
-
-                     logger.debug("Going to store {}", message);
-                     // This one will stay here forever
-                     storage.storeMessage(message);
-                     logger.debug("message stored {}", message);
-
-                     logger.debug("Going to commit {}", tx);
-                     storage.commit(tx);
-                     logger.debug("Committed {}", tx);
-
-                     ctx.executeOnCompletion(new IOCallback() {
-                        @Override
-                        public void onError(int errorCode, String errorMessage) {
-                        }
-
-                        @Override
-                        public void done() {
-                           deleteExecutor.execute(new Runnable() {
-                              @Override
-                              public void run() {
-                                 try {
-                                    for (long messageID : values) {
-                                       storage.deleteMessage(messageID);
-                                    }
-                                 } catch (Throwable e) {
-                                    e.printStackTrace();
-                                    errors.incrementAndGet();
-                                 }
-
-                              }
-                           });
-                        }
-                     });
-
+                     storage.storeMessageTransactional(tx, message);
                   }
-               } catch (Throwable e) {
-                  e.printStackTrace();
-                  errors.incrementAndGet();
+                  CoreMessage message = new CoreMessage(seqGenerator.incrementAndGet(), 100);
+
+                  survivingMsgs.add(message.getMessageID());
+
+                  logger.debug("Going to store {}", message);
+                  // This one will stay here forever
+                  storage.storeMessage(message);
+                  logger.debug("message stored {}", message);
+
+                  logger.debug("Going to commit {}", tx);
+                  storage.commit(tx);
+                  logger.debug("Committed {}", tx);
+
+                  ctx.executeOnCompletion(new IOCallback() {
+                     @Override
+                     public void onError(int errorCode, String errorMessage) {
+                     }
+
+                     @Override
+                     public void done() {
+                        deleteExecutor.execute(() -> {
+                           try {
+                              for (long messageID : values) {
+                                 storage.deleteMessage(messageID);
+                              }
+                           } catch (Throwable e) {
+                              e.printStackTrace();
+                              errors.incrementAndGet();
+                           }
+
+                        });
+                     }
+                  });
+
                }
+            } catch (Throwable e) {
+               e.printStackTrace();
+               errors.incrementAndGet();
             }
          };
 
-         Runnable compressRunnable = new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  while (running.get()) {
-                     Thread.sleep(500);
-                     logger.debug("Compacting");
-                     ((JournalImpl) storage.getMessageJournal()).testCompact();
-                     ((JournalImpl) storage.getMessageJournal()).checkReclaimStatus();
-                  }
-               } catch (Throwable e) {
-                  e.printStackTrace();
-                  errors.incrementAndGet();
+         Runnable compressRunnable = () -> {
+            try {
+               while (running.get()) {
+                  Thread.sleep(500);
+                  logger.debug("Compacting");
+                  ((JournalImpl) storage.getMessageJournal()).testCompact();
+                  ((JournalImpl) storage.getMessageJournal()).checkReclaimStatus();
                }
-
+            } catch (Throwable e) {
+               e.printStackTrace();
+               errors.incrementAndGet();
             }
+
          };
 
          Thread producerThread = new Thread(producerRunnable);
@@ -2111,19 +2100,19 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
          deleteExecutor.shutdown();
 
-         assertTrue("delete executor failted to terminate", deleteExecutor.awaitTermination(30, TimeUnit.SECONDS));
+         assertTrue(deleteExecutor.awaitTermination(30, TimeUnit.SECONDS), "delete executor failted to terminate");
 
          storage.stop();
 
          executor.shutdown();
 
-         assertTrue("executor failed to terminate", executor.awaitTermination(30, TimeUnit.SECONDS));
+         assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "executor failed to terminate");
 
          ioexecutor.shutdown();
 
-         assertTrue("ioexecutor failed to terminate", ioexecutor.awaitTermination(30, TimeUnit.SECONDS));
+         assertTrue(ioexecutor.awaitTermination(30, TimeUnit.SECONDS), "ioexecutor failed to terminate");
 
-         Assert.assertEquals(0, errors.get());
+         assertEquals(0, errors.get());
 
       } catch (Throwable e) {
          e.printStackTrace();
@@ -2166,20 +2155,14 @@ public class NIOJournalCompactTest extends JournalImplTestBase {
 
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       File testDir = new File(getTestDir());
 
-      File[] files = testDir.listFiles(new FilenameFilter() {
-
-         @Override
-         public boolean accept(File dir, String name) {
-            return name.startsWith(filePrefix) && name.endsWith(fileExtension);
-         }
-      });
+      File[] files = testDir.listFiles((dir, name) -> name.startsWith(filePrefix) && name.endsWith(fileExtension));
 
       for (File file : files) {
-         assertEquals("File " + file + " doesn't have the expected number of bytes", fileSize, file.length());
+         assertEquals(fileSize, file.length(), "File " + file + " doesn't have the expected number of bytes");
       }
 
       super.tearDown();

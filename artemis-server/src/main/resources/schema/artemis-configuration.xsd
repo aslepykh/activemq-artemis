@@ -600,7 +600,7 @@
          <xsd:element name="journal-retention-directory" maxOccurs="1" minOccurs="0">
             <xsd:annotation>
                <xsd:documentation>
-                  the directory to store journal-retention message in and rention configuraion.
+                  where to keep retained data including attributes for how long to keep it (unit and period) and how much to keep (storage-limit)
                </xsd:documentation>
             </xsd:annotation>
             <xsd:complexType>
@@ -636,7 +636,7 @@
                               Notice we first remove files based on period and if you're using more storage then you
                               configured we start removing older files.
                               By default this is unlimited (not filled).
-                              Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                              Supports byte notation like "K", "MB", "MiB", "GB", etc.
                            </xsd:documentation>
                         </xsd:annotation>
                      </xsd:attribute>
@@ -685,7 +685,7 @@
             </xsd:annotation>
          </xsd:element>
 
-         <xsd:element name="journal-device-block-size" type="xsd:long" maxOccurs="1" minOccurs="0">
+         <xsd:element name="journal-device-block-size" type="xsd:long" default="4096" maxOccurs="1" minOccurs="0">
             <xsd:annotation>
                <xsd:documentation>
                   The size in bytes used by the device. This is usually translated as fstat/st_blksize
@@ -698,7 +698,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   The size (in bytes) of the internal buffer on the journal.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -733,7 +733,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   The size (in bytes) of each journal file.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -809,7 +809,7 @@
                <xsd:documentation>
                   Size (in bytes) before all addresses will enter into their Full Policy configured upon messages being
                   produced.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -827,7 +827,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Min free bytes on disk below which the system blocks or fails clients. Supports byte notation like
-                  "K", "Mb", "GB", etc. Will override max-disk-usage if both are set.
+                  "K", "MB", "GB", etc. Will override max-disk-usage if both are set.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -915,6 +915,56 @@
             </xsd:annotation>
          </xsd:element>
 
+         <xsd:element name="mirror-ack-manager-queue-attempts" type="xsd:int" maxOccurs="1" minOccurs="0" default="5">
+            <xsd:annotation>
+               <xsd:documentation>
+                  The number of times a mirror target would retry an acknowledgement on the queue before scanning page files for the message.
+
+                  This is exposed as mirrorAckManagerQueueAttempts on broker properties.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="mirror-ack-manager-page-attempts" type="xsd:int" maxOccurs="1" minOccurs="0" default="2">
+            <xsd:annotation>
+               <xsd:documentation>
+                  The number of times a mirror target would retry an acknowledgement on paging.
+
+                  This is exposed as mirrorAckManagerPageAttempts on broker properties.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="mirror-ack-manager-retry-delay" type="xsd:int" maxOccurs="1" minOccurs="0" default="100">
+            <xsd:annotation>
+               <xsd:documentation>
+                  Period in milliseconds for which retries are going to be exercised.
+                  This is exposed as mirrorAckManagerRetryDelay on broker properties.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="mirror-ack-manager-warn-unacked" type="xsd:boolean" maxOccurs="1" minOccurs="0" default="false">
+            <xsd:annotation>
+               <xsd:documentation>
+                  Should the system log.warn when an acknowledgment retry fails (unacked).
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="mirror-page-transaction" type="xsd:boolean" maxOccurs="1" minOccurs="0" default="false">
+            <xsd:annotation>
+               <xsd:documentation>
+                  Should Mirror use Page Transactions When target destinations is paging?
+                  When a target queue on the mirror is paged, the mirror will not record a page transaction for every message.
+                  The default is false, and the overhead of paged messages will be smaller, but there is a possibility of eventual duplicates in case of interrupted communication between the mirror source and target.
+                  If you set this to true there will be a record stored on the journal for the page-transaction additionally to the record in the page store.
+
+                  This is exposed as mirrorPageTransactions on broker properties.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
          <xsd:element name="suppress-session-notifications" type="xsd:boolean" default="false" maxOccurs="1" minOccurs="0">
             <xsd:annotation>
                <xsd:documentation>
@@ -931,6 +981,33 @@
                   The characters that mark a "literal" match. A literal match means the setting(s) will only apply to
                   the exact match regardless of wildcards. If this setting is not omitted then it must be two
                   characters - the start marker and the end marker.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="view-permission-method-match-pattern" type="xsd:string" default="" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  The regular expression pattern to match management or JMX operations that require the 'view' permission
+                  in your security-settings. Operations that don't match will default to the 'update' permission.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="management-message-rbac" type="xsd:boolean" default="false" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  Whether to apply RBAC based on security-settings for management operations when accessed through messages sent to the management address.
+                  When set, the 'view' and 'update' permissions are applied to individual management operations based on the message contents. The `manage` permissions is still required to send the messages.
+                  The security-settings match addresses will use the management-rbac-prefix prefix.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="management-rbac-prefix" type="xsd:string" default="mops" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  The prefix for security-settings match addresses that control RBAC for management operations. Only configure a value if the default causes a clash in your security settings match criteria.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -1352,7 +1429,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Any message larger than this size (in bytes) is considered a large message (to be sent in chunks).
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -1437,7 +1514,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Once the bridge has received this many bytes, it sends a confirmation.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -1446,7 +1523,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Producer flow control.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -1489,6 +1566,22 @@
                <xsd:documentation>
                   Number of concurrent workers, more workers can help increase throughput on high latency networks.
                   Defaults to 1
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="pending-ack-timeout" type="xsd:long" default="60000" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  how long to wait for acknowledgements to arrive from the bridge's target while stopping or pausing the bridge
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="client-id" type="xsd:string" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  the identifier to use for the bridge connection; helps with identifying the connection on the remote broker
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -1972,7 +2065,7 @@
             </xsd:annotation>
          </xsd:element>
       </xsd:sequence>
-      <xsd:attribute name="name" type="xsd:ID" use="required">
+      <xsd:attribute name="name" type="xsd:string" use="required">
          <xsd:annotation>
             <xsd:documentation>
                the name of the policy
@@ -2376,7 +2469,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Messages larger than this are considered large-messages.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -2474,7 +2567,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   The size (in bytes) of the window used for confirming data from the server connected to.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -2483,7 +2576,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   Producer flow control.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -2517,6 +2610,14 @@
             <xsd:annotation>
                <xsd:documentation>
                   The connector to use for scaling down or when as backup in SCALE_DOWN mode
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="client-id" type="xsd:string" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  the identifier to use for the cluster connection; helps with identifying the connection on the remote broker
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -2811,7 +2912,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   The max page size (in bytes) to use for all addresses when using JDBC.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -3840,7 +3941,7 @@
                   <xsd:documentation>
                      the maximum size (in bytes) for an address (-1 means no limits). This is used in PAGING, BLOCK and
                      FAIL policies.
-                     Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                     Supports byte notation like "K", "MB", "MiB", "GB", etc.
                   </xsd:documentation>
                </xsd:annotation>
             </xsd:element>
@@ -3857,7 +3958,7 @@
             <xsd:annotation>
                <xsd:documentation>
                   After the address enters into page mode, this attribute will configure how many pages can be written into page before activating the page-full-policy.
-                  Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                  Supports byte notation like "K", "MB", "MiB", "GB", etc.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -3885,7 +3986,7 @@
                <xsd:annotation>
                   <xsd:documentation>
                      The page size (in bytes) to use for an address.
-                     Supports byte notation like "K", "Mb", "MiB", "GB", etc.
+                     Supports byte notation like "K", "MB", "MiB", "GB", etc.
                   </xsd:documentation>
                </xsd:annotation>
             </xsd:element>
@@ -4379,11 +4480,20 @@
             </xsd:annotation>
          </xsd:element>
 
-         <xsd:element name="id-cache-size" type="xsd:int" maxOccurs="1" minOccurs="0">
+         <xsd:element name="id-cache-size" type="xsd:int" default="20000" maxOccurs="1" minOccurs="0">
             <xsd:annotation>
                <xsd:documentation>
                   This will set the Duplicate ID cache size for the matching address. By default the global
                   setting for `id-cache-size` will be used.
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="initial-queue-buffer-size" default="8192" type="xsd:int" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  This will set the initial intermediate message reference buffer size for all queues on the matching address. Will use the
+                  default initial size if not configured.
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -4425,7 +4535,15 @@
          <xsd:element name="max-connections" type="xsd:int" default="-1" maxOccurs="1" minOccurs="0">
             <xsd:annotation>
                <xsd:documentation>
-                  how many connections are allowed by the matched user (-1 means no limit, default is -1)
+                  DEPRECATED: use max-sessions instead
+               </xsd:documentation>
+            </xsd:annotation>
+         </xsd:element>
+
+         <xsd:element name="max-sessions" type="xsd:int" default="-1" maxOccurs="1" minOccurs="0">
+            <xsd:annotation>
+               <xsd:documentation>
+                  how many sessions are allowed by the matched user (-1 means no limit, default is -1)
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -4470,7 +4588,7 @@
    <xsd:element name="connector-services">
       <xsd:annotation>
          <xsd:documentation>
-            a list of connector services
+            DEPRECATED: a list of connector services
          </xsd:documentation>
       </xsd:annotation>
       <xsd:complexType>
@@ -4486,7 +4604,7 @@
          <xsd:element maxOccurs="1" minOccurs="1" name="factory-class" type="xsd:string">
             <xsd:annotation>
                <xsd:documentation>
-                  Name of the factory class of the ConnectorService
+                  DEPRECATED: Name of the factory class of the ConnectorService
                </xsd:documentation>
             </xsd:annotation>
          </xsd:element>
@@ -4832,6 +4950,22 @@
                <xsd:annotation>
                   <xsd:documentation>
                      whether or not to report uptime metrics
+                  </xsd:documentation>
+               </xsd:annotation>
+            </xsd:element>
+
+            <xsd:element name="logging" type="xsd:boolean" default="false" maxOccurs="1" minOccurs="0">
+               <xsd:annotation>
+                  <xsd:documentation>
+                     whether or not to report logging metrics
+                  </xsd:documentation>
+               </xsd:annotation>
+            </xsd:element>
+
+            <xsd:element name="security-caches" type="xsd:boolean" default="false" maxOccurs="1" minOccurs="0">
+               <xsd:annotation>
+                  <xsd:documentation>
+                     whether to report metrics for the authentication and authorization caches
                   </xsd:documentation>
                </xsd:annotation>
             </xsd:element>

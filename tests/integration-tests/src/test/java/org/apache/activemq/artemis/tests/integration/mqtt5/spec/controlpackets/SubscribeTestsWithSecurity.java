@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.tests.integration.mqtt5.spec.controlpackets;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.nio.charset.StandardCharsets;
 
 import org.apache.activemq.artemis.core.protocol.mqtt.MQTTReasonCodes;
@@ -27,7 +29,8 @@ import org.eclipse.paho.mqttv5.client.MqttClient;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptions;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptionsBuilder;
 import org.eclipse.paho.mqttv5.common.MqttSubscription;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class SubscribeTestsWithSecurity extends MQTT5TestSupport {
 
@@ -36,7 +39,8 @@ public class SubscribeTestsWithSecurity extends MQTT5TestSupport {
       return true;
    }
 
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testAuthorizationFailure() throws Exception {
       final String CLIENT_ID = "consumer";
       final int SUBSCRIPTION_COUNT = 10;
@@ -61,7 +65,8 @@ public class SubscribeTestsWithSecurity extends MQTT5TestSupport {
       }
    }
 
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testAuthorizationSuccess() throws Exception {
       final String CLIENT_ID = "consumer";
       final int SUBSCRIPTION_COUNT = 10;
@@ -90,7 +95,8 @@ public class SubscribeTestsWithSecurity extends MQTT5TestSupport {
       client.disconnect();
    }
 
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testSubscriptionQueueRemoved() throws Exception {
       final String CONSUMER_ID = "consumer";
       MqttConnectionOptions options = new MqttConnectionOptionsBuilder()

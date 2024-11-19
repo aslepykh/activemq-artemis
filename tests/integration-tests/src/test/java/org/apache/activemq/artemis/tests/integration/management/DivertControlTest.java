@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.management;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.TransportConfiguration;
@@ -29,9 +32,8 @@ import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.server.transformer.AddHeadersTransformer;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class DivertControlTest extends ManagementTestBase {
 
@@ -48,31 +50,31 @@ public class DivertControlTest extends ManagementTestBase {
 
       DivertControl divertControl = createDivertManagementControl(divertConfig.getName(), divertConfig.getAddress());
 
-      Assert.assertEquals(divertConfig.getFilterString(), divertControl.getFilter());
+      assertEquals(divertConfig.getFilterString(), divertControl.getFilter());
 
-      Assert.assertEquals(divertConfig.isExclusive(), divertControl.isExclusive());
+      assertEquals(divertConfig.isExclusive(), divertControl.isExclusive());
 
-      Assert.assertEquals(divertConfig.getName(), divertControl.getUniqueName());
+      assertEquals(divertConfig.getName(), divertControl.getUniqueName());
 
-      Assert.assertEquals(divertConfig.getRoutingName(), divertControl.getRoutingName());
+      assertEquals(divertConfig.getRoutingName(), divertControl.getRoutingName());
 
-      Assert.assertEquals(divertConfig.getAddress(), divertControl.getAddress());
+      assertEquals(divertConfig.getAddress(), divertControl.getAddress());
 
-      Assert.assertEquals(divertConfig.getForwardingAddress(), divertControl.getForwardingAddress());
+      assertEquals(divertConfig.getForwardingAddress(), divertControl.getForwardingAddress());
 
-      Assert.assertEquals(divertConfig.getTransformerConfiguration().getClassName(), divertControl.getTransformerClassName());
+      assertEquals(divertConfig.getTransformerConfiguration().getClassName(), divertControl.getTransformerClassName());
 
-      Assert.assertEquals(divertConfig.getTransformerConfiguration().getProperties(), divertControl.getTransformerProperties());
+      assertEquals(divertConfig.getTransformerConfiguration().getProperties(), divertControl.getTransformerProperties());
    }
 
    @Test
    public void testRetroactiveResourceAttribute() throws Exception {
       String address = RandomUtil.randomString();
-      QueueConfiguration queueConfig = new QueueConfiguration(RandomUtil.randomString()).setDurable(false);
-      QueueConfiguration forwardQueueConfig = new QueueConfiguration(RandomUtil.randomString()).setAddress(address).setDurable(false);
+      QueueConfiguration queueConfig = QueueConfiguration.of(RandomUtil.randomString()).setDurable(false);
+      QueueConfiguration forwardQueueConfig = QueueConfiguration.of(RandomUtil.randomString()).setAddress(address).setDurable(false);
 
       divertConfig = new DivertConfiguration()
-         .setName(ResourceNames.getRetroactiveResourceDivertName(server.getInternalNamingPrefix(), server.getConfiguration().getWildcardConfiguration().getDelimiterString(), SimpleString.toSimpleString(address)).toString())
+         .setName(ResourceNames.getRetroactiveResourceDivertName(server.getInternalNamingPrefix(), server.getConfiguration().getWildcardConfiguration().getDelimiterString(), SimpleString.of(address)).toString())
          .setRoutingName(RandomUtil.randomString()).setAddress(queueConfig.getAddress().toString())
          .setForwardingAddress(forwardQueueConfig.getAddress().toString())
          .setExclusive(RandomUtil.randomBoolean())
@@ -84,18 +86,18 @@ public class DivertControlTest extends ManagementTestBase {
 
       DivertControl divertControl = createDivertManagementControl(divertConfig.getName(), divertConfig.getAddress());
 
-      Assert.assertTrue(divertControl.isRetroactiveResource());
+      assertTrue(divertControl.isRetroactiveResource());
    }
 
 
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
-      QueueConfiguration queueConfig = new QueueConfiguration(RandomUtil.randomString()).setDurable(false);
-      QueueConfiguration forwardQueueConfig = new QueueConfiguration(RandomUtil.randomString()).setDurable(false);
+      QueueConfiguration queueConfig = QueueConfiguration.of(RandomUtil.randomString()).setDurable(false);
+      QueueConfiguration forwardQueueConfig = QueueConfiguration.of(RandomUtil.randomString()).setDurable(false);
 
       divertConfig = new DivertConfiguration()
          .setName(RandomUtil.randomString())

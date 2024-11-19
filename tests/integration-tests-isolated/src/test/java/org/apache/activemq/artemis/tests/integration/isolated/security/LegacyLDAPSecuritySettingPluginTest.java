@@ -153,7 +153,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
       try {
          ClientSession session = cf.createSession("first", "secret", false, true, true, false, 0);
-         session.createQueue(new QueueConfiguration(name));
+         session.createQueue(QueueConfiguration.of(name));
          ClientProducer producer = session.createProducer();
          producer.send(name, session.createMessage(false));
          session.close();
@@ -167,18 +167,18 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
    @Test
    public void testPluginAuthorizationNegative() throws Exception {
-      final SimpleString ADDRESS = new SimpleString("queue2");
-      final SimpleString QUEUE = new SimpleString("queue2");
+      final SimpleString ADDRESS = SimpleString.of("queue2");
+      final SimpleString QUEUE = SimpleString.of("queue2");
 
       server.start();
-      server.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS).setRoutingType(RoutingType.ANYCAST));
 
       ClientSessionFactory cf = locator.createSessionFactory();
       ClientSession session = cf.createSession("second", "secret", false, true, true, false, 0);
 
       // CREATE_DURABLE_QUEUE
       try {
-         session.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS));
+         session.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS));
          Assert.fail("should throw exception here");
       } catch (ActiveMQException e) {
          // ignore
@@ -194,7 +194,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
       // CREATE_NON_DURABLE_QUEUE
       try {
-         session.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS).setDurable(false));
+         session.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS).setDurable(false));
          Assert.fail("should throw exception here");
       } catch (ActiveMQException e) {
          // ignore
@@ -239,8 +239,8 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
    @Test
    public void testPluginAuthorizationPositive() throws Exception {
-      final SimpleString ADDRESS = new SimpleString("queue1");
-      final SimpleString QUEUE = new SimpleString("queue1");
+      final SimpleString ADDRESS = SimpleString.of("queue1");
+      final SimpleString QUEUE = SimpleString.of("queue1");
 
       server.start();
 
@@ -249,7 +249,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
       // CREATE_DURABLE_QUEUE
       try {
-         session.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS));
+         session.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS));
       } catch (ActiveMQException e) {
          e.printStackTrace();
          Assert.fail("should not throw exception here");
@@ -265,7 +265,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
 
       // CREATE_NON_DURABLE_QUEUE
       try {
-         session.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS).setDurable(false));
+         session.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS).setDurable(false));
       } catch (ActiveMQException e) {
          Assert.fail("should not throw exception here");
       }
@@ -277,7 +277,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
          Assert.fail("should not throw exception here");
       }
 
-      session.createQueue(new QueueConfiguration(QUEUE).setAddress(ADDRESS));
+      session.createQueue(QueueConfiguration.of(QUEUE).setAddress(ADDRESS));
 
       // PRODUCE
       try {
@@ -343,7 +343,7 @@ public class LegacyLDAPSecuritySettingPluginTest extends AbstractLdapTestUnit {
       server.start();
 
       // The address needs to exist already otherwise the "admin" permission is required to create it
-      server.addAddressInfo(new AddressInfo(SimpleString.toSimpleString("topic1"), RoutingType.MULTICAST));
+      server.addAddressInfo(new AddressInfo(SimpleString.of("topic1"), RoutingType.MULTICAST));
 
       ConnectionFactory cf = new ActiveMQConnectionFactory("vm://0");
       try (Connection connection = cf.createConnection("third", "secret")) {

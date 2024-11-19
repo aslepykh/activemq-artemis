@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.unit.core.journal.impl;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.PrintStream;
@@ -45,30 +50,13 @@ import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.ReusableLatch;
 import org.apache.activemq.artemis.utils.SimpleFutureImpl;
 import org.apache.activemq.artemis.utils.collections.SparseArrayLinkedList;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
 
 public abstract class JournalImplTestBase extends ActiveMQTestBase {
-
-   protected AssertionLoggerHandler loggerHandler;
-
-   @Before
-   public void startLogger() {
-      loggerHandler = new AssertionLoggerHandler();
-   }
-
-   @After
-   public void stopLogger() throws Exception {
-      try {
-         Assert.assertFalse(loggerHandler.findText("AMQ144009"));
-      } finally {
-         loggerHandler.close();
-      }
-   }
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -102,8 +90,10 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
 
    private Thread compactThread;
 
+   protected AssertionLoggerHandler loggerHandler;
+
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -114,22 +104,33 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
       transactions.clear();
 
       records.clear();
+
+      loggerHandler = new AssertionLoggerHandler();
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
-      stopComponent(journal);
+      try {
+         stopComponent(journal);
 
-      if (fileFactory != null) {
-         fileFactory.stop();
+         if (fileFactory != null) {
+            fileFactory.stop();
+         }
+         fileFactory = null;
+
+         journal = null;
+
+         super.tearDown();
+      } finally {
+         if (loggerHandler != null) {
+            try {
+               assertFalse(loggerHandler.findText("AMQ144009"));
+            } finally {
+               loggerHandler.close();
+            }
+         }
       }
-
-      fileFactory = null;
-
-      journal = null;
-
-      super.tearDown();
    }
 
    protected void resetFileFactory() throws Exception {
@@ -214,16 +215,13 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
    protected void startCompact() throws Exception {
       latchDone.setCount(1);
       latchWait.setCount(1);
-      this.compactThread = new Thread() {
-         @Override
-         public void run() {
-            try {
-               journal.testCompact();
-            } catch (Throwable e) {
-               e.printStackTrace();
-            }
+      this.compactThread = new Thread(() -> {
+         try {
+            journal.testCompact();
+         } catch (Throwable e) {
+            e.printStackTrace();
          }
-      };
+      });
 
       this.compactThread.start();
 
@@ -264,12 +262,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
 
       File dir = new File(getTestDir());
 
-      FilenameFilter fnf = new FilenameFilter() {
-         @Override
-         public boolean accept(final File file, final String name) {
-            return name.endsWith("." + fileExtension);
-         }
-      };
+      FilenameFilter fnf = (file, name) -> name.endsWith("." + fileExtension);
 
       logger.debug("file = {}", dir);
 
@@ -430,7 +423,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
       journal.tryAppendUpdateRecord(argument, (byte) 0, updateRecord, (r, b) -> future.set(b), sync, false);
 
       if (future.get()) {
-         Assert.fail();
+         fail();
          records.add(new RecordInfo(argument, (byte) 0, updateRecord, true, false, (short) 0));
       }
 
@@ -605,7 +598,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
 
    protected void checkTransactionsEquivalent(final List<PreparedTransactionInfo> expected,
                                               final List<PreparedTransactionInfo> actual) {
-      Assert.assertEquals("Lists not same length", expected.size(), actual.size());
+      assertEquals(expected.size(), actual.size(), "Lists not same length");
 
       Iterator<PreparedTransactionInfo> iterExpected = expected.iterator();
 
@@ -616,11 +609,11 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
 
          PreparedTransactionInfo ractual = iterActual.next();
 
-         Assert.assertEquals("ids not same", rexpected.getId(), ractual.getId());
+         assertEquals(rexpected.getId(), ractual.getId(), "ids not same");
 
          checkRecordsEquivalent(rexpected.getRecords(), ractual.getRecords());
 
-         Assert.assertEquals("deletes size not same", rexpected.getRecordsToDelete().size(), ractual.getRecordsToDelete().size());
+         assertEquals(rexpected.getRecordsToDelete().size(), ractual.getRecordsToDelete().size(), "deletes size not same");
 
          Iterator<RecordInfo> iterDeletesExpected = rexpected.getRecordsToDelete().iterator();
 
@@ -631,7 +624,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
 
             long lactual = iterDeletesActual.next().id;
 
-            Assert.assertEquals("Delete ids not same", lexpected, lactual);
+            assertEquals(lexpected, lactual, "Delete ids not same");
          }
       }
    }
@@ -641,7 +634,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
          printJournalLists(expected, actual);
       }
 
-      Assert.assertEquals("Lists not same length", expected.size(), actual.size());
+      assertEquals(expected.size(), actual.size(), "Lists not same length");
 
       Iterator<RecordInfo> iterExpected = expected.iterator();
 
@@ -656,9 +649,9 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
             printJournalLists(expected, actual);
          }
 
-         Assert.assertEquals("ids not same", rexpected.id, ractual.id);
+         assertEquals(rexpected.id, ractual.id, "ids not same");
 
-         Assert.assertEquals("type not same", rexpected.isUpdate, ractual.isUpdate);
+         assertEquals(rexpected.isUpdate, ractual.isUpdate, "type not same");
 
          ActiveMQTestBase.assertEqualsByteArrays(rexpected.data, ractual.data);
       }
@@ -674,7 +667,7 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
          HashSet<RecordInfo> expectedSet = new HashSet<>();
          expectedSet.addAll(expected);
 
-         Assert.assertEquals("There are duplicated on the expected list", expectedSet.size(), expected.size());
+         assertEquals(expectedSet.size(), expected.size(), "There are duplicated on the expected list");
 
          HashSet<RecordInfo> actualSet = new HashSet<>();
          actualSet.addAll(actual);
@@ -685,11 +678,11 @@ public abstract class JournalImplTestBase extends ActiveMQTestBase {
             logger.warn("The following record is missing:: {}", info);
          }
 
-         Assert.assertEquals("There are duplicates on the actual list", actualSet.size(), actualSet.size());
+         assertEquals(actualSet.size(), actualSet.size(), "There are duplicates on the actual list");
 
          RecordInfo[] expectedArray = expected.toArray(new RecordInfo[expected.size()]);
          RecordInfo[] actualArray = actual.toArray(new RecordInfo[actual.size()]);
-         Assert.assertArrayEquals(expectedArray, actualArray);
+         assertArrayEquals(expectedArray, actualArray);
       } catch (AssertionError e) {
 
          logger.warn(e.getMessage(), e);

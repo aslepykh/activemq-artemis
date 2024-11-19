@@ -51,8 +51,8 @@ public final class ClientRequestor implements AutoCloseable {
       queueSession = session;
 
       requestProducer = queueSession.createProducer(requestAddress);
-      replyQueue = new SimpleString(requestAddress + "." + UUID.randomUUID().toString());
-      queueSession.createQueue(new QueueConfiguration(replyQueue).setDurable(false).setTemporary(true));
+      replyQueue = SimpleString.of(requestAddress + "." + UUID.randomUUID());
+      queueSession.createQueue(QueueConfiguration.of(replyQueue).setDurable(false).setTemporary(true));
       replyConsumer = queueSession.createConsumer(replyQueue);
    }
 
@@ -60,7 +60,7 @@ public final class ClientRequestor implements AutoCloseable {
     * @see ClientRequestor#ClientRequestor(ClientSession, SimpleString)
     */
    public ClientRequestor(final ClientSession session, final String requestAddress) throws Exception {
-      this(session, SimpleString.toSimpleString(requestAddress));
+      this(session, SimpleString.of(requestAddress));
    }
 
    /**

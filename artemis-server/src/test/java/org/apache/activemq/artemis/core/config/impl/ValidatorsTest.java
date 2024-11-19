@@ -16,12 +16,13 @@
  */
 package org.apache.activemq.artemis.core.config.impl;
 
+import static org.junit.jupiter.api.Assertions.fail;
+
 import org.apache.activemq.artemis.core.server.JournalType;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ValidatorsTest extends Assert {
+public class ValidatorsTest {
 
    private static void success(final Validators.Validator validator, final Object value) {
       validator.validate(RandomUtil.randomString(), value);
@@ -30,7 +31,7 @@ public class ValidatorsTest extends Assert {
    private static void failure(final Validators.Validator validator, final Object value) {
       try {
          validator.validate(RandomUtil.randomString(), value);
-         Assert.fail(validator + " must not validate '" + value + "'");
+         fail(validator + " must not validate '" + value + "'");
       } catch (IllegalArgumentException e) {
 
       }
@@ -149,6 +150,18 @@ public class ValidatorsTest extends Assert {
 
       ValidatorsTest.success(Validators.NULL_OR_TWO_CHARACTERS, "12");
       ValidatorsTest.success(Validators.NULL_OR_TWO_CHARACTERS, null);
+   }
+
+   @Test
+   public void testPOSITIVE_POWER_OF_TWO() {
+      ValidatorsTest.failure(Validators.POSITIVE_POWER_OF_TWO, 0);
+      ValidatorsTest.failure(Validators.POSITIVE_POWER_OF_TWO, -10);
+      ValidatorsTest.failure(Validators.POSITIVE_POWER_OF_TWO, 127);
+
+      ValidatorsTest.success(Validators.POSITIVE_POWER_OF_TWO, 2);
+      ValidatorsTest.success(Validators.POSITIVE_POWER_OF_TWO, 64);
+      ValidatorsTest.success(Validators.POSITIVE_POWER_OF_TWO, 1024);
+      ValidatorsTest.success(Validators.POSITIVE_POWER_OF_TWO, 16777216);
    }
 
 }

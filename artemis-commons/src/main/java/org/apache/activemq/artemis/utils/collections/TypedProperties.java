@@ -66,13 +66,21 @@ public class TypedProperties {
 
    private final Predicate<SimpleString> internalPropertyPredicate;
    private boolean internalProperties;
+   private final Predicate<SimpleString> amqpPropertyPredicate;
+   private boolean amqpProperties;
 
    public TypedProperties() {
       this.internalPropertyPredicate = null;
+      this.amqpPropertyPredicate = null;
    }
 
    public TypedProperties(Predicate<SimpleString> internalPropertyPredicate) {
+      this(internalPropertyPredicate, null);
+   }
+
+   public TypedProperties(Predicate<SimpleString> internalPropertyPredicate, Predicate<SimpleString> amqpPropertyPredicate) {
       this.internalPropertyPredicate = internalPropertyPredicate;
+      this.amqpPropertyPredicate = amqpPropertyPredicate;
    }
 
    /**
@@ -96,6 +104,8 @@ public class TypedProperties {
          size = other.size;
          internalPropertyPredicate = other.internalPropertyPredicate;
          internalProperties = other.internalProperties;
+         amqpPropertyPredicate = other.amqpPropertyPredicate;
+         amqpProperties = other.amqpProperties;
       }
    }
 
@@ -297,21 +307,21 @@ public class TypedProperties {
       if (value instanceof SimpleString) {
          return (SimpleString) value;
       } else if (value instanceof Boolean) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Character) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Byte) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Short) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Integer) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Long) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Float) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       } else if (value instanceof Double) {
-         return new SimpleString(value.toString());
+         return SimpleString.of(value.toString());
       }
       throw new ActiveMQPropertyConversionException("Invalid conversion: " + key);
    }
@@ -340,6 +350,10 @@ public class TypedProperties {
       return internalProperties && removeInternalProperties();
    }
 
+   public synchronized boolean clearAMQPProperties() {
+      return amqpProperties && removeAMQPProperties();
+   }
+
    private synchronized boolean removeInternalProperties() {
       if (internalPropertyPredicate == null) {
          return false;
@@ -350,20 +364,40 @@ public class TypedProperties {
       if (properties.isEmpty()) {
          return false;
       }
+      boolean removed = removePredicate(internalPropertyPredicate);
+      internalProperties = false;
+      return removed;
+   }
+
+   private synchronized boolean removeAMQPProperties() {
+      if (amqpPropertyPredicate == null) {
+         return false;
+      }
+      if (properties == null) {
+         return false;
+      }
+      if (properties.isEmpty()) {
+         return false;
+      }
+      boolean removed = removePredicate(amqpPropertyPredicate);
+      amqpProperties = false;
+      return removed;
+   }
+
+   private boolean removePredicate(Predicate<SimpleString> predicate) {
       int removedBytes = 0;
       boolean removed = false;
       final Iterator<Entry<SimpleString, PropertyValue>> keyNameIterator = properties.entrySet().iterator();
       while (keyNameIterator.hasNext()) {
          final Entry<SimpleString, PropertyValue> entry = keyNameIterator.next();
          final SimpleString propertyName = entry.getKey();
-         if (internalPropertyPredicate.test(propertyName)) {
+         if (predicate.test(propertyName)) {
             final PropertyValue propertyValue = entry.getValue();
             removedBytes += propertyName.sizeof() + propertyValue.encodeSize();
             keyNameIterator.remove();
             removed = true;
          }
       }
-      internalProperties = false;
       size -= removedBytes;
       return removed;
    }
@@ -643,6 +677,10 @@ public class TypedProperties {
    private synchronized void doPutValue(final SimpleString key, final PropertyValue value) {
       if (!internalProperties && internalPropertyPredicate != null && internalPropertyPredicate.test(key)) {
          internalProperties = true;
+      }
+
+      if (!amqpProperties && amqpPropertyPredicate != null && amqpPropertyPredicate.test(key)) {
+         amqpProperties = true;
       }
 
       if (properties == null) {
@@ -1199,7 +1237,7 @@ public class TypedProperties {
       } else if (value instanceof Double) {
          properties.putDoubleProperty(key, (Double) value);
       } else if (value instanceof String) {
-         properties.putSimpleStringProperty(key, new SimpleString((String) value));
+         properties.putSimpleStringProperty(key, SimpleString.of((String) value));
       } else if (value instanceof SimpleString) {
          properties.putSimpleStringProperty(key, (SimpleString) value);
       } else if (value instanceof byte[]) {

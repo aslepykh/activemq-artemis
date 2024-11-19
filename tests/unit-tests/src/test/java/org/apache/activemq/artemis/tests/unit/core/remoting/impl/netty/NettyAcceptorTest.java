@@ -23,7 +23,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
-import org.apache.activemq.artemis.api.core.ActiveMQBuffer;
 import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.core.remoting.impl.netty.NettyAcceptor;
 import org.apache.activemq.artemis.core.remoting.impl.netty.TransportConstants;
@@ -33,15 +32,18 @@ import org.apache.activemq.artemis.spi.core.protocol.ProtocolManager;
 import org.apache.activemq.artemis.spi.core.remoting.BufferHandler;
 import org.apache.activemq.artemis.spi.core.remoting.Connection;
 import org.apache.activemq.artemis.spi.core.remoting.ServerConnectionLifeCycleListener;
+import org.apache.activemq.artemis.tests.extensions.PortCheckExtension;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.utils.ActiveMQThreadFactory;
-import org.apache.activemq.artemis.utils.PortCheckRule;
 import org.apache.activemq.artemis.utils.RandomUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class NettyAcceptorTest extends ActiveMQTestBase {
 
@@ -49,13 +51,13 @@ public class NettyAcceptorTest extends ActiveMQTestBase {
    private ExecutorService pool3;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
    }
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       if (pool3 != null)
          pool3.shutdown();
@@ -68,11 +70,7 @@ public class NettyAcceptorTest extends ActiveMQTestBase {
 
    @Test
    public void testStartStop() throws Exception {
-      BufferHandler handler = new BufferHandler() {
-
-         @Override
-         public void bufferReceived(final Object connectionID, final ActiveMQBuffer buffer) {
-         }
+      BufferHandler handler = (connectionID, buffer) -> {
       };
 
       Map<String, Object> params = new HashMap<>();
@@ -98,20 +96,20 @@ public class NettyAcceptorTest extends ActiveMQTestBase {
       };
       pool2 = Executors.newScheduledThreadPool(ActiveMQDefaultConfiguration.getDefaultScheduledThreadPoolMaxSize(), ActiveMQThreadFactory.defaultThreadFactory(getClass().getName()));
       pool3 = Executors.newSingleThreadExecutor(ActiveMQThreadFactory.defaultThreadFactory(getClass().getName()));
-      NettyAcceptor acceptor = new NettyAcceptor("netty", null, params, handler, listener, pool2, pool3, new HashMap<String, ProtocolManager>());
+      NettyAcceptor acceptor = new NettyAcceptor("netty", null, params, handler, listener, pool2, pool3, new HashMap<>());
 
       addActiveMQComponent(acceptor);
       acceptor.start();
-      Assert.assertTrue(acceptor.isStarted());
+      assertTrue(acceptor.isStarted());
       acceptor.stop();
-      Assert.assertFalse(acceptor.isStarted());
-      Assert.assertTrue(PortCheckRule.checkAvailable(TransportConstants.DEFAULT_PORT));
+      assertFalse(acceptor.isStarted());
+      assertTrue(PortCheckExtension.checkAvailable(TransportConstants.DEFAULT_PORT));
 
       acceptor.start();
-      Assert.assertTrue(acceptor.isStarted());
+      assertTrue(acceptor.isStarted());
       acceptor.stop();
-      Assert.assertFalse(acceptor.isStarted());
-      Assert.assertTrue(PortCheckRule.checkAvailable(TransportConstants.DEFAULT_PORT));
+      assertFalse(acceptor.isStarted());
+      assertTrue(PortCheckExtension.checkAvailable(TransportConstants.DEFAULT_PORT));
    }
 
    @Test

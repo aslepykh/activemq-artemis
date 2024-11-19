@@ -16,21 +16,19 @@
  */
 package org.apache.activemq.artemis.tests.integration.amqp;
 
+import javax.jms.Connection;
+import javax.jms.JMSException;
+import java.lang.invoke.MethodHandles;
 import java.net.URI;
 import java.util.LinkedList;
-
-import javax.jms.Connection;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.jms.client.ActiveMQJMSConnectionFactory;
 import org.apache.qpid.jms.JmsConnectionFactory;
-import org.junit.After;
-import org.junit.Before;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
 
 public abstract class JMSClientTestSupport extends AmqpClientTestSupport {
 
@@ -38,13 +36,13 @@ public abstract class JMSClientTestSupport extends AmqpClientTestSupport {
 
    protected LinkedList<Connection> jmsConnections = new LinkedList<>();
 
-   @Before
+   @BeforeEach
    @Override
    public void setUp() throws Exception {
       super.setUp();
    }
 
-   @After
+   @AfterEach
    @Override
    public void tearDown() throws Exception {
       try {
@@ -157,12 +155,7 @@ public abstract class JMSClientTestSupport extends AmqpClientTestSupport {
 
       Connection connection = trackJMSConnection(factory.createConnection(username, password));
 
-      connection.setExceptionListener(new ExceptionListener() {
-         @Override
-         public void onException(JMSException exception) {
-            exception.printStackTrace();
-         }
-      });
+      connection.setExceptionListener(exception -> exception.printStackTrace());
 
       if (clientId != null && !clientId.isEmpty()) {
          connection.setClientID(clientId);
@@ -212,12 +205,7 @@ public abstract class JMSClientTestSupport extends AmqpClientTestSupport {
 
       Connection connection = trackJMSConnection(factory.createConnection(username, password));
 
-      connection.setExceptionListener(new ExceptionListener() {
-         @Override
-         public void onException(JMSException exception) {
-            exception.printStackTrace();
-         }
-      });
+      connection.setExceptionListener(exception -> exception.printStackTrace());
 
       if (clientId != null && !clientId.isEmpty()) {
          connection.setClientID(clientId);
@@ -268,12 +256,7 @@ public abstract class JMSClientTestSupport extends AmqpClientTestSupport {
 
       Connection connection = trackJMSConnection(factory.createConnection(username, password));
 
-      connection.setExceptionListener(new ExceptionListener() {
-         @Override
-         public void onException(JMSException exception) {
-            exception.printStackTrace();
-         }
-      });
+      connection.setExceptionListener(exception -> exception.printStackTrace());
 
       if (clientId != null && !clientId.isEmpty()) {
          connection.setClientID(clientId);

@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.amqp;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import java.lang.invoke.MethodHandles;
 
 import org.apache.activemq.artemis.core.server.ServerSession;
@@ -28,15 +32,16 @@ import org.apache.activemq.transport.amqp.client.AmqpSession;
 import org.apache.activemq.transport.amqp.client.AmqpValidator;
 import org.apache.qpid.proton.engine.Receiver;
 import org.apache.qpid.proton.engine.Session;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class AmqpSessionTest extends AmqpClientTestSupport {
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testCreateSession() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -45,7 +50,8 @@ public class AmqpSessionTest extends AmqpClientTestSupport {
       connection.close();
    }
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testSessionClosedDoesNotGetReceiverDetachFromRemote() throws Exception {
       AmqpClient client = createAmqpClient();
       assertNotNull(client);
@@ -82,7 +88,8 @@ public class AmqpSessionTest extends AmqpClientTestSupport {
    }
 
 
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testCreateSessionProducerConsumerDoesNotLeakClosable() throws Exception {
       AmqpClient client = createAmqpClient();
       AmqpConnection connection = addConnection(client.connect());
@@ -98,7 +105,7 @@ public class AmqpSessionTest extends AmqpClientTestSupport {
 
       assertEquals(1, server.getSessions().size());
       for (ServerSession serverSession : server.getSessions()) {
-         Assert.assertNull( ((ServerSessionImpl) serverSession).getCloseables());
+         assertNull( ((ServerSessionImpl) serverSession).getCloseables());
       }
 
       connection.close();

@@ -614,14 +614,14 @@ public class ServerConsumerImpl implements ServerConsumer, ReadyListener {
          props.putIntProperty(ManagementHelper.HDR_CONSUMER_COUNT, messageQueue.getConsumerCount());
 
          // HORNETQ-946
-         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.toSimpleString(session.getUsername()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_USER, SimpleString.of(session.getUsername()));
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.toSimpleString(session.getRemotingConnection().getRemoteAddress()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_REMOTE_ADDRESS, SimpleString.of(session.getRemotingConnection().getRemoteAddress()));
 
-         props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.toSimpleString(session.getName()));
+         props.putSimpleStringProperty(ManagementHelper.HDR_SESSION_NAME, SimpleString.of(session.getName()));
 
          if (session.getRemotingConnection().getClientID() != null) {
-            props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.toSimpleString(session.getRemotingConnection().getClientID()));
+            props.putSimpleStringProperty(ManagementHelper.HDR_CLIENT_ID, SimpleString.of(session.getRemotingConnection().getClientID()));
          }
 
          props.putLongProperty(ManagementHelper.HDR_CONSUMER_NAME, getID());
@@ -695,29 +695,21 @@ public class ServerConsumerImpl implements ServerConsumer, ReadyListener {
       promptDelivery();
 
       // JBPAPP-6030 - Using the executor to avoid distributed dead locks
-      messageQueue.getExecutor().execute(new Runnable() {
-         @Override
-         public void run() {
-            try {
-               // We execute this on the same executor to make sure the force delivery message is written after
-               // any delivery is completed
+      messageQueue.getExecutor().execute(() -> {
+         try {
+            // We execute this on the same executor to make sure the force delivery message is written after
+            // any delivery is completed
 
-               synchronized (lock) {
-                  if (transferring) {
-                     // Case it's transferring (reattach), we will retry later
-                     messageQueue.getExecutor().execute(new Runnable() {
-                        @Override
-                        public void run() {
-                           forceDelivery(sequence, r);
-                        }
-                     });
-                     return;
-                  }
+            synchronized (lock) {
+               if (transferring) {
+                  // Case it's transferring (reattach), we will retry later
+                  messageQueue.getExecutor().execute(() -> forceDelivery(sequence, r));
+                  return;
                }
-               r.run();
-            } catch (Exception e) {
-               ActiveMQServerLogger.LOGGER.errorSendingForcedDelivery(e);
             }
+            r.run();
+         } catch (Exception e) {
+            ActiveMQServerLogger.LOGGER.errorSendingForcedDelivery(e);
          }
       });
    }
@@ -1253,17 +1245,14 @@ public class ServerConsumerImpl implements ServerConsumer, ReadyListener {
       }
    }
 
-   private final Runnable resumeLargeMessageRunnable = new Runnable() {
-      @Override
-      public void run() {
-         synchronized (lock) {
-            try {
-               if (largeMessageDeliverer == null || largeMessageDeliverer.deliver()) {
-                  forceDelivery();
-               }
-            } catch (Exception e) {
-               ActiveMQServerLogger.LOGGER.errorRunningLargeMessageDeliverer(e);
+   private final Runnable resumeLargeMessageRunnable = () -> {
+      synchronized (lock) {
+         try {
+            if (largeMessageDeliverer == null || largeMessageDeliverer.deliver()) {
+               forceDelivery();
             }
+         } catch (Exception e) {
+            ActiveMQServerLogger.LOGGER.errorRunningLargeMessageDeliverer(e);
          }
       }
    };

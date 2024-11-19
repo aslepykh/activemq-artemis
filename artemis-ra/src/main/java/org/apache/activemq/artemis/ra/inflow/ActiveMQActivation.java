@@ -121,7 +121,7 @@ public class ActiveMQActivation {
 
    private ActiveMQConnectionFactory factory;
 
-   private final List<String> nodes = Collections.synchronizedList(new ArrayList<String>());
+   private final List<String> nodes = Collections.synchronizedList(new ArrayList<>());
 
    private final Map<String, Long> removedNodes = new ConcurrentHashMap<>();
 
@@ -135,7 +135,7 @@ public class ActiveMQActivation {
 
    static {
       try {
-         ONMESSAGE = MessageListener.class.getMethod("onMessage", new Class[]{Message.class});
+         ONMESSAGE = MessageListener.class.getMethod("onMessage", Message.class);
       } catch (Exception e) {
          throw new RuntimeException(e);
       }
@@ -403,12 +403,9 @@ public class ActiveMQActivation {
             }
          }
 
-         Runnable runTearDown = new Runnable() {
-            @Override
-            public void run() {
-               for (ActiveMQMessageHandler handler : handlersCopy) {
-                  handler.teardown();
-               }
+         Runnable runTearDown = () -> {
+            for (ActiveMQMessageHandler handler : handlersCopy) {
+               handler.teardown();
             }
          };
 
@@ -656,12 +653,7 @@ public class ActiveMQActivation {
       ClassLoader tccl;
 
       try {
-         tccl = AccessController.doPrivileged(new PrivilegedExceptionAction<ClassLoader>() {
-            @Override
-            public ClassLoader run() {
-               return ActiveMQActivation.class.getClassLoader();
-            }
-         });
+         tccl = AccessController.doPrivileged((PrivilegedExceptionAction<ClassLoader>) ActiveMQActivation.class::getClassLoader);
       } catch (Throwable e) {
          logger.warn(e.getMessage(), e);
          tccl = null;

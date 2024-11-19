@@ -318,6 +318,9 @@ public class LargeMessageControllerImpl implements LargeMessageController {
    @Override
    public LargeData take() throws InterruptedException {
       LargeData largeData = largeMessageData.take();
+      if (largeData == null) {
+         return null;
+      }
       bytesTaken += largeData.getChunk().length;
       return largeData;
    }
@@ -1013,7 +1016,7 @@ public class LargeMessageControllerImpl implements LargeMessageController {
       int len = readInt();
       byte[] data = new byte[len];
       readBytes(data);
-      return new SimpleString(data);
+      return SimpleString.of(data);
    }
 
    @Override

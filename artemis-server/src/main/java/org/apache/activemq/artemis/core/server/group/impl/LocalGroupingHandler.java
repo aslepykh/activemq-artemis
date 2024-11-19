@@ -322,9 +322,15 @@ public final class LocalGroupingHandler extends GroupHandlingAbstract {
       if (started)
          return;
 
-      if (expectedBindings == null) {
-         // just in case the component is restarted
-         expectedBindings = new LinkedList<>();
+      lock.lock();
+
+      try {
+         if (expectedBindings == null) {
+            // just in case the component is restarted
+            expectedBindings = new LinkedList<>();
+         }
+      } finally {
+         lock.unlock();
       }
 
       if (reaperPeriod > 0 && groupTimeout > 0) {
@@ -355,35 +361,32 @@ public final class LocalGroupingHandler extends GroupHandlingAbstract {
    private void removeGrouping(final SimpleString clusterName) {
       final List<GroupBinding> list = groupMap.remove(clusterName);
       if (list != null) {
-         executor.execute(new Runnable() {
-            @Override
-            public void run() {
-               long txID = -1;
+         executor.execute(() -> {
+            long txID = -1;
 
-               for (GroupBinding val : list) {
-                  if (val != null) {
-                     fireUnproposed(val.getGroupId());
-                     map.remove(val.getGroupId());
+            for (GroupBinding val : list) {
+               if (val != null) {
+                  fireUnproposed(val.getGroupId());
+                  map.remove(val.getGroupId());
 
-                     sendUnproposal(val.getGroupId(), clusterName, 0);
+                  sendUnproposal(val.getGroupId(), clusterName, 0);
 
-                     try {
-                        if (txID < 0) {
-                           txID = storageManager.generateID();
-                        }
-                        storageManager.deleteGrouping(txID, val);
-                     } catch (Exception e) {
-                        ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(val.getGroupId(), e);
+                  try {
+                     if (txID < 0) {
+                        txID = storageManager.generateID();
                      }
+                     storageManager.deleteGrouping(txID, val);
+                  } catch (Exception e) {
+                     ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(val.getGroupId(), e);
                   }
                }
+            }
 
-               if (txID >= 0) {
-                  try {
-                     storageManager.commitBindings(txID);
-                  } catch (Exception e) {
-                     ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(SimpleString.toSimpleString("TX:" + txID), e);
-                  }
+            if (txID >= 0) {
+               try {
+                  storageManager.commitBindings(txID);
+               } catch (Exception e) {
+                  ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(SimpleString.of("TX:" + txID), e);
                }
             }
          });
@@ -446,7 +449,7 @@ public final class LocalGroupingHandler extends GroupHandlingAbstract {
                try {
                   storageManager.commitBindings(txID);
                } catch (Exception e) {
-                  ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(SimpleString.toSimpleString("TX:" + txID), e);
+                  ActiveMQServerLogger.LOGGER.unableToDeleteGroupBindings(SimpleString.of("TX:" + txID), e);
                }
             }
          }

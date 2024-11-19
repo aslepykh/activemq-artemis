@@ -63,7 +63,7 @@ public final class PagingManagerImpl implements PagingManager {
 
    private static final int PAGE_TX_CLEANUP_PRINT_LIMIT = 1000;
 
-   private static final int ARTEMIS_PAGING_COUNTER_SNAPSHOT_INTERVAL = Integer.valueOf(System.getProperty("artemis.paging.counter.snapshot.interval", "60"));
+   private static final int ARTEMIS_PAGING_COUNTER_SNAPSHOT_INTERVAL = Integer.parseInt(System.getProperty("artemis.paging.counter.snapshot.interval", "60"));
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -393,7 +393,7 @@ public final class PagingManagerImpl implements PagingManager {
             if (oldStore != null) {
                oldStore.stop();
             }
-            store.getCursorProvider().counterRebuildStarted(); // TODO-NOW-DONT-MERGE maybe this should be removed
+            store.getCursorProvider().counterRebuildStarted();
             store.start();
             stores.put(store.getStoreName(), store);
          }
@@ -405,15 +405,16 @@ public final class PagingManagerImpl implements PagingManager {
 
    @Override
    public void deletePageStore(final SimpleString storeName) throws Exception {
+      PagingStore store;
       syncLock.readLock().lock();
       try {
-         PagingStore store = stores.remove(CompositeAddress.extractAddressName(storeName));
-         if (store != null) {
-            store.stop();
-            store.destroy();
-         }
+         store = stores.remove(CompositeAddress.extractAddressName(storeName));
       } finally {
          syncLock.readLock().unlock();
+      }
+
+      if (store != null) {
+         store.destroy();
       }
    }
 
@@ -477,6 +478,14 @@ public final class PagingManagerImpl implements PagingManager {
    @Override
    public boolean isStarted() {
       return started;
+   }
+
+   private volatile boolean rebuildingPageCounters;
+
+
+   @Override
+   public boolean isRebuildingCounters() {
+      return rebuildingPageCounters;
    }
 
    @Override
@@ -589,6 +598,9 @@ public final class PagingManagerImpl implements PagingManager {
 
    @Override
    public Future<Object> rebuildCounters(Set<Long> storedLargeMessages) {
+      if (rebuildingPageCounters) {
+         logger.debug("Rebuild page counters is already underway, ignoring call");
+      }
       Map<Long, PageTransactionInfo> transactionsSet = new LongObjectHashMap();
       // making a copy
       transactions.forEach((a, b) -> {
@@ -616,6 +628,8 @@ public final class PagingManagerImpl implements PagingManager {
 
       FutureTask<Object> task = new FutureTask<>(() -> null);
       managerExecutor.execute(task);
+
+      managerExecutor.execute(() -> rebuildingPageCounters = false);
 
       return task;
    }

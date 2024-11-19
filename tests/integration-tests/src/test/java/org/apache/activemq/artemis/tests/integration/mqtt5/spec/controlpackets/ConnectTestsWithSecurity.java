@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.mqtt5.spec.controlpackets;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.nio.charset.StandardCharsets;
 
 import org.apache.activemq.artemis.core.protocol.mqtt.MQTTReasonCodes;
@@ -25,7 +30,8 @@ import org.eclipse.paho.mqttv5.client.MqttClient;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptions;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptionsBuilder;
 import org.eclipse.paho.mqttv5.common.MqttException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public class ConnectTestsWithSecurity extends MQTT5TestSupport {
 
@@ -39,7 +45,8 @@ public class ConnectTestsWithSecurity extends MQTT5TestSupport {
     * SHOULD perform authentication and authorization checks. If any of these checks fail, it MUST close the Network
     * Connection.
     */
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testAuthenticationFailureWithBadCredentials() throws Exception {
       testAuthentication(new MqttConnectionOptionsBuilder()
                             .username(RandomUtil.randomString())
@@ -52,7 +59,8 @@ public class ConnectTestsWithSecurity extends MQTT5TestSupport {
     * SHOULD perform authentication and authorization checks. If any of these checks fail, it MUST close the Network
     * Connection.
     */
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testAuthenticationFailureWithNoCredentials() throws Exception {
       testAuthentication(new MqttConnectionOptionsBuilder().build());
    }
@@ -72,7 +80,8 @@ public class ConnectTestsWithSecurity extends MQTT5TestSupport {
       assertFalse(client.isConnected());
    }
 
-   @Test(timeout = DEFAULT_TIMEOUT)
+   @Test
+   @Timeout(DEFAULT_TIMEOUT_SEC)
    public void testAuthenticationSuccess() throws Exception {
       final String CLIENT_ID = RandomUtil.randomString();
       MqttConnectionOptions options = new MqttConnectionOptionsBuilder()

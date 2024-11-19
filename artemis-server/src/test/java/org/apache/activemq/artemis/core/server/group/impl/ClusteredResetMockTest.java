@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.artemis.core.server.group.impl;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.management.ObjectName;
 import java.util.HashSet;
 import java.util.Set;
@@ -40,17 +42,18 @@ import org.apache.activemq.artemis.core.persistence.StorageManager;
 import org.apache.activemq.artemis.core.postoffice.PostOffice;
 import org.apache.activemq.artemis.core.remoting.server.RemotingService;
 import org.apache.activemq.artemis.core.security.Role;
+import org.apache.activemq.artemis.core.security.SecurityAuth;
 import org.apache.activemq.artemis.core.security.SecurityStore;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.Divert;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.QueueFactory;
+import org.apache.activemq.artemis.core.server.management.GuardInvocationHandler;
 import org.apache.activemq.artemis.core.server.routing.ConnectionRouter;
 import org.apache.activemq.artemis.core.server.cluster.Bridge;
 import org.apache.activemq.artemis.core.server.cluster.BroadcastGroup;
 import org.apache.activemq.artemis.core.server.cluster.ClusterConnection;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
-import org.apache.activemq.artemis.core.server.management.ArtemisMBeanServerGuard;
 import org.apache.activemq.artemis.core.server.management.ManagementService;
 import org.apache.activemq.artemis.core.server.management.Notification;
 import org.apache.activemq.artemis.core.server.management.NotificationListener;
@@ -61,8 +64,7 @@ import org.apache.activemq.artemis.spi.core.remoting.Acceptor;
 import org.apache.activemq.artemis.tests.util.ServerTestBase;
 import org.apache.activemq.artemis.utils.ReusableLatch;
 import org.apache.activemq.artemis.utils.collections.ConcurrentHashSet;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * this is testing the case for resending notifications from RemotingGroupHandler
@@ -71,7 +73,7 @@ import org.junit.Test;
  */
 public class ClusteredResetMockTest extends ServerTestBase {
 
-   public static final SimpleString ANYCLUSTER = SimpleString.toSimpleString("anycluster");
+   public static final SimpleString ANYCLUSTER = SimpleString.of("anycluster");
 
    @Test
    public void testMultipleSenders() throws Throwable {
@@ -80,7 +82,7 @@ public class ClusteredResetMockTest extends ServerTestBase {
       ReusableLatch latchSends = new ReusableLatch(NUMBER_OF_SENDERS);
 
       FakeManagement fake = new FakeManagement(latchSends);
-      RemoteGroupingHandler handler = new RemoteGroupingHandler(fake, SimpleString.toSimpleString("tst1"), SimpleString.toSimpleString("tst2"), 50000, 499);
+      RemoteGroupingHandler handler = new RemoteGroupingHandler(fake, SimpleString.of("tst1"), SimpleString.of("tst2"), 50000, 499);
       handler.start();
 
       Sender[] sn = new Sender[NUMBER_OF_SENDERS];
@@ -93,7 +95,7 @@ public class ClusteredResetMockTest extends ServerTestBase {
       try {
 
          // Waiting two requests to arrive
-         Assert.assertTrue(latchSends.await(1, TimeUnit.MINUTES));
+         assertTrue(latchSends.await(1, TimeUnit.MINUTES));
 
          // we will ask a resend.. need to add 2 back
          for (int i = 0; i < NUMBER_OF_SENDERS; i++) {
@@ -148,7 +150,7 @@ public class ClusteredResetMockTest extends ServerTestBase {
 
       Sender(String code, RemoteGroupingHandler handler) {
          super("Sender::" + code);
-         this.code = SimpleString.toSimpleString(code);
+         this.code = SimpleString.of(code);
          this.handler = handler;
       }
 
@@ -269,11 +271,6 @@ public class ClusteredResetMockTest extends ServerTestBase {
       }
 
       @Override
-      public void registerQueue(Queue queue, SimpleString address, StorageManager storageManager, boolean forceInternal) throws Exception {
-
-      }
-
-      @Override
       public void unregisterQueue(SimpleString name, SimpleString address, RoutingType routingType) throws Exception {
 
       }
@@ -351,12 +348,12 @@ public class ClusteredResetMockTest extends ServerTestBase {
       }
 
       @Override
-      public ICoreMessage handleMessage(Message message) throws Exception {
+      public ICoreMessage handleMessage(SecurityAuth auth, Message message) throws Exception {
          return null;
       }
 
       @Override
-      public void registerHawtioSecurity(ArtemisMBeanServerGuard securityMBean) throws Exception {
+      public void registerHawtioSecurity(GuardInvocationHandler securityMBean) throws Exception {
 
       }
 
@@ -366,12 +363,12 @@ public class ClusteredResetMockTest extends ServerTestBase {
       }
 
       @Override
-      public Object getAttribute(String resourceName, String attribute) {
+      public Object getAttribute(String resourceName, String attribute, SecurityAuth auth) {
          return null;
       }
 
       @Override
-      public Object invokeOperation(String resourceName, String operation, Object[] params) throws Exception {
+      public Object invokeOperation(String resourceName, String operation, Object[] params, SecurityAuth auth) throws Exception {
          return null;
       }
 

@@ -176,10 +176,10 @@ public final class ActiveMQDefaultConfiguration {
 
    private static String DEFAULT_ADDRESS_PATH_SEPARATOR = ".";
 
-   private static SimpleString DEFAULT_MANAGEMENT_ADDRESS = new SimpleString("activemq.management");
+   private static SimpleString DEFAULT_MANAGEMENT_ADDRESS = SimpleString.of("activemq.management");
 
    // the name of the address that consumers bind to receive management notifications
-   private static SimpleString DEFAULT_MANAGEMENT_NOTIFICATION_ADDRESS = new SimpleString("activemq.notifications");
+   private static SimpleString DEFAULT_MANAGEMENT_NOTIFICATION_ADDRESS = SimpleString.of("activemq.notifications");
 
    // The default address used for clustering, empty string means all addresses
    private static String DEFAULT_CLUSTER_ADDRESS = "";
@@ -512,6 +512,8 @@ public final class ActiveMQDefaultConfiguration {
 
    public static final long DEFAULT_GLOBAL_MAX_MESSAGES = -1;
 
+   public static final int INITIAL_QUEUE_BUFFER_SIZE = 8192;
+
    public static final int DEFAULT_MAX_DISK_USAGE;
 
    static {
@@ -659,10 +661,13 @@ public final class ActiveMQDefaultConfiguration {
 
    public static final String DEFAULT_TEMPORARY_QUEUE_NAMESPACE = "";
 
-   private static final String DEFAULT_DISTRIBUTED_PRIMITIVE_MANAGER_CLASS_NAME = "org.apache.activemq.artemis.quorum.zookeeper.CuratorDistributedPrimitiveManager";
+   private static final String DEFAULT_DISTRIBUTED_PRIMITIVE_MANAGER_CLASS_NAME = "org.apache.activemq.artemis.lockmanager.zookeeper.CuratorDistributedLockManager";
 
    // Number of concurrent workers for a core bridge
    public static int DEFAULT_BRIDGE_CONCURRENCY = 1;
+
+   // How long to wait for acknowledgements to arrive from the bridge's target while stopping or pausing the bridge
+   public static long DEFAULT_BRIDGE_PENDING_ACK_TIMEOUT = 60000;
 
    // Whether or not to report Netty pool metrics
    private static final boolean DEFAULT_NETTY_POOL_METRICS = false;
@@ -676,6 +681,12 @@ public final class ActiveMQDefaultConfiguration {
    // Whether or not to report uptime metrics
    private static final boolean DEFAULT_UPTIME_METRICS = false;
 
+   // Whether or not to report logging metrics
+   private static final boolean DEFAULT_LOGGING_METRICS = false;
+
+   // Whether or not to report security cache metrics
+   private static final boolean DEFAULT_SECURITY_CACHE_METRICS = false;
+
    // How often (in ms) to scan for expired MQTT sessions
    private static long DEFAULT_MQTT_SESSION_SCAN_INTERVAL = 500;
 
@@ -688,6 +699,24 @@ public final class ActiveMQDefaultConfiguration {
    public static final long DEFAULT_EMBEDDED_WEB_SERVER_RESTART_TIMEOUT = 5000;
 
    public static final String DEFAULT_LITERAL_MATCH_MARKERS = null;
+
+   private static final String DEFAULT_VIEW_PERMISSION_METHOD_MATCH_PATTERN = "^(get|is|count|list|browse|query).*$";
+
+   private static final String DEFAULT_MANAGEMENT_RBAC_PREFIX = "mops";
+
+   private static final boolean DEFAULT_MANAGEMENT_MESSAGE_RBAC = false;
+
+
+   // These properties used to defined with this prefix.
+   // I'm keeping the older property name in an attempt to guarantee compatibility
+   private static final String FORMER_ACK_RETRY_CLASS_NAME = "org.apache.activemq.artemis.protocol.amqp.connect.mirror.AckRetry";
+   private static final int DEFAULT_MIRROR_ACK_MANAGER_QUEUE_ATTEMPTS = Integer.parseInt(System.getProperty(FORMER_ACK_RETRY_CLASS_NAME + ".MIN_QUEUE_ATTEMPTS", "5"));;
+   private static final int DEFAULT_MIRROR_ACK_MANAGER_PAGE_ATTEMPTS = Integer.parseInt(System.getProperty(FORMER_ACK_RETRY_CLASS_NAME + ".MAX_PAGE_ATTEMPT", "2"));;
+
+   private static final int DEFAULT_MIRROR_ACK_MANAGER_RETRY_DELAY = Integer.parseInt(System.getProperty(FORMER_ACK_RETRY_CLASS_NAME + ".RETRY_DELAY", "100"));;
+
+   private static final boolean DEFAULT_MIRROR_ACK_MANAGER_WARN_UNACKED = false;
+   private static final boolean DEFAULT_MIRROR_PAGE_TRANSACTION = false;
 
    /**
     * If true then the ActiveMQ Artemis Server will make use of any Protocol Managers that are in available on the classpath. If false then only the core protocol will be available, unless in Embedded mode where users can inject their own Protocol Managers.
@@ -1829,12 +1858,16 @@ public final class ActiveMQDefaultConfiguration {
       return DEFAULT_TEMPORARY_QUEUE_NAMESPACE;
    }
 
-   public static String getDefaultDistributedPrimitiveManagerClassName() {
+   public static String getDefaultDistributedLockManagerClassName() {
       return DEFAULT_DISTRIBUTED_PRIMITIVE_MANAGER_CLASS_NAME;
    }
 
    public static int getDefaultBridgeConcurrency() {
       return DEFAULT_BRIDGE_CONCURRENCY;
+   }
+
+   public static long getDefaultBridgePendingAckTimeout() {
+      return DEFAULT_BRIDGE_PENDING_ACK_TIMEOUT;
    }
 
    /**
@@ -1866,6 +1899,20 @@ public final class ActiveMQDefaultConfiguration {
    }
 
    /**
+    * Whether or not to report logging metrics
+    */
+   public static Boolean getDefaultLoggingMetrics() {
+      return DEFAULT_LOGGING_METRICS;
+   }
+
+   /**
+    * Whether or not to report security cache metrics
+    */
+   public static Boolean getDefaultSecurityCacheMetrics() {
+      return DEFAULT_SECURITY_CACHE_METRICS;
+   }
+
+   /**
     * How often (in ms) to scan for expired MQTT sessions
     */
    public static long getMqttSessionScanInterval() {
@@ -1889,5 +1936,48 @@ public final class ActiveMQDefaultConfiguration {
 
    public static String getLiteralMatchMarkers() {
       return DEFAULT_LITERAL_MATCH_MARKERS;
+   }
+
+   public static String getViewPermissionMethodMatchPattern() {
+      return DEFAULT_VIEW_PERMISSION_METHOD_MATCH_PATTERN;
+   }
+
+   public static String getManagementRbacPrefix() {
+      return DEFAULT_MANAGEMENT_RBAC_PREFIX;
+   }
+
+   public static boolean getManagementMessagesRbac() {
+      return DEFAULT_MANAGEMENT_MESSAGE_RBAC;
+   }
+
+
+   /** This configures the Mirror Ack Manager number of attempts on queues before trying page acks.
+    *  It is not intended to be configured through the XML.
+    *  The default value here is 5. */
+   public static int getMirrorAckManagerQueueAttempts() {
+      return DEFAULT_MIRROR_ACK_MANAGER_QUEUE_ATTEMPTS;
+   }
+
+   public static int getMirrorAckManagerPageAttempts() {
+      return DEFAULT_MIRROR_ACK_MANAGER_PAGE_ATTEMPTS;
+   }
+
+   public static boolean getMirrorAckManagerWarnUnacked() {
+      return DEFAULT_MIRROR_ACK_MANAGER_WARN_UNACKED;
+   }
+
+   public static int getMirrorAckManagerRetryDelay() {
+      return DEFAULT_MIRROR_ACK_MANAGER_RETRY_DELAY;
+   }
+
+   public static boolean getMirrorPageTransaction() {
+      return DEFAULT_MIRROR_PAGE_TRANSACTION;
+   }
+
+   /**
+    * the initial size of the intermediate message buffer used for queues
+    */
+   public static int getInitialQueueBufferSize() {
+      return INITIAL_QUEUE_BUFFER_SIZE;
    }
 }

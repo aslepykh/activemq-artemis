@@ -107,6 +107,7 @@ public class PagedMessageImpl implements PagedMessage {
       this.storageManager = null;
       this.queueIDs = queueIDs;
       this.message = message;
+      this.message.setPaged();
       this.storedSize = 0;
       checkLargeMessage();
    }
@@ -161,7 +162,7 @@ public class PagedMessageImpl implements PagedMessage {
    @Override
    public void initMessage(StorageManager storage) {
       if (largeMessageLazyData != null) {
-         LargeServerMessage lgMessage = storage.createLargeMessage();
+         LargeServerMessage lgMessage = storage.createCoreLargeMessage();
 
          ActiveMQBuffer buffer = ActiveMQBuffers.wrappedBuffer(largeMessageLazyData);
          lgMessage = LargeMessagePersister.getInstance().decode(buffer, lgMessage, null);
@@ -171,6 +172,7 @@ public class PagedMessageImpl implements PagedMessage {
          lgMessage.toMessage().usageUp();
          lgMessage.setPaged();
          this.message = lgMessage.toMessage();
+         this.message.setPaged();
          largeMessageLazyData = null;
          checkLargeMessage();
       } else {
@@ -213,7 +215,8 @@ public class PagedMessageImpl implements PagedMessage {
             largeMessageLazyData = new byte[largeMessageHeaderSize];
             buffer.readBytes(largeMessageLazyData);
          } else {
-            this.message = storageManager.createLargeMessage().toMessage();
+            this.message = storageManager.createCoreLargeMessage().toMessage();
+            this.message.setPaged();
             LargeMessagePersister.getInstance().decode(buffer, (LargeServerMessage) message, null);
             ((LargeServerMessage) message).setStorageManager(storageManager);
             ((LargeServerMessage) message).toMessage().usageUp();

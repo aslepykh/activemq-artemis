@@ -16,6 +16,10 @@
  */
 package org.apache.activemq.artemis.tests.integration.openwire.amq;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.JMSException;
 import javax.jms.Message;
@@ -32,9 +36,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.activemq.artemis.tests.integration.openwire.BasicOpenWireTest;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * adapted from: org.apache.activemq.JmsConnectionStartStopTest
@@ -45,7 +49,7 @@ public class JmsConnectionStartStopTest extends BasicOpenWireTest {
    private Connection stoppedConnection;
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       startedConnection = factory.createConnection();
@@ -53,11 +57,8 @@ public class JmsConnectionStartStopTest extends BasicOpenWireTest {
       stoppedConnection = factory.createConnection();
    }
 
-   /**
-    * @see junit.framework.TestCase#tearDown()
-    */
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       stoppedConnection.close();
       startedConnection.close();
@@ -117,35 +118,29 @@ public class JmsConnectionStartStopTest extends BasicOpenWireTest {
 
    @Test
    public void testConcurrentSessionCreateWithStart() throws Exception {
-      ThreadPoolExecutor executor = new ThreadPoolExecutor(50, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+      ThreadPoolExecutor executor = new ThreadPoolExecutor(50, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<>());
       final Vector<Throwable> exceptions = new Vector<>();
       final AtomicInteger counter = new AtomicInteger(0);
       final Random rand = new Random();
-      Runnable createSessionTask = new Runnable() {
-         @Override
-         public void run() {
-            try {
-               TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
-               stoppedConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-               counter.incrementAndGet();
-            } catch (Exception e) {
-               exceptions.add(e);
-            } catch (Throwable t) {
-            }
+      Runnable createSessionTask = () -> {
+         try {
+            TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
+            stoppedConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            counter.incrementAndGet();
+         } catch (Exception e) {
+            exceptions.add(e);
+         } catch (Throwable t) {
          }
       };
 
-      Runnable startStopTask = new Runnable() {
-         @Override
-         public void run() {
-            try {
-               TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
-               stoppedConnection.start();
-               stoppedConnection.stop();
-            } catch (Exception e) {
-               exceptions.add(e);
-            } catch (Throwable t) {
-            }
+      Runnable startStopTask = () -> {
+         try {
+            TimeUnit.MILLISECONDS.sleep(rand.nextInt(10));
+            stoppedConnection.start();
+            stoppedConnection.stop();
+         } catch (Exception e) {
+            exceptions.add(e);
+         } catch (Throwable t) {
          }
       };
 
@@ -156,8 +151,8 @@ public class JmsConnectionStartStopTest extends BasicOpenWireTest {
 
       executor.shutdown();
 
-      assertTrue("executor terminated", executor.awaitTermination(30, TimeUnit.SECONDS));
-      assertTrue("no exceptions: " + exceptions, exceptions.isEmpty());
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS), "executor terminated");
+      assertTrue(exceptions.isEmpty(), "no exceptions: " + exceptions);
    }
 
 }

@@ -17,6 +17,8 @@
 
 package org.apache.activemq.artemis.tests.integration.journal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -25,22 +27,63 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.activemq.artemis.api.core.ActiveMQBuffer;
 import org.apache.activemq.artemis.core.io.nio.NIOSequentialFileFactory;
+import org.apache.activemq.artemis.core.journal.IOCompletion;
+import org.apache.activemq.artemis.core.journal.Journal;
 import org.apache.activemq.artemis.core.journal.PreparedTransactionInfo;
 import org.apache.activemq.artemis.core.journal.RecordInfo;
 import org.apache.activemq.artemis.core.journal.collections.AbstractHashMapPersister;
+import org.apache.activemq.artemis.core.journal.collections.MapStorageManager;
 import org.apache.activemq.artemis.core.journal.collections.JournalHashMap;
 import org.apache.activemq.artemis.core.journal.collections.JournalHashMapProvider;
 import org.apache.activemq.artemis.core.journal.impl.JournalImpl;
+import org.apache.activemq.artemis.core.persistence.Persister;
 import org.apache.activemq.artemis.core.persistence.impl.journal.OperationContextImpl;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.activemq.artemis.tests.util.RandomUtil;
 import org.apache.activemq.artemis.utils.DataConstants;
 import org.apache.activemq.artemis.utils.actors.OrderedExecutorFactory;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class JournalHashMapTest extends ActiveMQTestBase {
 
+
+   static class JournalManager implements MapStorageManager {
+      final Journal journal;
+
+      JournalManager(Journal journal) {
+         this.journal = journal;
+      }
+
+      @Override
+      public void storeMapRecord(long id,
+                                 byte recordType,
+                                 Persister persister,
+                                 Object record,
+                                 boolean sync,
+                                 IOCompletion completionCallback) throws Exception {
+         journal.appendAddRecord(id, recordType, persister, record, sync, completionCallback);
+      }
+
+      @Override
+      public void storeMapRecord(long id,
+                                 byte recordType,
+                                 Persister persister,
+                                 Object record,
+                                 boolean sync) throws Exception {
+         journal.appendAddRecord(id, recordType, persister, record, sync);
+      }
+
+      @Override
+      public void deleteMapRecord(long id, boolean sync) throws Exception {
+         journal.appendDeleteRecord(id, sync);
+      }
+
+      @Override
+      public void deleteMapRecordTx(long txid, long id) throws Exception {
+         journal.appendDeleteRecordTransactional(txid, id);
+
+      }
+   }
 
    @Test
    public void testHashMap() throws Exception {
@@ -59,7 +102,7 @@ public class JournalHashMapTest extends ActiveMQTestBase {
 
       AtomicLong sequence = new AtomicLong(1);
 
-      JournalHashMapProvider<Long, Long, Object> journalHashMapProvider = new JournalHashMapProvider(sequence::incrementAndGet, journal, new LongPersister(), (byte)3, OperationContextImpl::getContext, l -> null, (e, m, f) -> {
+      JournalHashMapProvider<Long, Long, Object> journalHashMapProvider = new JournalHashMapProvider(sequence::incrementAndGet, new JournalManager(journal), new LongPersister(), (byte)3, OperationContextImpl::getContext, l -> null, (e, m, f) -> {
          e.printStackTrace();
       });
 
@@ -90,17 +133,17 @@ public class JournalHashMapTest extends ActiveMQTestBase {
 
       ArrayList<JournalHashMap.MapRecord<Long, Long>> records = new ArrayList<>();
       recordInfos.forEach(r -> {
-         Assert.assertEquals((byte)3, r.userRecordType);
+         assertEquals((byte)3, r.userRecordType);
          journalHashMapProvider.reload(r);
       });
 
       List<JournalHashMap<Long, Long, Object>>  existingLists = journalHashMapProvider.getMaps();
-      Assert.assertEquals(1, existingLists.size());
+      assertEquals(1, existingLists.size());
       JournalHashMap<Long, Long, Object> reloadedList = existingLists.get(0);
 
-      Assert.assertEquals(journalHashMap.size(), reloadedList.size());
+      assertEquals(journalHashMap.size(), reloadedList.size());
 
-      journalHashMap.forEach((a, b) -> Assert.assertEquals(b, reloadedList.get(a)));
+      journalHashMap.forEach((a, b) -> assertEquals(b, reloadedList.get(a)));
 
    }
 

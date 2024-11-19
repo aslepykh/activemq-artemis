@@ -17,7 +17,14 @@
 package org.apache.activemq.artemis.component;
 
 import javax.servlet.DispatcherType;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+import javax.servlet.ServletRequestEvent;
+import javax.servlet.ServletRequestListener;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.invoke.MethodHandles;
 import java.net.URI;
 import java.nio.file.Files;
@@ -37,7 +44,10 @@ import org.apache.activemq.artemis.dto.AppDTO;
 import org.apache.activemq.artemis.dto.BindingDTO;
 import org.apache.activemq.artemis.dto.ComponentDTO;
 import org.apache.activemq.artemis.dto.WebServerDTO;
+import org.apache.activemq.artemis.logs.AuditLogger;
 import org.apache.activemq.artemis.marker.WebServerComponentMarker;
+import org.apache.activemq.artemis.utils.ClassloadingUtil;
+import org.apache.activemq.artemis.utils.PemConfigUtil;
 import org.eclipse.jetty.security.DefaultAuthenticatorFactory;
 import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.CustomRequestLog;
@@ -126,9 +136,17 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
 
       HttpConfiguration httpConfiguration = new HttpConfiguration();
 
+      if (webServerConfig.maxRequestHeaderSize != null) {
+         httpConfiguration.setRequestHeaderSize(webServerConfig.maxRequestHeaderSize);
+      }
+
+      if (webServerConfig.maxResponseHeaderSize != null) {
+         httpConfiguration.setResponseHeaderSize(webServerConfig.maxResponseHeaderSize);
+      }
+
       if (this.webServerConfig.customizer != null) {
          try {
-            httpConfiguration.addCustomizer((HttpConfiguration.Customizer) Class.forName(this.webServerConfig.customizer).getConstructor().newInstance());
+            httpConfiguration.addCustomizer((HttpConfiguration.Customizer) ClassloadingUtil.getInstanceWithTypeCheck(this.webServerConfig.customizer, HttpConfiguration.Customizer.class, this.getClass().getClassLoader()));
          } catch (Throwable t) {
             ActiveMQWebLogger.LOGGER.customizerNotLoaded(this.webServerConfig.customizer, t);
          }
@@ -161,6 +179,19 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
                handlers.addHandler(webContext);
                webContext.setInitParameter(DIR_ALLOWED, "false");
                webContext.getSessionHandler().getSessionCookieConfig().setComment("__SAME_SITE_STRICT__");
+               webContext.addEventListener(new ServletContextListener() {
+                  @Override
+                  public void contextInitialized(ServletContextEvent sce) {
+                     sce.getServletContext().addListener(new ServletRequestListener() {
+                        @Override
+                        public void requestDestroyed(ServletRequestEvent sre) {
+                           ServletRequestListener.super.requestDestroyed(sre);
+                           AuditLogger.currentCaller.remove();
+                           AuditLogger.remoteAddress.remove();
+                        }
+                     });
+                  }
+               });
                webContextData.add(new Pair(webContext, binding.uri));
             }
          }
@@ -211,7 +242,6 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
 
       server.setHandler(handlers);
 
-      cleanupTmp();
       server.start();
 
       printStatus(bindings);
@@ -278,8 +308,8 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
             }
          }
          if (Boolean.TRUE.equals(binding.getSslAutoReload())) {
-            addStoreResourceScannerTask(binding.getKeyStorePath(), sslFactory);
-            addStoreResourceScannerTask(binding.getTrustStorePath(), sslFactory);
+            addStoreResourceScannerTask(binding.getKeyStorePath(), binding.getKeyStoreType(), sslFactory);
+            addStoreResourceScannerTask(binding.getTrustStorePath(), binding.getTrustStoreType(), sslFactory);
          }
 
          SslConnectionFactory sslConnectionFactory = new SslConnectionFactory(sslFactory, "HTTP/1.1");
@@ -359,7 +389,7 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
       getScanner().addDirectory(parentFile.toPath());
    }
 
-   private void addStoreResourceScannerTask(String storeFilename, SslContextFactory.Server sslFactory) {
+   private void addStoreResourceScannerTask(String storeFilename, String storeType, SslContextFactory.Server sslFactory) {
       if (storeFilename != null) {
          File storeFile = getStoreFile(storeFilename);
          addScannerTask(storeFile, () -> {
@@ -369,6 +399,23 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
                logger.warn("Failed to reload the ssl factory related to {}", storeFile, e);
             }
          });
+
+         if (PemConfigUtil.isPemConfigStoreType(storeType)) {
+            String[] sources;
+
+            try (InputStream pemConfigStream = new FileInputStream(storeFile)) {
+               sources = PemConfigUtil.parseSources(pemConfigStream);
+            } catch (IOException e) {
+               throw new IllegalArgumentException("Invalid PEM Config file: " + e);
+            }
+
+            if (sources != null) {
+               for (String source : sources) {
+                  addStoreResourceScannerTask(source, null, sslFactory);
+               }
+            }
+         }
+
       }
    }
 
@@ -409,42 +456,6 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
       }
 
       return requestLog;
-   }
-
-   private File getLibFolder() {
-      Path lib = artemisHomePath.resolve("lib");
-      File libFolder = new File(lib.toUri());
-      return libFolder;
-   }
-
-   private void cleanupTmp() {
-      if (webContextData.size() == 0) {
-         //there is no webapp to be deployed (as in some tests)
-         return;
-      }
-
-      try {
-         List<File> temporaryFiles = new ArrayList<>();
-         Files.newDirectoryStream(temporaryWarDir).forEach(path -> temporaryFiles.add(path.toFile()));
-
-         if (temporaryFiles.size() > 0) {
-            WebTmpCleaner.cleanupTmpFiles(getLibFolder(), temporaryFiles, true);
-         }
-      } catch (Exception e) {
-         logger.warn("Failed to get base dir for tmp web files", e);
-      }
-   }
-
-   public void cleanupWebTemporaryFiles(List<Pair<WebAppContext, String>> webContextData) throws Exception {
-      List<File> temporaryFiles = new ArrayList<>();
-      for (Pair<WebAppContext, String> data : webContextData) {
-         File tmpdir = data.getA().getTempDirectory();
-         temporaryFiles.add(tmpdir);
-      }
-
-      if (!temporaryFiles.isEmpty()) {
-         WebTmpCleaner.cleanupTmpFiles(getLibFolder(), temporaryFiles);
-      }
    }
 
    @Override
@@ -507,7 +518,6 @@ public class WebServerComponent implements ExternalComponent, WebServerComponent
          scanner = null;
          scannerScheduler = null;
          scannerTasks.clear();
-         cleanupWebTemporaryFiles(webContextData);
          webContextData.clear();
          jolokiaUrls.clear();
          consoleUrls.clear();

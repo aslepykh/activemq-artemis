@@ -16,15 +16,14 @@
  */
 package org.apache.activemq.artemis.core.management.impl.view;
 
-import org.apache.activemq.artemis.core.management.impl.ActiveMQServerControlImpl;
-import org.apache.activemq.artemis.json.JsonObjectBuilder;
 import java.util.Date;
 
-import org.apache.activemq.artemis.api.core.client.ClientSession;
+import org.apache.activemq.artemis.core.management.impl.ActiveMQServerControlImpl;
 import org.apache.activemq.artemis.core.management.impl.view.predicate.ConsumerFilterPredicate;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ServerConsumer;
 import org.apache.activemq.artemis.core.server.ServerSession;
+import org.apache.activemq.artemis.json.JsonObjectBuilder;
 import org.apache.activemq.artemis.utils.JsonLoader;
 
 public class ConsumerView extends ActiveMQAbstractView<ServerConsumer> {
@@ -33,7 +32,7 @@ public class ConsumerView extends ActiveMQAbstractView<ServerConsumer> {
    public static final String CONSUMER_STATUS_ORPHANED = "Orphaned";
 
 
-   private static final String defaultSortColumn = ConsumerField.ID.getName();
+   private static final String defaultSortField = ConsumerField.ID.getName();
 
    private final ActiveMQServer server;
 
@@ -57,16 +56,10 @@ public class ConsumerView extends ActiveMQAbstractView<ServerConsumer> {
          return null;
       }
 
-      String consumerClientID = consumer.getConnectionClientID();
-      if (consumerClientID == null && session.getMetaData(ClientSession.JMS_SESSION_IDENTIFIER_PROPERTY) != null) {
-         //for the special case for JMS
-         consumerClientID = session.getMetaData(ClientSession.JMS_SESSION_CLIENT_ID_PROPERTY);
-      }
-
       JsonObjectBuilder obj = JsonLoader.createObjectBuilder()
          .add(ConsumerField.ID.getName(), toString(consumer.getSequentialID()))
          .add(ConsumerField.SESSION.getName(), toString(consumer.getSessionName()))
-         .add(ConsumerField.CLIENT_ID.getName(), toString(consumerClientID))
+         .add(ConsumerField.CLIENT_ID.getName(), toString(consumer.getConnectionClientID()))
          .add(ConsumerField.USER.getName(), toString(session.getUsername()))
          .add(ConsumerField.VALIDATED_USER.getName(), toString(session.getValidatedUser()))
          .add(ConsumerField.PROTOCOL.getName(), toString(consumer.getConnectionProtocolName()))
@@ -160,6 +153,6 @@ public class ConsumerView extends ActiveMQAbstractView<ServerConsumer> {
 
    @Override
    public String getDefaultOrderColumn() {
-      return defaultSortColumn;
+      return defaultSortField;
    }
 }

@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.security;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
@@ -39,22 +42,23 @@ import org.apache.activemq.artemis.core.server.ActiveMQServers;
 import org.apache.activemq.artemis.core.server.impl.AddressInfo;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.apache.activemq.artemis.spi.core.security.ActiveMQJAASSecurityManager;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameter;
+import org.apache.activemq.artemis.tests.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.activemq.artemis.tests.extensions.parameterized.Parameters;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
 import org.apache.qpid.jms.JmsConnectionFactory;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-@RunWith(Parameterized.class)
+@ExtendWith(ParameterizedTestExtension.class)
 public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
 
    private enum Protocol {
       CORE, AMQP, OPENWIRE
    }
 
-   @Parameterized.Parameters(name = "protocol={0}")
+   @Parameters(name = "protocol={0}")
    public static Collection<Object[]> parameters() {
       return Arrays.asList(new Object[][] {
          {Protocol.CORE},
@@ -63,7 +67,7 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
       });
    }
 
-   @Parameterized.Parameter(0)
+   @Parameter(index = 0)
    public Protocol protocol;
 
    static {
@@ -81,7 +85,7 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
    private final String URL = "tcp://127.0.0.1:61616";
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
       switch (protocol) {
@@ -97,35 +101,35 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
       }
    }
 
-   @Test
+   @TestTemplate
    public void testJAASSecurityManagerAuthentication() throws Exception {
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultInVMConfig().setSecurityEnabled(true).setResolveProtocols(true).addAcceptorConfiguration("netty", URL + "?securityDomain=PropertiesLogin"), ManagementFactory.getPlatformMBeanServer(), new ActiveMQJAASSecurityManager(), false));
       server.start();
       try (Connection c = cf.createConnection("first", "secret")) {
          Thread.sleep(200);
       } catch (JMSException e) {
-         Assert.fail("should not throw exception");
+         fail("should not throw exception");
       }
    }
 
-   @Test
+   @TestTemplate
    public void testJAASSecurityManagerAuthorizationNegative() throws Exception {
-      final SimpleString ADDRESS = new SimpleString("address");
+      final SimpleString ADDRESS = SimpleString.of("address");
 
       ActiveMQJAASSecurityManager securityManager = new ActiveMQJAASSecurityManager();
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultInVMConfig().setResolveProtocols(true).addAcceptorConfiguration("netty", "tcp://127.0.0.1:61616?securityDomain=PropertiesLogin").setSecurityEnabled(true), ManagementFactory.getPlatformMBeanServer(), securityManager, false));
       Set<Role> roles = new HashSet<>();
-      roles.add(new Role("programmers", false, false, false, false, false, false, false, false, false, false));
+      roles.add(new Role("programmers", false, false, false, false, false, false, false, false, false, false, false, false));
       server.getConfiguration().putSecurityRoles("#", roles);
 
       // ensure advisory permission is still set for openwire to allow connection to succeed, alternative is url param jms.watchTopicAdvisories=false on the client connection factory
       roles = new HashSet<>();
-      roles.add(new Role("programmers", false, true, false, false, true, true, false, false, true, false));
+      roles.add(new Role("programmers", false, true, false, false, true, true, false, false, true, false, false, false));
       server.getConfiguration().putSecurityRoles("ActiveMQ.Advisory.#", roles);
 
       server.start();
       server.addAddressInfo(new AddressInfo(ADDRESS, RoutingType.ANYCAST));
-      server.createQueue(new QueueConfiguration(ADDRESS).setAddress(ADDRESS).setRoutingType(RoutingType.ANYCAST));
+      server.createQueue(QueueConfiguration.of(ADDRESS).setAddress(ADDRESS).setRoutingType(RoutingType.ANYCAST));
 
       Connection c = cf.createConnection("first", "secret");
       Session s = c.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -134,7 +138,7 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
       try {
          MessageProducer producer = s.createProducer(s.createQueue(ADDRESS.toString()));
          producer.send(s.createMessage());
-         Assert.fail("should throw exception here");
+         fail("should throw exception here");
       } catch (JMSException e) {
          e.printStackTrace();
          assertTrue(e.getMessage().contains("User: first does not have permission='SEND' on address address"));
@@ -143,7 +147,7 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
       // CONSUME
       try {
          MessageConsumer consumer = s.createConsumer(s.createQueue(ADDRESS.toString()));
-         Assert.fail("should throw exception here");
+         fail("should throw exception here");
       } catch (JMSException e) {
          assertTrue(e.getMessage().contains("User: first does not have permission='CONSUME' for queue address on address address"));
       }
@@ -152,20 +156,20 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
       try {
          QueueBrowser browser = s.createBrowser(s.createQueue(ADDRESS.toString()));
          browser.getEnumeration();
-         Assert.fail("should throw exception here");
+         fail("should throw exception here");
       } catch (JMSException e) {
          assertTrue(e.getMessage().contains("User: first does not have permission='BROWSE' for queue address on address address"));
       }
       c.close();
    }
 
-   @Test
+   @TestTemplate
    public void testJAASSecurityManagerAuthorizationPositive() throws Exception {
       final String ADDRESS = "address";
 
       ActiveMQServer server = addServer(ActiveMQServers.newActiveMQServer(createDefaultInVMConfig().setSecurityEnabled(true).setResolveProtocols(true).addAcceptorConfiguration("netty", "tcp://127.0.0.1:61616?securityDomain=PropertiesLogin"), ManagementFactory.getPlatformMBeanServer(), new ActiveMQJAASSecurityManager(), false));
       Set<Role> roles = new HashSet<>();
-      roles.add(new Role("programmers", true, true, true, true, true, true, true, true, true, true));
+      roles.add(new Role("programmers", true, true, true, true, true, true, true, true, true, true, false, false));
       server.getConfiguration().putSecurityRoles("#", roles);
       server.start();
 
@@ -177,14 +181,14 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
          MessageProducer producer = s.createProducer(s.createQueue(ADDRESS));
          producer.send(s.createMessage());
       } catch (JMSException e) {
-         Assert.fail("should not throw exception here");
+         fail("should not throw exception here");
       }
 
       // CONSUME
       try {
          MessageConsumer consumer = s.createConsumer(s.createQueue(ADDRESS));
       } catch (JMSException e) {
-         Assert.fail("should not throw exception here");
+         fail("should not throw exception here");
       }
 
       // BROWSE
@@ -192,7 +196,7 @@ public class SecurityPerAcceptorJmsTest extends ActiveMQTestBase {
          QueueBrowser browser = s.createBrowser(s.createQueue(ADDRESS));
          browser.getEnumeration();
       } catch (JMSException e) {
-         Assert.fail("should not throw exception here");
+         fail("should not throw exception here");
       }
       c.close();
    }

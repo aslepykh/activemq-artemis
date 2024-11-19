@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.stress.paging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
@@ -34,9 +37,8 @@ import org.apache.activemq.artemis.api.core.RoutingType;
 import org.apache.activemq.artemis.core.server.impl.QueueImpl;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.ActiveMQTestBase;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
@@ -48,7 +50,7 @@ public class MultipleConsumersPageStressTest extends ActiveMQTestBase {
 
    private static final int TIME_TO_RUN = 60 * 1000;
 
-   private static final SimpleString ADDRESS = new SimpleString("page-adr");
+   private static final SimpleString ADDRESS = SimpleString.of("page-adr");
 
    private int numberOfProducers;
 
@@ -93,7 +95,7 @@ public class MultipleConsumersPageStressTest extends ActiveMQTestBase {
    }
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -102,7 +104,7 @@ public class MultipleConsumersPageStressTest extends ActiveMQTestBase {
       server = createServer(true, createDefaultInVMConfig(), 10024, 200024, settings);
       server.start();
 
-      pagedServerQueue = (QueueImpl) server.createQueue(new QueueConfiguration(ADDRESS).setRoutingType(RoutingType.ANYCAST));
+      pagedServerQueue = (QueueImpl) server.createQueue(QueueConfiguration.of(ADDRESS).setRoutingType(RoutingType.ANYCAST));
 
    }
 
@@ -319,14 +321,14 @@ public class MultipleConsumersPageStressTest extends ActiveMQTestBase {
                   if (msg == null) {
                      logger.warn("msg {} was null, currentBatchSize={}, current msg being read={}", count, numberOfMessages, i);
                   }
-                  Assert.assertNotNull("msg " + count +
+                  assertNotNull(msg, "msg " + count +
                                           " was null, currentBatchSize=" +
                                           numberOfMessages +
                                           ", current msg being read=" +
-                                          i, msg);
+                                          i);
 
                   if (numberOfConsumers == 1 && numberOfProducers == 1) {
-                     Assert.assertEquals(count, msg.getIntProperty("count").intValue());
+                     assertEquals(count, msg.getIntProperty("count").intValue());
                   }
 
                   count++;

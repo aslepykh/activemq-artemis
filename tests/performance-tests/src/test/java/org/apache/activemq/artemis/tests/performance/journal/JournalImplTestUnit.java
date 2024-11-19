@@ -16,32 +16,31 @@
  */
 package org.apache.activemq.artemis.tests.performance.journal;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 
 import org.apache.activemq.artemis.core.journal.Journal;
-import org.apache.activemq.artemis.core.journal.PreparedTransactionInfo;
-import org.apache.activemq.artemis.core.journal.RecordInfo;
 import org.apache.activemq.artemis.core.journal.impl.JournalImpl;
 import org.apache.activemq.artemis.nativo.jlibaio.LibaioContext;
 import org.apache.activemq.artemis.tests.unit.core.journal.impl.JournalImplTestBase;
 import org.apache.activemq.artemis.tests.unit.core.journal.impl.fakes.SimpleEncoding;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.invoke.MethodHandles;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public abstract class JournalImplTestUnit extends JournalImplTestBase {
 
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    @Override
-   @After
+   @AfterEach
    public void tearDown() throws Exception {
       super.tearDown();
 
-      Assert.assertEquals(0, LibaioContext.getTotalMaxIO());
+      assertEquals(0, LibaioContext.getTotalMaxIO());
    }
 
    @Test
@@ -162,9 +161,9 @@ public abstract class JournalImplTestUnit extends JournalImplTestBase {
       stopJournal();
       createJournal();
       startJournal();
-      journal.load(new ArrayList<RecordInfo>(), new ArrayList<PreparedTransactionInfo>(), null);
+      journal.load(new ArrayList<>(), new ArrayList<>(), null);
 
-      Assert.assertEquals(NUMBER_OF_RECORDS / 2, journal.getIDMapSize());
+      assertEquals(NUMBER_OF_RECORDS / 2, journal.getIDMapSize());
 
       stopJournal();
    }
@@ -186,7 +185,7 @@ public abstract class JournalImplTestUnit extends JournalImplTestBase {
 
       journal.start();
 
-      journal.load(new ArrayList<RecordInfo>(), null, null);
+      journal.load(new ArrayList<>(), null, null);
 
       try {
          final int numMessages = 50050;
@@ -241,7 +240,7 @@ public abstract class JournalImplTestUnit extends JournalImplTestBase {
 
       journal.start();
 
-      journal.load(new ArrayList<RecordInfo>(), null, null);
+      journal.load(new ArrayList<>(), null, null);
 
       JournalImplTestUnit.logger.debug("Adding data");
       SimpleEncoding data = new SimpleEncoding(700, (byte) 'j');
@@ -263,7 +262,7 @@ public abstract class JournalImplTestUnit extends JournalImplTestBase {
       journal = new JournalImpl(10 * 1024 * 1024, numFiles, numFiles, 0, 0, getFileFactory(), "activemq-data", "amq", 5000);
 
       journal.start();
-      journal.load(new ArrayList<RecordInfo>(), null, null);
+      journal.load(new ArrayList<>(), null, null);
       journal.stop();
 
    }

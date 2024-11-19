@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.amqp;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -29,8 +32,7 @@ import org.apache.activemq.transport.amqp.client.AmqpConnection;
 import org.apache.activemq.transport.amqp.client.AmqpMessage;
 import org.apache.activemq.transport.amqp.client.AmqpSender;
 import org.apache.activemq.transport.amqp.client.AmqpSession;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class GlobalDiskFullTest extends AmqpClientTestSupport {
 
@@ -48,7 +50,7 @@ public class GlobalDiskFullTest extends AmqpClientTestSupport {
          latch.countDown();
       });
 
-      Assert.assertTrue(latch.await(1, TimeUnit.MINUTES));
+      assertTrue(latch.await(1, TimeUnit.MINUTES));
 
       AmqpClient client = createAmqpClient(new URI("tcp://localhost:" + AMQP_PORT));
       AmqpConnection connection = addConnection(client.connect());
@@ -64,57 +66,51 @@ public class GlobalDiskFullTest extends AmqpClientTestSupport {
          CountDownLatch sentWithName = new CountDownLatch(1);
          CountDownLatch sentAnon = new CountDownLatch(1);
 
-         Thread threadWithName = new Thread() {
-            @Override
-            public void run() {
+         Thread threadWithName = new Thread(() -> {
 
-               try {
-                  final AmqpMessage message = new AmqpMessage();
-                  message.setBytes(payload);
-                  sender.setSendTimeout(-1);
-                  sender.send(message);
-               } catch (Exception e) {
-                  e.printStackTrace();
-               } finally {
-                  sentWithName.countDown();
-               }
+            try {
+               final AmqpMessage message = new AmqpMessage();
+               message.setBytes(payload);
+               sender.setSendTimeout(-1);
+               sender.send(message);
+            } catch (Exception e) {
+               e.printStackTrace();
+            } finally {
+               sentWithName.countDown();
             }
-         };
+         });
 
          threadWithName.start();
 
 
-         Thread threadWithAnon = new Thread() {
-            @Override
-            public void run() {
-               try {
-                  final AmqpMessage message = new AmqpMessage();
-                  message.setBytes(payload);
-                  anonSender.setSendTimeout(-1);
-                  message.setAddress(getQueueName());
-                  anonSender.send(message);
-               } catch (Exception e) {
-                  e.printStackTrace();
-               } finally {
-                  sentAnon.countDown();
-               }
+         Thread threadWithAnon = new Thread(() -> {
+            try {
+               final AmqpMessage message = new AmqpMessage();
+               message.setBytes(payload);
+               anonSender.setSendTimeout(-1);
+               message.setAddress(getQueueName());
+               anonSender.send(message);
+            } catch (Exception e) {
+               e.printStackTrace();
+            } finally {
+               sentAnon.countDown();
             }
-         };
+         });
 
          threadWithAnon.start();
 
-         Assert.assertFalse("Thread sender should be blocked", sentWithName.await(500, TimeUnit.MILLISECONDS));
-         Assert.assertFalse("Thread sender anonymous should be blocked", sentAnon.await(500, TimeUnit.MILLISECONDS));
+         assertFalse(sentWithName.await(500, TimeUnit.MILLISECONDS), "Thread sender should be blocked");
+         assertFalse(sentAnon.await(500, TimeUnit.MILLISECONDS), "Thread sender anonymous should be blocked");
 
          monitor.setMaxUsage(100.0);
 
-         Assert.assertTrue("Thread sender should be released", sentWithName.await(30, TimeUnit.SECONDS));
-         Assert.assertTrue("Thread sender anonymous should be released", sentAnon.await(30, TimeUnit.SECONDS));
+         assertTrue(sentWithName.await(30, TimeUnit.SECONDS), "Thread sender should be released");
+         assertTrue(sentAnon.await(30, TimeUnit.SECONDS), "Thread sender anonymous should be released");
 
          threadWithName.join(TimeUnit.SECONDS.toMillis(30));
          threadWithAnon.join(TimeUnit.SECONDS.toMillis(30));
-         Assert.assertFalse(threadWithName.isAlive());
-         Assert.assertFalse(threadWithAnon.isAlive());
+         assertFalse(threadWithName.isAlive());
+         assertFalse(threadWithAnon.isAlive());
       } finally {
          connection.close();
       }

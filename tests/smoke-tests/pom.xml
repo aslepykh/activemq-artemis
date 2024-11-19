@@ -19,7 +19,7 @@
    <parent>
       <groupId>org.apache.activemq.tests</groupId>
       <artifactId>artemis-tests-pom</artifactId>
-      <version>2.33.0-SNAPSHOT</version>
+      <version>2.39.0-SNAPSHOT</version>
    </parent>
 
    <artifactId>smoke-tests</artifactId>
@@ -82,8 +82,13 @@
          <scope>test</scope>
       </dependency>
       <dependency>
-         <groupId>junit</groupId>
-         <artifactId>junit</artifactId>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-api</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-engine</artifactId>
          <scope>test</scope>
       </dependency>
       <dependency>
@@ -273,6 +278,8 @@
                      </resources>
                   </configuration>
                </execution>
+               <!-- This creates a copy of various config files (filtered, as above in resources config) to
+                    be used in CompareUpgradeTest to verify CLI upgrade behaviour for backups made -->
                <execution>
                   <id>copy-reference-for-upgrade-backup-checks</id>
                   <phase>process-test-resources</phase>
@@ -290,16 +297,6 @@
                   </configuration>
                </execution>
             </executions>
-         </plugin>
-         <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <configuration>
-               <compilerArgs>
-                  <arg>--add-exports=java.rmi/sun.rmi.server=ALL-UNNAMED</arg>
-                  <arg>--add-exports=java.rmi/sun.rmi.transport=ALL-UNNAMED</arg>
-               </compilerArgs>
-            </configuration>
          </plugin>
          <plugin>
             <groupId>org.apache.activemq</groupId>
@@ -365,8 +362,11 @@
                      <goal>create</goal>
                   </goals>
                   <configuration>
+                     <!-- A test, CompareUpgradeTest#testCompareWindowsFreshInstance, removes the "Expected"
+                          suffixes included here, during comparison to the instance upgraded above -->
                      <allowAnonymous>true</allowAnonymous>
                      <instance>${basedir}/target/classes/servers/windowsUpgradeExpected</instance>
+                     <dataFolder>data-customExpected</dataFolder>
                      <noWeb>false</noWeb>
                      <role>amq</role>
                      <user>y</user>
@@ -387,8 +387,11 @@
                      <goal>create</goal>
                   </goals>
                   <configuration>
+                     <!-- A test, CompareUpgradeTest#testCompareLinuxFreshInstance, removes the "Expected"
+                          suffixes included here, during comparison to the instance upgraded above -->
                      <allowAnonymous>true</allowAnonymous>
                      <instance>${basedir}/target/classes/servers/linuxUpgradeExpected</instance>
+                     <dataFolder>data-customExpected</dataFolder>
                      <noWeb>false</noWeb>
                      <role>amq</role>
                      <user>y</user>

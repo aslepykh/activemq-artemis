@@ -59,7 +59,7 @@ public class MessagePropertyTest extends PTPTestCase {
    public void testSetObjectProperty_1() {
       try {
          Message message = senderSession.createMessage();
-         message.setObjectProperty("pi", Float.valueOf(3.14159f));
+         message.setObjectProperty("pi", 3.14159f);
          Assert.assertEquals(3.14159f, message.getFloatProperty("pi"), 0);
       } catch (JMSException e) {
          fail(e);
@@ -198,7 +198,7 @@ public class MessagePropertyTest extends PTPTestCase {
    public void testGetBooleanProperty() {
       try {
          Message message = senderSession.createMessage();
-         Assert.assertEquals(false, message.getBooleanProperty("prop"));
+         Assert.assertFalse(message.getBooleanProperty("prop"));
       } catch (JMSException e) {
          fail(e);
       }

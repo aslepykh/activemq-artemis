@@ -17,6 +17,11 @@
 
 package org.apache.activemq.artemis.tests.soak.retention;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.Message;
@@ -28,6 +33,7 @@ import javax.jms.TextMessage;
 import java.io.File;
 import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,14 +44,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration;
 import org.apache.activemq.artemis.api.core.management.ActiveMQServerControl;
 import org.apache.activemq.artemis.api.core.management.ObjectNameBuilder;
+import org.apache.activemq.artemis.api.core.management.SimpleManagement;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
 import org.apache.activemq.artemis.tests.soak.SoakTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.utils.RandomUtil;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.utils.Wait;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,13 +70,13 @@ public class LargeMessageRetentionTest extends SoakTestBase {
 
    public static final String SERVER_NAME_0 = "replay/large-message";
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
       {
          File serverLocation = getFileServerLocation(SERVER_NAME_0);
          deleteDirectory(serverLocation);
 
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setRole("amq").setUser("artemis").setPassword("artemis").setAllowAnonymous(true).setNoWeb(false);
          cliCreateServer.setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(serverLocation);
          cliCreateServer.setConfiguration("./src/main/resources/servers/replay/large-message");
@@ -78,7 +85,7 @@ public class LargeMessageRetentionTest extends SoakTestBase {
       }
    }
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       cleanupData(SERVER_NAME_0);
       startServer(SERVER_NAME_0, 0, 30000);
@@ -113,7 +120,7 @@ public class LargeMessageRetentionTest extends SoakTestBase {
    }
 
    private void testRetention(String protocol, int NUMBER_OF_MESSAGES, int backlog, int bodySize, int producers) throws Throwable {
-      Assert.assertTrue(NUMBER_OF_MESSAGES % producers == 0); // checking that it is a multiple
+      assertTrue(NUMBER_OF_MESSAGES % producers == 0); // checking that it is a multiple
 
       ActiveMQServerControl serverControl = getServerControl(liveURI, nameBuilder, 5000);
 
@@ -146,18 +153,18 @@ public class LargeMessageRetentionTest extends SoakTestBase {
             MessageConsumer consumer = consumerSession.createConsumer(queue);
             for (int i = 0; i < NUMBER_OF_MESSAGES; i++) {
                logger.debug("Acquiring semop at {}", i);
-               Assert.assertTrue(consumerCredits.tryAcquire(1, TimeUnit.MINUTES));
+               assertTrue(consumerCredits.tryAcquire(1, TimeUnit.MINUTES));
                TextMessage message = (TextMessage) consumer.receive(60_000);
-               Assert.assertNotNull(message);
+               assertNotNull(message);
                int producerI = message.getIntProperty("producerI");
                AtomicInteger messageSequence = messageSequences.get(producerI);
                if (messageSequence == null) {
                   messageSequence = new AtomicInteger(0);
                   messageSequences.put(producerI, messageSequence);
                }
-               Assert.assertEquals(messageSequence.getAndIncrement(), message.getIntProperty("messageI"));
+               assertEquals(messageSequence.getAndIncrement(), message.getIntProperty("messageI"));
                logger.info("Received message {}", i);
-               Assert.assertEquals(bufferStr, message.getText());
+               assertEquals(bufferStr, message.getText());
             }
          } catch (Throwable e) {
             logger.warn(e.getMessage(), e);
@@ -193,10 +200,10 @@ public class LargeMessageRetentionTest extends SoakTestBase {
 
       }
 
-      Assert.assertTrue(latchSender.await(10, TimeUnit.MINUTES));
+      assertTrue(latchSender.await(10, TimeUnit.MINUTES));
       consumerCredits.release(backlog);
-      Assert.assertTrue(latchReceiver.await(10, TimeUnit.MINUTES));
-      Assert.assertEquals(0, errors.get());
+      assertTrue(latchReceiver.await(10, TimeUnit.MINUTES));
+      assertEquals(0, errors.get());
 
       try (Connection consumerConnection = factory.createConnection()) {
          HashMap<Integer, AtomicInteger> messageSequences = new HashMap<>();
@@ -204,19 +211,29 @@ public class LargeMessageRetentionTest extends SoakTestBase {
          Queue queue = consumerSession.createQueue(queueName);
          consumerConnection.start();
          MessageConsumer consumer = consumerSession.createConsumer(queue);
-         Assert.assertNull(consumer.receiveNoWait());
+         assertNull(consumer.receiveNoWait());
 
          serverControl.replay(queueName, queueName, "producerI=0 AND messageI>=0 AND messageI<10");
+         SimpleManagement simpleManagement = new SimpleManagement("tcp://localhost:61616", null, null);
+         Wait.assertEquals(10, () -> simpleManagement.getMessageCountOnQueue(queueName), 5000);
+
+         HashSet<Integer> receivedMessages = new HashSet<>();
 
          for (int i = 0; i < 10; i++) {
             TextMessage message = (TextMessage) consumer.receive(300_000);
-            Assert.assertNotNull(message);
+            assertNotNull(message);
             logger.info("Received replay message {}", i);
-            Assert.assertEquals(0, message.getIntProperty("producerI"));
-            Assert.assertEquals(i, message.getIntProperty("messageI"));
-            Assert.assertEquals(bufferStr, message.getText());
+            assertEquals(0, message.getIntProperty("producerI"));
+            receivedMessages.add(message.getIntProperty("messageI"));
+            assertEquals(bufferStr, message.getText());
          }
-         Assert.assertNull(consumer.receiveNoWait());
+         assertNull(consumer.receiveNoWait());
+
+         assertEquals(10, receivedMessages.size());
+         for (int i = 0; i < 10; i++) {
+            assertTrue(receivedMessages.contains(i));
+         }
+
       }
    }
 

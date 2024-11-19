@@ -28,6 +28,7 @@ import org.apache.activemq.artemis.api.core.ActiveMQExceptionType;
 import org.apache.activemq.artemis.api.core.ActiveMQIllegalStateException;
 import org.apache.activemq.artemis.api.core.ActiveMQTransactionTimeoutException;
 import org.apache.activemq.artemis.core.io.IOCallback;
+import org.apache.activemq.artemis.core.io.OperationConsistencyLevel;
 import org.apache.activemq.artemis.core.persistence.StorageManager;
 import org.apache.activemq.artemis.core.server.ActiveMQServerLogger;
 import org.apache.activemq.artemis.core.server.Queue;
@@ -228,7 +229,7 @@ public class TransactionImpl implements Transaction {
 
                @Override
                public void onError(final int errorCode, final String errorMessage) {
-                  ActiveMQServerLogger.LOGGER.ioErrorOnTX(errorCode, errorMessage);
+                  ActiveMQServerLogger.LOGGER.ioErrorOnTX("prepare", errorCode, errorMessage);
                }
 
                @Override
@@ -255,6 +256,10 @@ public class TransactionImpl implements Transaction {
          afterWired.run();
          afterWired = null;
       }
+   }
+
+   protected OperationConsistencyLevel getRequiredConsistency() {
+      return OperationConsistencyLevel.FULL;
    }
 
    @Override
@@ -306,14 +311,14 @@ public class TransactionImpl implements Transaction {
 
             @Override
             public void onError(final int errorCode, final String errorMessage) {
-               ActiveMQServerLogger.LOGGER.ioErrorOnTX(errorCode, errorMessage);
+               ActiveMQServerLogger.LOGGER.ioErrorOnTX("commit - afterComplete", errorCode, errorMessage);
             }
 
             @Override
             public void done() {
                afterCommit(operationsToComplete);
             }
-         });
+         }, getRequiredConsistency());
 
          final List<TransactionOperation> storeOperationsToComplete = this.storeOperations;
          this.storeOperations = null;
@@ -323,7 +328,7 @@ public class TransactionImpl implements Transaction {
 
                @Override
                public void onError(final int errorCode, final String errorMessage) {
-                  ActiveMQServerLogger.LOGGER.ioErrorOnTX(errorCode, errorMessage);
+                  ActiveMQServerLogger.LOGGER.ioErrorOnTX("commit - afterStore", errorCode, errorMessage);
                }
 
                @Override
@@ -428,7 +433,7 @@ public class TransactionImpl implements Transaction {
 
          @Override
          public void onError(final int errorCode, final String errorMessage) {
-            ActiveMQServerLogger.LOGGER.ioErrorOnTX(errorCode, errorMessage);
+            ActiveMQServerLogger.LOGGER.ioErrorOnTX("rollback - afterComplete", errorCode, errorMessage);
          }
 
          @Override
@@ -442,7 +447,7 @@ public class TransactionImpl implements Transaction {
 
             @Override
             public void onError(final int errorCode, final String errorMessage) {
-               ActiveMQServerLogger.LOGGER.ioErrorOnTX(errorCode, errorMessage);
+               ActiveMQServerLogger.LOGGER.ioErrorOnTX("rollback - afterStore", errorCode, errorMessage);
             }
 
             @Override

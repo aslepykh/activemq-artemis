@@ -16,15 +16,18 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.distribution;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import java.util.List;
 
-import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.RoutingType;
+import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.cluster.impl.MessageLoadBalancingType;
 import org.apache.activemq.artemis.core.server.group.impl.GroupingHandlerConfiguration;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class AnycastRoutingWithClusterTest extends ClusterTestBase {
 
@@ -70,13 +73,8 @@ public class AnycastRoutingWithClusterTest extends ClusterTestBase {
       send(0, address, noMessages, true, null, null);
 
       for (int s = 0; s < 3; s++) {
-         final Queue queue = servers[s].locateQueue(new SimpleString(queueName));
-         Wait.waitFor(new Wait.Condition() {
-            @Override
-            public boolean isSatisfied() throws Exception {
-               return queue.getMessageCount() == noMessages / 3;
-            }
-         });
+         final Queue queue = servers[s].locateQueue(SimpleString.of(queueName));
+         Wait.waitFor(() -> queue.getMessageCount() == noMessages / 3);
       }
 
       // Each consumer should receive noMessages / noServers
@@ -131,13 +129,8 @@ public class AnycastRoutingWithClusterTest extends ClusterTestBase {
       send(0, address, noMessages, true, null, null);
 
       for (int s = 0; s < 3; s++) {
-         final Queue queue = servers[s].locateQueue(new SimpleString(queueNamePrefix + s));
-         Wait.waitFor(new Wait.Condition() {
-            @Override
-            public boolean isSatisfied() throws Exception {
-               return queue.getMessageCount() == noMessages / 3;
-            }
-         });
+         final Queue queue = servers[s].locateQueue(SimpleString.of(queueNamePrefix + s));
+         Wait.waitFor(() -> queue.getMessageCount() == noMessages / 3);
       }
 
       // Each consumer should receive noMessages / noServers
@@ -253,13 +246,8 @@ public class AnycastRoutingWithClusterTest extends ClusterTestBase {
       send(0, address, noMessages, true, null, null);
 
       for (int s = 0; s < 3; s++) {
-         final Queue queue = servers[s].locateQueue(new SimpleString(queueNamePrefix + s));
-         Wait.waitFor(new Wait.Condition() {
-            @Override
-            public boolean isSatisfied() throws Exception {
-               return queue.getMessageCount() == noMessages;
-            }
-         });
+         final Queue queue = servers[s].locateQueue(SimpleString.of(queueNamePrefix + s));
+         Wait.waitFor(() -> queue.getMessageCount() == noMessages);
       }
 
       // Each consumer should receive noMessages

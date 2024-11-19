@@ -75,6 +75,7 @@ var Artemis;
            columns: [
                 {name: "ID", visible: true},
                 {name: "Name", visible: true},
+                {name: "Internal", visible: false},
                 {name: "Routing Types", visible: true},
                 {name: "Queue Count", visible: true}
            ]
@@ -103,11 +104,13 @@ var Artemis;
             fieldOptions: [
                 {id: 'id', name: 'ID'},
                 {id: 'name', name: 'Name'},
+                {id: 'internal', name: 'Internal'},
                 {id: 'routingTypes', name: 'Routing Types'},
                 {id: 'queueCount', name: 'Queue Count'}
             ],
             operationOptions: [
                 {id: 'EQUALS', name: 'Equals'},
+                {id: 'NOT_EQUALS', name: 'Not Equals'},
                 {id: 'CONTAINS', name: 'Contains'},
                 {id: 'NOT_CONTAINS', name: 'Does Not Contain'},
                 {id: 'GREATER_THAN', name: 'Greater Than'},
@@ -122,7 +125,7 @@ var Artemis;
                 operation: "",
                 value: "",
                 sortOrder: "asc",
-                sortColumn: "id"
+                sortField: "id"
             },
             text: {
                 fieldText: "Filter Field..",
@@ -151,6 +154,7 @@ var Artemis;
         ctrl.tableColumns = [
             { header: 'ID', itemField: 'id' },
             { header: 'Name', itemField: 'name' },
+            { header: 'Internal', itemField: 'internal' },
             { header: 'Routing Types', itemField: 'routingTypes' },
             { header: 'Queue Count', itemField: 'queueCount' , htmlTemplate: 'addresses-anchor-column-template', colActionFn: (item) => selectQueues(item.idx) }
         ];
@@ -164,7 +168,7 @@ var Artemis;
             ctrl.filter.values.operation = "";
             ctrl.filter.values.value = "";
             ctrl.filter.sortOrder = "asc";
-            ctrl.filter.sortColumn = "id";
+            ctrl.filter.sortField = "id";
             ctrl.refreshed = true;
             artemisAddress.address = null;
             ctrl.pagination.load();
@@ -217,7 +221,7 @@ var Artemis;
                     operation: ctrl.filter.values.operation,
                     value: ctrl.filter.values.value,
                     sortOrder: ctrl.filter.values.sortOrder,
-                    sortColumn: ctrl.filter.values.sortColumn
+                    sortField: ctrl.filter.values.sortField
                 };
 
                 if (ctrl.refreshed == true) {

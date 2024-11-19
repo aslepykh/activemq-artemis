@@ -23,7 +23,9 @@ import org.apache.activemq.artemis.api.core.ActiveMQNonExistentQueueException;
 import org.apache.activemq.artemis.api.core.Message;
 import org.apache.activemq.artemis.api.core.QueueConfiguration;
 import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.io.IOCallback;
+import org.apache.activemq.artemis.core.io.OperationConsistencyLevel;
 import org.apache.activemq.artemis.core.persistence.OperationContext;
 import org.apache.activemq.artemis.core.persistence.impl.journal.OperationContextImpl;
 import org.apache.activemq.artemis.core.postoffice.Binding;
@@ -45,6 +47,8 @@ import org.apache.activemq.artemis.protocol.amqp.broker.AMQPMessage;
 import org.apache.activemq.artemis.protocol.amqp.broker.AMQPMessageBrokerAccessor;
 import org.apache.activemq.artemis.protocol.amqp.broker.AMQPSessionCallback;
 import org.apache.activemq.artemis.protocol.amqp.broker.ProtonProtocolManager;
+import org.apache.activemq.artemis.protocol.amqp.exceptions.ActiveMQAMQPException;
+import org.apache.activemq.artemis.protocol.amqp.logger.ActiveMQAMQPProtocolLogger;
 import org.apache.activemq.artemis.protocol.amqp.proton.AMQPConnectionContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.AMQPSessionContext;
 import org.apache.activemq.artemis.protocol.amqp.proton.AMQPTunneledCoreLargeMessageReader;
@@ -62,6 +66,8 @@ import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.apache.activemq.artemis.protocol.amqp.connect.mirror.AMQPMirrorControllerSource.ADDRESS;
 import static org.apache.activemq.artemis.protocol.amqp.connect.mirror.AMQPMirrorControllerSource.ADD_ADDRESS;
@@ -161,6 +167,8 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
 
    final ActiveMQServer server;
 
+   final Configuration configuration;
+
    DuplicateIDCache lruduplicateIDCache;
    String lruDuplicateIDKey;
 
@@ -174,6 +182,60 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
 
    private AckManager ackManager;
 
+   @Override
+   public void close(boolean remoteLinkClose) throws ActiveMQAMQPException {
+      super.close(remoteLinkClose);
+      AckManager localAckManager = ackManager;
+      if (localAckManager != null) {
+         localAckManager.unregisterMirror(this);
+      }
+   }
+
+   /** This method will wait both replication and storage to finish their current operations. */
+   public void flush() {
+      CountDownLatch latch = new CountDownLatch(1);
+      connection.runNow(() -> {
+         OperationContext oldContext = OperationContextImpl.getContext();
+         try {
+            OperationContextImpl.setContext(mirrorContext);
+            mirrorContext.executeOnCompletion(new IOCallback() {
+               @Override
+               public void done() {
+                  latch.countDown();
+               }
+
+               @Override
+               public void onError(int errorCode, String errorMessage) {
+                  // we are not doing any IO here, this is extremely unlikely to happen:
+                  logger.warn("IO Error code on flushing OperationContext for AMQPMirrorControllerTarget . error code = {} / message = {}", errorCode, errorMessage);
+                  latch.countDown();
+               }
+            });
+         } finally {
+            OperationContextImpl.setContext(oldContext);
+         }
+      });
+
+      long timeout;
+      try {
+         timeout = connection.getProtocolManager().getAckManagerFlushTimeout();
+      } catch (Throwable e) {
+         // This is redundant code that should not occur
+         // Only real possibility for this would be a Mocking test, or some embedded usage
+         logger.warn("Could not access the connection and protocol manager, using a default timeout of 10 seconds for AckManagerFlushTimeout", e);
+         timeout = 10_000;
+      }
+
+      try {
+         if (!latch.await(timeout, TimeUnit.MILLISECONDS)) {
+            ActiveMQAMQPProtocolLogger.LOGGER.timedOutAckManager(timeout);
+         }
+      } catch (InterruptedException e) {
+         ActiveMQAMQPProtocolLogger.LOGGER.interruptedAckManager(e);
+         Thread.currentThread().interrupt();
+      }
+   }
+
    public AMQPMirrorControllerTarget(AMQPSessionCallback sessionSPI,
                                      AMQPConnectionContext connection,
                                      AMQPSessionContext protonSession,
@@ -183,6 +245,7 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
       this.basicController = new BasicMirrorController(server);
       this.basicController.setLink(receiver);
       this.server = server;
+      this.configuration = server.getConfiguration();
       this.referenceNodeStore = sessionSPI.getProtocolManager().getReferenceIDSupplier();
       mirrorContext = protonSession.getSessionSPI().getSessionContext();
    }
@@ -199,10 +262,10 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
 
    @Override
    protected void actualDelivery(Message message, Delivery delivery, DeliveryAnnotations deliveryAnnotations, Receiver receiver, Transaction tx) {
-      recoverContext();
+      OperationContext oldContext = recoverContext();
       incrementSettle();
 
-      logger.trace("{}::actualdelivery call for {}", server, message);
+      logger.trace("{}::actualDelivery call for {}", server, message);
       setControllerInUse(this);
 
       delivery.setContext(message);
@@ -237,7 +300,7 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
                   String address = (String) AMQPMessageBrokerAccessor.getMessageAnnotationProperty(amqpMessage, ADDRESS);
                   String queueName = (String) AMQPMessageBrokerAccessor.getMessageAnnotationProperty(amqpMessage, QUEUE);
 
-                  deleteQueue(SimpleString.toSimpleString(address), SimpleString.toSimpleString(queueName));
+                  deleteQueue(SimpleString.of(address), SimpleString.of(queueName));
                } else if (eventType.equals(POST_ACK)) {
                   String nodeID = (String) AMQPMessageBrokerAccessor.getMessageAnnotationProperty(amqpMessage, BROKER_ID);
 
@@ -275,8 +338,10 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
       } finally {
          setControllerInUse(null);
          if (messageAckOperation != null) {
-            server.getStorageManager().afterCompleteOperations(messageAckOperation);
+            server.getStorageManager().afterCompleteOperations(messageAckOperation, OperationConsistencyLevel.FULL);
          }
+
+         OperationContextImpl.setContext(oldContext);
       }
    }
 
@@ -389,8 +454,8 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
       }
 
       if (logger.isTraceEnabled()) {
-         logger.trace("Server {} with queue = {} being acked for {} coming from {} targetQueue = {}",
-                      server.getIdentity(), queue, messageID, messageID, targetQueue);
+         logger.trace("Server {} with queue = {} being acked for {} from {} targetQueue = {} reason = {}",
+                      server.getIdentity(), queue, messageID, ackMessage, targetQueue, reason);
       }
 
       performAck(nodeID, targetQueue, messageID, ackMessage, reason);
@@ -407,12 +472,13 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
       }
 
       if (ackManager == null) {
-         ackManager = AckManagerProvider.getManager(server, true);
+         ackManager = AckManagerProvider.getManager(server);
+         ackManager.registerMirror(this);
       }
 
       ackManager.ack(nodeID, targetQueue, messageID, reason, true);
 
-      OperationContextImpl.getContext().executeOnCompletion(ackMessageOperation);
+      OperationContextImpl.getContext().executeOnCompletion(ackMessageOperation, OperationConsistencyLevel.FULL);
    }
 
    /**
@@ -454,7 +520,7 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
          logger.trace("Setting up duplicate detection cache on {}, ServerID={} with {} elements, being the number of credits", ProtonProtocolManager.MIRROR_ADDRESS, internalMirrorID, connection.getAmqpCredits());
 
          lruDuplicateIDKey = internalMirrorID;
-         lruduplicateIDCache = server.getPostOffice().getDuplicateIDCache(SimpleString.toSimpleString(ProtonProtocolManager.MIRROR_ADDRESS + "_" + internalMirrorID), connection.getAmqpCredits());
+         lruduplicateIDCache = server.getPostOffice().getDuplicateIDCache(SimpleString.of(ProtonProtocolManager.MIRROR_ADDRESS + "_" + internalMirrorID), connection.getAmqpCredits());
          duplicateIDCache = lruduplicateIDCache;
       }
 
@@ -473,12 +539,15 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
          message.setAddress(internalAddress);
       }
 
-      final TransactionImpl transaction = new MirrorTransaction(server.getStorageManager()).setAsync(true);
-      transaction.addOperation(messageCompletionAck.tx);
+      // notice that MirrorTransaction is overriding getRequiredConsistency that is being set to ignore Replication.
+      // that means in case the target server is using replication, we will not wait for a roundtrip before the message is sent
+      // however we will wait the roundtrip before acking the message
+      // This is to alleviate a situation where messages would take too long to be delivered and be ready for ack
+      final TransactionImpl transaction = new MirrorTransaction(server.getStorageManager()).setAllowPageTransaction(configuration.isMirrorPageTransaction()).setAsync(true);
       routingContext.setTransaction(transaction);
       duplicateIDCache.addToCache(duplicateIDBytes, transaction);
 
-      routingContext.clear().setMirrorSource(this).setLoadBalancingType(MessageLoadBalancingType.LOCAL_ONLY);
+      routingContext.clear().setMirrorSource(this).setLoadBalancingType(MessageLoadBalancingType.LOCAL_ONLY).disableDivert();
       if (targetQueues != null) {
          targetQueuesRouting(message, routingContext, targetQueues);
          server.getPostOffice().processRoute(message, routingContext, false);
@@ -487,6 +556,7 @@ public class AMQPMirrorControllerTarget extends ProtonAbstractReceiver implement
       }
       // We use this as part of a transaction because of the duplicate detection cache that needs to be done atomically
       transaction.commit();
+      server.getStorageManager().afterCompleteOperations(messageCompletionAck, OperationConsistencyLevel.FULL);
       flow();
 
       // return true here will instruct the caller to ignore any references to messageCompletionAck

@@ -229,12 +229,7 @@ public class PrintData extends DBOption {
       ActiveMQThreadFactory daemonFactory = new ActiveMQThreadFactory("cli", true, PrintData.class.getClassLoader());
       final ScheduledExecutorService scheduled = Executors.newScheduledThreadPool(1, daemonFactory);
       final ExecutorService executor = Executors.newFixedThreadPool(10, daemonFactory);
-      ExecutorFactory execfactory = new ExecutorFactory() {
-         @Override
-         public ArtemisExecutor getExecutor() {
-            return ArtemisExecutor.delegate(executor);
-         }
-      };
+      ExecutorFactory execfactory = () -> ArtemisExecutor.delegate(executor);
       try {
 
          final StorageManager sm = new NullStorageManager();
@@ -331,7 +326,7 @@ public class PrintData extends DBOption {
                            out.print(" (ACK)");
                         }
 
-                        if (cursorACKs.getCompletePages(q[i]).contains(Long.valueOf(pgid))) {
+                        if (cursorACKs.getCompletePages(q[i]).contains(pgid)) {
                            acked = true;
                            out.print(" (PG-COMPLETE)");
                         }
@@ -398,8 +393,8 @@ public class PrintData extends DBOption {
             CursorAckRecordEncoding encoding = new CursorAckRecordEncoding();
             encoding.decode(buff);
 
-            Long queueID = Long.valueOf(encoding.queueID);
-            Long pageNR = Long.valueOf(encoding.position.getPageNr());
+            Long queueID = encoding.queueID;
+            Long pageNR = encoding.position.getPageNr();
 
             if (!cursorInfo.getCompletePages(queueID).add(pageNR)) {
                System.err.println("Page " + pageNR + " has been already set as complete on queue " + queueID);

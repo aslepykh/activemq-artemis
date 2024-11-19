@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.distribution;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.client.ClientMessage;
 import org.apache.activemq.artemis.api.core.client.ClientProducer;
@@ -26,12 +29,12 @@ import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.server.cluster.impl.MessageLoadBalancingType;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
-
 import java.util.Map;
 
 public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
@@ -39,7 +42,7 @@ public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
    private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    @Override
-   @Before
+   @BeforeEach
    public void setUp() throws Exception {
       super.setUp();
 
@@ -70,7 +73,8 @@ public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
     * messages will be depaged and consumed. No stuck
     * messages after restarting.
     */
-   @Test(timeout = 60000)
+   @Test
+   @Timeout(60)
    public void testClusterRestartWithConfigChanged() throws Exception {
       Configuration config0 = servers[0].getConfiguration();
       Configuration config1 = servers[1].getConfiguration();
@@ -114,7 +118,7 @@ public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
          Thread.sleep(100);
       }
 
-      Queue queue0 = servers[0].locateQueue(new SimpleString("queue0"));
+      Queue queue0 = servers[0].locateQueue(SimpleString.of("queue0"));
       assertTrue(queue0.getPageSubscription().isPaging());
 
       closeAllSessionFactories();
@@ -141,7 +145,7 @@ public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
 
       for (int i = 0; i < numSent; i++) {
          ClientMessage m = consumers[0].consumer.receive(5000);
-         assertNotNull("failed to receive message " + i, m);
+         assertNotNull(m, "failed to receive message " + i);
       }
    }
 
@@ -159,8 +163,8 @@ public class TwoWayTwoNodeClusterTest extends ClusterTestBase {
             addrSettings = new AddressSettings();
             addressSettingsMap0.put("#", addrSettings);
          }
-         addrSettings.setDeadLetterAddress(new SimpleString("jms.queue.DLQ"));
-         addrSettings.setExpiryAddress(new SimpleString("jms.queue.ExpiryQueue"));
+         addrSettings.setDeadLetterAddress(SimpleString.of("jms.queue.DLQ"));
+         addrSettings.setExpiryAddress(SimpleString.of("jms.queue.ExpiryQueue"));
          addrSettings.setRedeliveryDelay(30);
          addrSettings.setMaxDeliveryAttempts(5);
          addrSettings.setMaxSizeBytes(1048576);

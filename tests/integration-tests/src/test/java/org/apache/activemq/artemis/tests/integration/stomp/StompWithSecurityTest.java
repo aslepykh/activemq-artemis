@@ -22,10 +22,17 @@ import javax.jms.TextMessage;
 import org.apache.activemq.artemis.tests.integration.stomp.util.ClientStompFrame;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnection;
 import org.apache.activemq.artemis.tests.integration.stomp.util.StompClientConnectionFactory;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StompWithSecurityTest extends StompTestBase {
+
+   public StompWithSecurityTest() {
+      super("tcp+v10.stomp");
+   }
 
    @Override
    public boolean isSecurityEnabled() {
@@ -49,16 +56,16 @@ public class StompWithSecurityTest extends StompTestBase {
       conn.disconnect();
 
       TextMessage message = (TextMessage) consumer.receive(1000);
-      Assert.assertNotNull(message);
-      Assert.assertEquals("Hello World", message.getText());
+      assertNotNull(message);
+      assertEquals("Hello World", message.getText());
       // Assert default priority 4 is used when priority header is not set
-      Assert.assertEquals("getJMSPriority", 4, message.getJMSPriority());
-      Assert.assertEquals("JMSXUserID", "brianm", message.getStringProperty("JMSXUserID"));
+      assertEquals(4, message.getJMSPriority(), "getJMSPriority");
+      assertEquals("brianm", message.getStringProperty("JMSXUserID"), "JMSXUserID");
 
       // Make sure that the timestamp is valid - should
       // be very close to the current time.
       long tnow = System.currentTimeMillis();
       long tmsg = message.getJMSTimestamp();
-      Assert.assertTrue(Math.abs(tnow - tmsg) < 1000);
+      assertTrue(Math.abs(tnow - tmsg) < 1000);
    }
 }

@@ -17,6 +17,10 @@
 
 package org.apache.activemq.artemis.tests.soak.brokerConnection.mirror;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
@@ -38,11 +42,11 @@ import org.apache.activemq.artemis.tests.soak.SoakTestBase;
 import org.apache.activemq.artemis.tests.util.CFUtil;
 import org.apache.activemq.artemis.util.ServerUtil;
 import org.apache.activemq.artemis.utils.Wait;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,11 +80,11 @@ public class PagedSNFSoakTest extends SoakTestBase {
    private static void createServer(String serverName,
                                     String connectionName,
                                     String mirrorURI,
-                                    int porOffset) throws Exception {
+                                    int portOffset) throws Exception {
       File serverLocation = getFileServerLocation(serverName);
       deleteDirectory(serverLocation);
 
-      HelperCreate cliCreateServer = new HelperCreate();
+      HelperCreate cliCreateServer = helperCreate();
       cliCreateServer.setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(serverLocation);
       cliCreateServer.setMessageLoadBalancing("ON_DEMAND");
       cliCreateServer.setClustered(false);
@@ -88,7 +92,7 @@ public class PagedSNFSoakTest extends SoakTestBase {
       cliCreateServer.setArgs("--no-stomp-acceptor", "--no-hornetq-acceptor", "--no-mqtt-acceptor", "--no-amqp-acceptor", "--max-hops", "1", "--name", DC1_NODE_A);
       cliCreateServer.addArgs("--queues", QUEUE_NAME);
       cliCreateServer.addArgs("--java-memory", "512M");
-      cliCreateServer.setPortOffset(porOffset);
+      cliCreateServer.setPortOffset(portOffset);
       cliCreateServer.createServer();
 
       Properties brokerProperties = new Properties();
@@ -101,38 +105,26 @@ public class PagedSNFSoakTest extends SoakTestBase {
       brokerProperties.put("addressSettings.#.maxSizeMessages", "100");
       brokerProperties.put("addressSettings.#.addressFullMessagePolicy", "PAGING");
 
-      //brokerProperties.put("addressSettings.*MIRROR*.maxSizeMessages", "100");
-      //brokerProperties.put("addressSettings.*MIRROR*.addressFullMessagePolicy", "BLOCK");
-
       File brokerPropertiesFile = new File(serverLocation, "broker.properties");
       saveProperties(brokerProperties, brokerPropertiesFile);
    }
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
       createServer(DC1_NODE_A, "mirror", DC2_NODEA_URI, 0);
       createServer(DC2_NODE_A, "mirror", DC1_NODEA_URI, 2);
    }
 
-   @Before
+   @BeforeEach
    public void cleanupServers() {
       cleanupData(DC1_NODE_A);
       cleanupData(DC2_NODE_A);
    }
 
-   @Test(timeout = 240_000L)
-   public void testAMQP() throws Exception {
-      testAccumulateAndSend("AMQP");
-   }
-
-   @Test(timeout = 240_000L)
-   public void testCORE() throws Exception {
-      testAccumulateAndSend("CORE");
-   }
-
    @Test
-   public void testOpenWire() throws Exception {
-      testAccumulateAndSend("OPENWIRE");
+   @Timeout(240)
+   public void testRandomProtocol() throws Exception {
+      testAccumulateAndSend(randomProtocol());
    }
 
    private void testAccumulateAndSend(final String protocol) throws Exception {
@@ -169,8 +161,8 @@ public class PagedSNFSoakTest extends SoakTestBase {
 
       Wait.assertEquals((long) numberOfMessages, () -> simpleManagementDC1A.getMessageCountOnQueue(QUEUE_NAME), 5000, 100);
 
-      Wait.assertEquals((long) 0, () -> getCount("DC1", simpleManagementDC1A, SNF_QUEUE), 50_000, 100);
-      Wait.assertEquals((long) numberOfMessages, () -> getCount("DC2", simpleManagementDC2A, QUEUE_NAME), 30_000, 100);
+      Wait.assertEquals((long) 0, () -> getMessageCount(simpleManagementDC1A, SNF_QUEUE), 5_000, 100);
+      Wait.assertEquals((long) numberOfMessages, () -> getMessageCount(simpleManagementDC2A, QUEUE_NAME), 5_000, 100);
 
       try (Connection connection = connectionFactoryDC1A.createConnection()) {
          connection.start();
@@ -207,7 +199,7 @@ public class PagedSNFSoakTest extends SoakTestBase {
          int serverToProduce = ((nbatch & 1) > 0) ? 1 : 0;
          int serverToConsume = ((nbatch & 2) > 0) ? 1 : 0;
 
-         logger.info("Batch {}, sending on server {}. consuming on server {}", nbatch, serverToProduce, serverToConsume);
+         logger.debug("Batch {}, sending on server {}. consuming on server {}", nbatch, serverToProduce, serverToConsume);
 
          try (Connection connection = cfs[serverToProduce].createConnection()) {
             Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
@@ -215,7 +207,7 @@ public class PagedSNFSoakTest extends SoakTestBase {
             for (int i = 0; i < numberOfMessages; i++) {
                producer.send(session.createTextMessage("msg " + i));
                if (i > 0 && i % batchSize == 0) {
-                  logger.info("Commit send {}", i);
+                  logger.debug("Commit send {}", i);
                   session.commit();
                }
             }
@@ -223,9 +215,9 @@ public class PagedSNFSoakTest extends SoakTestBase {
          }
 
          for (SimpleManagement s : sm) {
-            logger.info("Checking counts on SNF for {}", s.getUri());
+            logger.debug("Checking counts on SNF for {}", s.getUri());
             Wait.assertEquals((long) 0, () -> s.getMessageCountOnQueue(SNF_QUEUE), 120_000, 100);
-            logger.info("Checking counts on {} on {}", QUEUE_NAME, s.getUri());
+            logger.debug("Checking counts on {} on {}", QUEUE_NAME, s.getUri());
             Wait.assertEquals((long) numberOfMessages, () -> s.getMessageCountOnQueue(QUEUE_NAME), 60_000, 100);
          }
 
@@ -235,9 +227,9 @@ public class PagedSNFSoakTest extends SoakTestBase {
             MessageConsumer consumer = session.createConsumer(session.createQueue(QUEUE_NAME));
             for (int i = 0; i < numberOfMessages; i++) {
                Message message = consumer.receive(5000);
-               Assert.assertNotNull(message);
+               assertNotNull(message);
                if (i > 0 && i % batchSize == 0) {
-                  logger.info("Commit consume {}", i);
+                  logger.debug("Commit consume {}", i);
                   session.commit();
                }
             }
@@ -245,9 +237,9 @@ public class PagedSNFSoakTest extends SoakTestBase {
          }
 
          for (SimpleManagement s : sm) {
-            logger.info("Checking 0 counts on SNF for {}", s.getUri());
+            logger.debug("Checking 0 counts on SNF for {}", s.getUri());
             Wait.assertEquals((long) 0, () -> s.getMessageCountOnQueue(SNF_QUEUE), 120_000, 100);
-            logger.info("Checking for empty queue on {}", s.getUri());
+            logger.debug("Checking for empty queue on {}", s.getUri());
             Wait.assertEquals((long) 0, () -> s.getMessageCountOnQueue(QUEUE_NAME), 60_000, 100);
          }
       }
@@ -258,10 +250,10 @@ public class PagedSNFSoakTest extends SoakTestBase {
       try (MessageConsumer consumer = session.createConsumer(queue)) {
          for (int i = 0; i < numberOfMessages; i++) {
             TextMessage message = (TextMessage) consumer.receive(10_000);
-            Assert.assertNotNull(message);
-            Assert.assertEquals(body, message.getText());
-            Assert.assertEquals(i, message.getIntProperty("id"));
-            logger.info("received {}", i);
+            assertNotNull(message);
+            assertEquals(body, message.getText());
+            assertEquals(i, message.getIntProperty("id"));
+            logger.debug("received {}", i);
             if ((i + 1) % 10 == 0) {
                session.commit();
             }
@@ -282,7 +274,7 @@ public class PagedSNFSoakTest extends SoakTestBase {
          for (int i = 0; i < numberOfMessages; i++) {
             TextMessage message = session.createTextMessage(body);
             message.setIntProperty("id", i);
-            logger.info("send {}", i);
+            logger.debug("send {}", i);
             if (setter != null) {
                try {
                   setter.accept(message);
@@ -301,7 +293,7 @@ public class PagedSNFSoakTest extends SoakTestBase {
 
    int getNumberOfLargeMessages(String serverName) throws Exception {
       File lmFolder = new File(getServerLocation(serverName) + "/data/large-messages");
-      Assert.assertTrue(lmFolder.exists());
+      assertTrue(lmFolder.exists());
       return lmFolder.list().length;
    }
 
@@ -312,27 +304,16 @@ public class PagedSNFSoakTest extends SoakTestBase {
 
    private void stopDC1() throws Exception {
       processDC1_node_A.destroyForcibly();
-      Assert.assertTrue(processDC1_node_A.waitFor(10, TimeUnit.SECONDS));
+      assertTrue(processDC1_node_A.waitFor(10, TimeUnit.SECONDS));
    }
 
    private void stopDC2() throws Exception {
       processDC2_node_A.destroyForcibly();
-      Assert.assertTrue(processDC2_node_A.waitFor(10, TimeUnit.SECONDS));
+      assertTrue(processDC2_node_A.waitFor(10, TimeUnit.SECONDS));
    }
 
    private void startDC2() throws Exception {
       processDC2_node_A = startServer(DC2_NODE_A, -1, -1, new File(getServerLocation(DC2_NODE_A), "broker.properties"));
       ServerUtil.waitForServerToStart(2, 10_000);
-   }
-
-   public long getCount(String place, SimpleManagement simpleManagement, String queue) throws Exception {
-      try {
-         long value = simpleManagement.getMessageCountOnQueue(queue);
-         logger.info("count on {}, queue {} is {}", place, queue, value);
-         return value;
-      } catch (Exception e) {
-         logger.warn(e.getMessage(), e);
-         return -1;
-      }
    }
 }

@@ -183,6 +183,8 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
 
    private boolean splitBrainDetection;
 
+   private final String clientId;
+
 
    /** For tests only */
    public ServerLocatorInternal getServerLocator() {
@@ -220,7 +222,8 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
                                 final String clusterPassword,
                                 final boolean allowDirectConnectionsOnly,
                                 final long clusterNotificationInterval,
-                                final int clusterNotificationAttempts) throws Exception {
+                                final int clusterNotificationAttempts,
+                                final String clientId) throws Exception {
       this.nodeManager = nodeManager;
 
       this.connector = connector;
@@ -303,6 +306,8 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
       }
 
       this.storeAndForwardPrefix = server.getInternalNamingPrefix() + SN_PREFIX;
+
+      this.clientId = clientId;
    }
 
    public ClusterConnectionImpl(final ClusterManager manager,
@@ -335,7 +340,8 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
                                 final String clusterPassword,
                                 final boolean allowDirectConnectionsOnly,
                                 final long clusterNotificationInterval,
-                                final int clusterNotificationAttempts) throws Exception {
+                                final int clusterNotificationAttempts,
+                                final String clientId) throws Exception {
       this.nodeManager = nodeManager;
 
       this.connector = connector;
@@ -403,6 +409,8 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
       this.manager = manager;
 
       this.storeAndForwardPrefix = server.getInternalNamingPrefix() + SN_PREFIX;
+
+      this.clientId = clientId;
    }
 
    @Override
@@ -457,21 +465,18 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
 
       if (managementService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(new SimpleString("name"), name);
+         props.putSimpleStringProperty(SimpleString.of("name"), name);
          //nodeID can be null if there's only a backup
          SimpleString nodeId = nodeManager.getNodeId();
          Notification notification = new Notification(nodeId == null ? null : nodeId.toString(), CoreNotificationType.CLUSTER_CONNECTION_STOPPED, props);
          managementService.sendNotification(notification);
       }
-      executor.execute(new Runnable() {
-         @Override
-         public void run() {
-            synchronized (ClusterConnectionImpl.this) {
-               closeLocator(serverLocator);
-               serverLocator = null;
-            }
-
+      executor.execute(() -> {
+         synchronized (ClusterConnectionImpl.this) {
+            closeLocator(serverLocator);
+            serverLocator = null;
          }
+
       });
 
       started = false;
@@ -718,7 +723,7 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
 
       if (managementService != null) {
          TypedProperties props = new TypedProperties();
-         props.putSimpleStringProperty(new SimpleString("name"), name);
+         props.putSimpleStringProperty(SimpleString.of("name"), name);
          Notification notification = new Notification(nodeManager.getNodeId().toString(), CoreNotificationType.CLUSTER_CONNECTION_STARTED, props);
          logger.debug("sending notification: {}", notification);
          managementService.sendNotification(notification);
@@ -802,7 +807,7 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
                } else {
                   // Add binding in storage so the queue will get reloaded on startup and we can find it - it's never
                   // actually routed to at that address though
-                  queue = server.createQueue(new QueueConfiguration(queueName).setRoutingType(RoutingType.MULTICAST).setAutoCreateAddress(true).setMaxConsumers(-1).setPurgeOnNoConsumers(false).setInternal(true));
+                  queue = server.createQueue(QueueConfiguration.of(queueName).setRoutingType(RoutingType.MULTICAST).setAutoCreateAddress(true).setMaxConsumers(-1).setPurgeOnNoConsumers(false).setInternal(true));
                }
 
                // There are a few things that will behave differently when it's an internal queue
@@ -822,7 +827,7 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
    }
 
    public SimpleString getSfQueueName(String nodeID) {
-      return new SimpleString(storeAndForwardPrefix + name + "." + nodeID);
+      return SimpleString.of(storeAndForwardPrefix + name + "." + nodeID);
    }
 
    @Override
@@ -911,7 +916,7 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
       targetLocator.addIncomingInterceptor(new IncomingInterceptorLookingForExceptionMessage(manager, executorFactory.getExecutor()));
       MessageFlowRecordImpl record = new MessageFlowRecordImpl(targetLocator, eventUID, targetNodeID, connector, queueName, queue);
 
-      ClusterConnectionBridge bridge = new ClusterConnectionBridge(this, manager, targetLocator, serverLocator, initialConnectAttempts, reconnectAttempts, retryInterval, retryIntervalMultiplier, maxRetryInterval, nodeManager.getUUID(), record.getEventUID(), record.getTargetNodeID(), record.getQueueName(), record.getQueue(), executorFactory.getExecutor(), null, null, scheduledExecutor, null, useDuplicateDetection, clusterUser, clusterPassword, server, managementService.getManagementAddress(), managementService.getManagementNotificationAddress(), record, record.getConnector(), storeAndForwardPrefix, server.getStorageManager());
+      ClusterConnectionBridge bridge = new ClusterConnectionBridge(this, manager, targetLocator, serverLocator, initialConnectAttempts, reconnectAttempts, retryInterval, retryIntervalMultiplier, maxRetryInterval, nodeManager.getUUID(), record.getEventUID(), record.getTargetNodeID(), record.getQueueName(), record.getQueue(), executorFactory.getExecutor(), null, null, scheduledExecutor, null, useDuplicateDetection, clusterUser, clusterPassword, server, managementService.getManagementAddress(), managementService.getManagementNotificationAddress(), record, record.getConnector(), storeAndForwardPrefix, server.getStorageManager(), clientId);
 
       targetLocator.setIdentity("(Cluster-connection-bridge::" + bridge.toString() + "::" + this.toString() + ")");
 
@@ -1057,18 +1062,15 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
 
          bridge.stop();
 
-         bridge.getExecutor().execute(new Runnable() {
-            @Override
-            public void run() {
-               try {
-                  if (disconnected) {
-                     targetLocator.cleanup();
-                  } else {
-                     targetLocator.close();
-                  }
-               } catch (Exception ignored) {
-                  logger.debug(ignored.getMessage(), ignored);
+         bridge.getExecutor().execute(() -> {
+            try {
+               if (disconnected) {
+                  targetLocator.cleanup();
+               } else {
+                  targetLocator.close();
                }
+            } catch (Exception ignored) {
+               logger.debug(ignored.getMessage(), ignored);
             }
          });
       }
@@ -1243,10 +1245,14 @@ public final class ClusterConnectionImpl implements ClusterConnection, AfterConn
          server.getGroupingHandler().sendProposalResponse(response, hops + 1);
       }
 
-      private synchronized void clearBindings() throws Exception {
+      private synchronized void clearBindings() {
          logger.debug("{} clearing bindings", ClusterConnectionImpl.this);
          for (RemoteQueueBinding binding : new HashSet<>(bindings.values())) {
-            removeBinding(binding.getClusterName());
+            try {
+               removeBinding(binding.getClusterName());
+            } catch (Exception e) {
+               ActiveMQServerLogger.LOGGER.clusterConnectionFailedToRemoveBindingOnClear(getName().toString(), binding.getClusterName().toString(), e.getMessage());
+            }
          }
       }
 

@@ -172,8 +172,10 @@ public class NettyConnector extends AbstractConnector {
    public static final Map<String, Object> DEFAULT_CONFIG;
 
    static {
-      // Disable resource leak detection for performance reasons by default
-      ResourceLeakDetector.setLevel(Level.DISABLED);
+      // Disable default Netty leak detection if the Netty leak detection level system properties are not in use
+      if (System.getProperty("io.netty.leakDetectionLevel") == null && System.getProperty("io.netty.leakDetection.level") == null) {
+         ResourceLeakDetector.setLevel(Level.DISABLED);
+      }
 
       // Set default Configuration
       Map<String, Object> config = new HashMap<>();
@@ -649,7 +651,7 @@ public class NettyConnector extends AbstractConnector {
          realTrustStorePassword = null;
       }
 
-      bootstrap.handler(new ChannelInitializer<Channel>() {
+      bootstrap.handler(new ChannelInitializer<>() {
          @Override
          public void initChannel(Channel channel) throws Exception {
             final ChannelPipeline pipeline = channel.pipeline();
@@ -1257,24 +1259,14 @@ public class NettyConnector extends AbstractConnector {
       public void connectionDestroyed(final Object connectionID, boolean failed) {
          if (connections.remove(connectionID) != null) {
             // Execute on different thread to avoid deadlocks
-            closeExecutor.execute(new Runnable() {
-               @Override
-               public void run() {
-                  listener.connectionDestroyed(connectionID, failed);
-               }
-            });
+            closeExecutor.execute(() -> listener.connectionDestroyed(connectionID, failed));
          }
       }
 
       @Override
       public void connectionException(final Object connectionID, final ActiveMQException me) {
          // Execute on different thread to avoid deadlocks
-         closeExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-               listener.connectionException(connectionID, me);
-            }
-         });
+         closeExecutor.execute(() -> listener.connectionException(connectionID, me));
       }
 
       @Override

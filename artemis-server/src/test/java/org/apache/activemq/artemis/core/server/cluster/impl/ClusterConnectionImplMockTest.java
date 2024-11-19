@@ -17,6 +17,9 @@
 
 package org.apache.activemq.artemis.core.server.cluster.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import java.util.concurrent.Executors;
 
 import org.apache.activemq.artemis.api.core.SimpleString;
@@ -36,8 +39,7 @@ import org.apache.activemq.artemis.utils.ExecutorFactory;
 import org.apache.activemq.artemis.utils.RandomUtil;
 import org.apache.activemq.artemis.utils.UUIDGenerator;
 import org.apache.activemq.artemis.utils.actors.ArtemisExecutor;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ClusterConnectionImplMockTest extends ServerTestBase {
 
@@ -84,12 +86,13 @@ public class ClusterConnectionImplMockTest extends ServerTestBase {
                 null, //final String clusterPassword,
                 true, //final boolean allowDirectConnectionsOnly,
                 0, //final long clusterNotificationInterval,
-                0 //final int clusterNotificationAttempts)
+                0, //final int clusterNotificationAttempts)
+                null
       );
 
-      Assert.assertEquals(1, cci.allowableConnections.size());
-      Assert.assertFalse("Local address can not be part of allowable connection.", cci.allowableConnections.iterator().next().getParams().containsKey(TransportConstants.LOCAL_ADDRESS_PROP_NAME));
-      Assert.assertFalse("Local port can not be part of allowable connection.", cci.allowableConnections.iterator().next().getParams().containsKey(TransportConstants.LOCAL_PORT_PROP_NAME));
+      assertEquals(1, cci.allowableConnections.size());
+      assertFalse(cci.allowableConnections.iterator().next().getParams().containsKey(TransportConstants.LOCAL_ADDRESS_PROP_NAME), "Local address can not be part of allowable connection.");
+      assertFalse(cci.allowableConnections.iterator().next().getParams().containsKey(TransportConstants.LOCAL_PORT_PROP_NAME), "Local port can not be part of allowable connection.");
 
    }
 
@@ -103,7 +106,7 @@ public class ClusterConnectionImplMockTest extends ServerTestBase {
       ArtemisExecutor executor = ArtemisExecutor.delegate(Executors.newSingleThreadExecutor(ActiveMQThreadFactory.defaultThreadFactory(getClass().getName())));
 
       try {
-         ClusterConnectionImpl cci = new ClusterConnectionImpl(null, new TransportConfiguration[]{tc}, null, null, null, 0, 0L, 0L, 0L, 0, 0L, 0, 0, 0L, 0L, false, null, 0, 0, () -> executor, new MockServer(), null, null, null, 0, new FakeNodeManager(UUIDGenerator.getInstance().generateStringUUID()), null, null, true, 0, 0);
+         ClusterConnectionImpl cci = new ClusterConnectionImpl(null, new TransportConfiguration[]{tc}, null, null, null, 0, 0L, 0L, 0L, 0, 0L, 0, 0, 0L, 0L, false, null, 0, 0, () -> executor, new MockServer(), null, null, null, 0, new FakeNodeManager(UUIDGenerator.getInstance().generateStringUUID()), null, null, true, 0, 0, null);
 
          TopologyMember topologyMember = new TopologyMemberImpl(RandomUtil.randomString(), null, null, null, null);
          cci.nodeUP(topologyMember, false);
@@ -121,12 +124,7 @@ public class ClusterConnectionImplMockTest extends ServerTestBase {
 
       @Override
       public ExecutorFactory getExecutorFactory() {
-         return new ExecutorFactory() {
-            @Override
-            public ArtemisExecutor getExecutor() {
-               return null;
-            }
-         };
+         return () -> null;
       }
 
       @Override

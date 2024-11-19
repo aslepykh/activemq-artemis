@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.cluster.failover;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -41,8 +46,7 @@ import org.apache.activemq.artemis.core.client.impl.ClientSessionInternal;
 import org.apache.activemq.artemis.spi.core.protocol.RemotingConnection;
 import org.apache.activemq.artemis.tests.util.CountDownSessionFailureListener;
 import org.apache.activemq.artemis.tests.util.TransportConfigurationUtils;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.lang.invoke.MethodHandles;
@@ -150,7 +154,7 @@ public class AsynchronousFailoverTest extends FailoverTestBase {
 
                ClientSession createSession = sf.createSession(true, true);
 
-               createSession.createQueue(new QueueConfiguration(FailoverTestBase.ADDRESS).setAddress(FailoverTestBase.ADDRESS));
+               createSession.createQueue(QueueConfiguration.of(FailoverTestBase.ADDRESS).setAddress(FailoverTestBase.ADDRESS));
 
                RemotingConnection conn = ((ClientSessionInternal) createSession).getConnection();
 
@@ -196,13 +200,13 @@ public class AsynchronousFailoverTest extends FailoverTestBase {
 
                createSession.close();
 
-               Assert.assertEquals(0, sf.numSessions());
+               assertEquals(0, sf.numSessions());
 
                locator.close();
             } finally {
                locator.close();
 
-               Assert.assertEquals(0, sf.numConnections());
+               assertEquals(0, sf.numConnections());
             }
 
             if (i != numIts - 1) {
@@ -299,7 +303,7 @@ public class AsynchronousFailoverTest extends FailoverTestBase {
             counts.add(count);
             if (count != lastCount + 1) {
                if (counterGap) {
-                  Assert.fail("got another counter gap at " + count + ": " + counts);
+                  fail("got another counter gap at " + count + ": " + counts);
                } else {
                   if (lastCount != -1) {
                      logger.debug("got first counter gap at {}", count);
@@ -369,7 +373,7 @@ public class AsynchronousFailoverTest extends FailoverTestBase {
 
                      message.putIntProperty("counter", i);
 
-                     message.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, new SimpleString("id:" + i +
+                     message.putStringProperty(Message.HDR_DUPLICATE_DETECTION_ID, SimpleString.of("id:" + i +
                                                                                                        ",exec:" +
                                                                                                        executionId));
 
@@ -482,9 +486,9 @@ public class AsynchronousFailoverTest extends FailoverTestBase {
 
                   try {
                      if (blocked) {
-                        assertTrue("msgs.size is expected to be 0 or " + numMessages + " but it was " + msgs.size(), msgs.size() == 0 || msgs.size() == numMessages);
+                        assertTrue(msgs.size() == 0 || msgs.size() == numMessages, "msgs.size is expected to be 0 or " + numMessages + " but it was " + msgs.size());
                      } else {
-                        assertTrue("msgs.size is expected to be " + numMessages + " but it was " + msgs.size(), msgs.size() == numMessages);
+                        assertTrue(msgs.size() == numMessages, "msgs.size is expected to be " + numMessages + " but it was " + msgs.size());
                      }
                   } catch (Throwable e) {
                      if (logger.isDebugEnabled()) {

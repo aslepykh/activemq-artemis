@@ -16,6 +16,9 @@
  */
 package org.apache.activemq.artemis.tests.smoke.jmxfailback;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
@@ -27,11 +30,10 @@ import org.apache.activemq.artemis.api.core.management.ActiveMQServerControl;
 import org.apache.activemq.artemis.api.core.management.ObjectNameBuilder;
 import org.apache.activemq.artemis.tests.smoke.common.SmokeTestBase;
 import org.apache.activemq.artemis.utils.Wait;
-import org.apache.activemq.artemis.utils.cli.helper.HelperCreate;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.activemq.artemis.cli.commands.helper.HelperCreate;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class JmxFailbackTest extends SmokeTestBase {
 
@@ -43,7 +45,7 @@ public class JmxFailbackTest extends SmokeTestBase {
    public static final String SERVER_NAME_0 = "jmx-failback1";
    public static final String SERVER_NAME_1 = "jmx-failback2";
 
-   @BeforeClass
+   @BeforeAll
    public static void createServers() throws Exception {
 
       File server0Location = getFileServerLocation(SERVER_NAME_0);
@@ -52,14 +54,14 @@ public class JmxFailbackTest extends SmokeTestBase {
       deleteDirectory(server1Location);
 
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setUser("admin").setPassword("admin").setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(server0Location).
             setConfiguration("./src/main/resources/servers/jmx-failback1").setArgs( "--java-options", "-Djava.rmi.server.hostname=localhost");
          cliCreateServer.createServer();
       }
 
       {
-         HelperCreate cliCreateServer = new HelperCreate();
+         HelperCreate cliCreateServer = helperCreate();
          cliCreateServer.setUser("admin").setPassword("admin").setAllowAnonymous(true).setNoWeb(true).setArtemisInstance(server1Location).
             setConfiguration("./src/main/resources/servers/jmx-failback2").setArgs( "--java-options", "-Djava.rmi.server.hostname=localhost");
          cliCreateServer.createServer();
@@ -78,7 +80,7 @@ public class JmxFailbackTest extends SmokeTestBase {
    Process server1;
    Process server2;
 
-   @Before
+   @BeforeEach
    public void before() throws Exception {
       url1 = new JMXServiceURL(urlString_1);
       url2 = new JMXServiceURL(urlString_2);
@@ -117,8 +119,8 @@ public class JmxFailbackTest extends SmokeTestBase {
 
    @Test
    public void testFailbackOnJMX() throws Exception {
-      Assert.assertFalse(isBackup(url1, objectNameBuilder1));
-      Assert.assertTrue(isBackup(url2, objectNameBuilder2));
+      assertFalse(isBackup(url1, objectNameBuilder1));
+      assertTrue(isBackup(url2, objectNameBuilder2));
 
       server1.destroyForcibly();
       Wait.assertFalse(() -> isBackup(url2, objectNameBuilder2));

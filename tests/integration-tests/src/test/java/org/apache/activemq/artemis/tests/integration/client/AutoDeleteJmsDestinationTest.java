@@ -16,6 +16,11 @@
  */
 package org.apache.activemq.artemis.tests.integration.client;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import javax.jms.Connection;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
@@ -32,8 +37,7 @@ import org.apache.activemq.artemis.core.server.Queue;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.tests.util.JMSTestBase;
 import org.apache.activemq.artemis.tests.util.Wait;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
@@ -67,34 +71,34 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
          for (int i = 0; i < numMessages - 1; i++) {
             Message m = messageConsumer.receive(5000);
-            Assert.assertNotNull(m);
+            assertNotNull(m);
          }
 
          Wait.waitFor(() -> {
-            Binding binding = server.getPostOffice().getBinding(new SimpleString("test"));
+            Binding binding = server.getPostOffice().getBinding(SimpleString.of("test"));
             if (binding == null) {
                return false;
             }
             return binding.getBindable() != null;
          });
          // ensure the queue is still there
-         Queue q = (Queue) server.getPostOffice().getBinding(new SimpleString("test")).getBindable();
+         Queue q = (Queue) server.getPostOffice().getBinding(SimpleString.of("test")).getBindable();
          Wait.assertEquals(1, q::getMessageCount);
-         Assert.assertEquals(numMessages, q.getMessagesAdded());
+         assertEquals(numMessages, q.getMessagesAdded());
 
          session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
          final MessageConsumer messageConsumer2 = session.createConsumer(queue);
          messageConsumer.close();
          Message m = messageConsumer2.receive(5000);
-         Assert.assertNotNull(m);
+         assertNotNull(m);
 
          connection.close();
 
-         SimpleString qname = new SimpleString("test");
+         SimpleString qname = SimpleString.of("test");
          Wait.waitFor(() -> server.getPostOffice().getBinding(qname) == null);
 
          // ensure the queue was removed
-         Assert.assertNull(server.getPostOffice().getBinding(new SimpleString("test")));
+         assertNull(server.getPostOffice().getBinding(SimpleString.of("test")));
 
          // make sure the JMX control was removed for the JMS queue
          assertNull(server.getManagementService().getResource("test"));
@@ -129,25 +133,25 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
       for (int i = 0; i < numMessages - 1; i++) {
          Message m = messageConsumer.receive(5000);
-         Assert.assertNotNull(m);
+         assertNotNull(m);
       }
 
       session.close();
 
       // ensure the queue is still there
-      Queue q = (Queue) server.getPostOffice().getBinding(new SimpleString("test")).getBindable();
-      Assert.assertEquals(1, q.getMessageCount());
-      Assert.assertEquals(numMessages, q.getMessagesAdded());
+      Queue q = (Queue) server.getPostOffice().getBinding(SimpleString.of("test")).getBindable();
+      assertEquals(1, q.getMessageCount());
+      assertEquals(numMessages, q.getMessagesAdded());
 
       session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
       messageConsumer = session.createConsumer(queue);
       Message m = messageConsumer.receive(5000);
-      Assert.assertNotNull(m);
+      assertNotNull(m);
 
       connection.close();
 
       // ensure the queue was not removed
-      Assert.assertNotNull(server.getPostOffice().getBinding(new SimpleString("test")));
+      assertNotNull(server.getPostOffice().getBinding(SimpleString.of("test")));
    }
 
    @Test
@@ -172,15 +176,15 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          Message m = messageConsumer.receive(5000);
-         Assert.assertNotNull(m);
+         assertNotNull(m);
       }
 
       connection.close();
 
-      SimpleString qName = new SimpleString("test");
+      SimpleString qName = SimpleString.of("test");
       Wait.waitFor(() -> server.locateQueue(qName) == null);
       // ensure the topic was removed
-      Assert.assertNull(server.locateQueue(qName));
+      assertNull(server.locateQueue(qName));
 
       // make sure the JMX control was removed for the JMS topic
       assertNull(server.getManagementService().getResource("jtest"));
@@ -189,7 +193,7 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
    @Test
    public void testAutoDeleteTopicNegative() throws Exception {
       final int numMessages = 100;
-      final SimpleString addressName = new SimpleString("test");
+      final SimpleString addressName = SimpleString.of("test");
       server.getAddressSettingsRepository().addMatch(addressName.toString(), new AddressSettings().setAutoDeleteAddresses(false));
 
       Connection connection = cf.createConnection();
@@ -211,7 +215,7 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          Message m = messageConsumer.receive(5000);
-         Assert.assertNotNull(m);
+         assertNotNull(m);
       }
 
       connection.close();
@@ -242,7 +246,7 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
 
       for (int i = 0; i < numMessages; i++) {
          Message m = messageConsumer.receive(5000);
-         Assert.assertNotNull(m);
+         assertNotNull(m);
       }
 
       messageConsumer.close();
@@ -251,7 +255,7 @@ public class AutoDeleteJmsDestinationTest extends JMSTestBase {
       connection.close();
 
       // ensure the topic was removed
-      Assert.assertNull(server.locateQueue(new SimpleString("test")));
+      assertNull(server.locateQueue(SimpleString.of("test")));
 
       // make sure the JMX control was removed for the JMS topic
       assertNull(server.getManagementService().getResource("test"));
